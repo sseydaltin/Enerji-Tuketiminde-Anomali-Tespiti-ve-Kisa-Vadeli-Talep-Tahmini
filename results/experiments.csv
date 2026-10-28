@@ -1,0 +1,1 @@
+exp_id,date,model,feature_set,lookback,hidden,layers,dropout,lr,batch,epochs_run,best_epoch,seed,val_mae,val_rmse,test_mae,test_rmse,train_time_s,note

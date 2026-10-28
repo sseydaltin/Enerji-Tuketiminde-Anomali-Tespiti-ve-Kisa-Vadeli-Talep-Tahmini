@@ -1,0 +1,21 @@
+# Derin öğrenme (GPU kurulumu için README §5'teki nota bakın)
+torch
+# Klasik ML: StandardScaler, Ridge, Isolation Forest, metrikler
+scikit-learn
+# Veri işleme
+pandas
+numpy
+# parquet okuma/yazma (data/processed/hourly.parquet)
+pyarrow
+# Görselleştirme ve EDA (ACF/PACF için statsmodels)
+matplotlib
+statsmodels
+jupyter
+# Fransa resmi tatilleri (is_holiday özniteliği)
+holidays
+# configs/config.yaml okumak için
+pyyaml
+# Demo uygulaması
+streamlit
+# Birim testleri
+pytest

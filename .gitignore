@@ -1,0 +1,27 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- Sanal ortam ve IDE (her bilgisayarda yerel) ---
+.venv/
+venv/
+.idea/
+.vscode/
+
+# --- Notebook ---
+.ipynb_checkpoints/
+
+# --- Veri: ham veri büyük (~127 MB) ve UCI'dan yeniden indirilebilir ---
+# İşlenmiş veri de koddan yeniden üretilebilir. Klasörler .gitkeep ile korunur.
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# --- Model ağırlıkları: eğitim betikleriyle yeniden üretilir ---
+models/*.pt
+
+# --- İşletim sistemi ---
+.DS_Store
+Thumbs.db
