@@ -85,7 +85,7 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | 09:45–12:30 | `src/data/load.py`: UCI'dan indir, `;` ayırıcı, `?` → NaN, `Date+Time` → datetime index, tip dönüşümleri. Ham veri özet tablosu (satır sayısı, tarih aralığı, eksik oranı) | Literatür taraması: §11 havuzundan başla, her makale için **literatür matrisi** (`docs/literatur.md`: veri seti, model, metrik, sonuç, güçlü/zayıf yön, bize katkısı) |
 | 13:30–16:00 | `src/data/preprocess.py`: eksik veri stratejisi (§4.3), saatliğe indirgeme, `other_energy` türetme, takvim öznitelikleri, `is_imputed` bayrağı | `notebooks/01_eda.ipynb`: §4.2 EDA kontrol listesi (eksik veri ısı haritası, günlük/haftalık/yıllık profiller, dağılımlar, korelasyon, ACF) |
 | 16:00–18:00 | `src/data/split.py` (kronolojik bölme) + `src/data/windows.py` (168→24 pencere, ölçekleyici yalnız eğitime fit) + birim testleri: kümeler arası zaman çakışması yok | EDA figürlerini `results/figures/eda_*.png` olarak kaydet; gözlemleri yaz (tatil dönemleri, uzun boşluklar, mevsimsellik) |
-| 18:00–19:00 | `src/models/baselines.py`: Persistence + Seasonal Naive (24/168) → doğrulama sonucu | Öneri formu: **Özgün Değer** taslağı (literatür boşluğu, araştırma sorusu, hipotez) |
+| 18:00–19:00 | `src/models/baselines.py`: Persistence + Seasonal Naive (24/168) → yalnız doğrulama sonucu (test için açıkça `--split test`) | Öneri formu: **Özgün Değer** taslağı (literatür boşluğu, araştırma sorusu, hipotez) |
 | 19:00–19:30 | **Çapraz anlatım** | |
 
 ✅ **Gün 1 bitiş kriterleri:** temiz saatlik veri `data/processed/hourly.parquet`; split tarihleri ve örnek sayıları tablosu; ≥6 EDA figürü; ilk baseline doğrulama MAE/RMSE; ≥10 adaylı literatür matrisi.
@@ -161,8 +161,9 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 1. `?` → NaN, sayısal tiplere dönüşüm, datetime index, sıralama, tekrarları sil.
 2. Dakikalık eksik index'i tamamla (`asfreq('1min')`) → eksikler görünür olsun.
 3. **Saatliğe indirgeme:** güç/voltaj/akım için `mean`, alt sayaçlar ve `other_energy` için `sum`. Bir saatteki dakikaların **%50'sinden fazlası eksikse** o saat NaN.
-4. **Eksik saatler:** ≤3 saatlik boşluk → doğrusal interpolasyon; daha uzun boşluk → bir hafta önceki aynı saatin değeri; her durumda `is_imputed=1`.
+4. **Eksik saatler:** ≤3 saatlik boşluk → boşluğun iki yanındaki gözlemler arasında doğrusal interpolasyon; daha uzun boşluk → bir hafta önceki aynı saatin değeri; her durumda `is_imputed=1`. İnterpolasyon her veri kümesinde ayrı uygulanır; küme sınırının ±3 saatindeki eksikler hafta-önce yöntemiyle doldurulur.
    - Doldurulmuş hedef içeren pencereler **değerlendirme metriklerinden çıkarılır** (eğitimde kalabilir). Raporda belirtin.
+   - Kısa boşluk interpolasyonu boşluğun sonraki gözlemini kullanır; bu nedenle tümüyle nedensel değildir. Sınır çevresinde veri kümeleri arası bilgi geçişini önlemek için hafta-önce yöntemi kullanılır.
 5. **Takvim öznitelikleri:** saat ve haftanın günü için sin/cos kodlama, ay için sin/cos, `is_weekend`, `is_holiday` (Fransa resmi tatilleri, `holidays` paketi).
 6. **Ölçekleme:** `StandardScaler` **yalnızca eğitim kümesine fit**, doğrulama/test'e `transform` (Yönerge §6 ve §7 sızıntı uyarısı). Ölçekleyici `models/scaler.pkl` olarak saklanır; demo da aynısını kullanır.
 7. İsteğe bağlı: hedefe `log1p` (EDA'da sağa çarpıklık görülürse); metrikler **her zaman orijinal ölçekte (kW)** raporlanır.
@@ -348,6 +349,8 @@ python -m src.data.preprocess      # data/processed/hourly.parquet
 python -m src.train_forecast --model lstm --exp F5
 python -m src.train_forecast --model gru  --exp F6
 python -m src.train_autoencoder --exp A2
+python -m src.models.baselines          # yalnız val
+python -m src.models.baselines --split test
 python -m src.evaluate_forecast --split test
 python -m src.evaluate_anomaly  --split test
 pytest tests/
@@ -442,7 +445,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 | 6 | Deneysel tasarım | İkisi | §4.6 deney tablosu |
 | 7 | Sonuçlar | İkisi | Karşılaştırma tabloları, figürler, ablasyon |
 | 8 | Hata analizi ve tartışma | İkisi | §4.12 soruları, literatürle kıyas (koşul farklarıyla) |
-| 9 | Sınırlılıklar ve gelecek çalışmalar | İkisi | Tek hane, sentetik etiket, kış dışı test dönemi, hava durumu yok; ElectricityLoadDiagrams'a genişletme, Transformer, rolling-origin, olasılıksal tahmin |
+| 9 | Sınırlılıklar ve gelecek çalışmalar | İkisi | Tek hane, sentetik etiket, kış dışı test dönemi, hava durumu yok; kısa boşluk interpolasyonunda sonraki gözlem kullanılır, ancak hedefi doldurulmuş pencereler değerlendirme metriklerine alınmaz; ElectricityLoadDiagrams'a genişletme, Transformer, rolling-origin, olasılıksal tahmin |
 | 10 | Sonuç | İkisi | Hipotezlerin kabul/red durumu |
 | — | Kaynakça (IEEE), Ekler (kod deposu bağlantısı, ek figürler) | | |
 
