@@ -4,7 +4,7 @@ torch
 scikit-learn
 # Veri işleme
 pandas
-numpy
+numpy>=2.0,<2.4
 # parquet okuma/yazma (data/processed/hourly.parquet)
 pyarrow
 # Görselleştirme ve EDA (ACF/PACF için statsmodels)

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.data.load import PROJECT_ROOT, load_config, load_raw_data
+from src.utils.console import setup_console
 
 
 MEAN_COLUMNS = [
@@ -169,6 +170,7 @@ def preprocess(df, config):
 
 
 def main():
+    setup_console()  # Windows konsolunda Türkçe karakterler için UTF-8
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
     args = parser.parse_args()

@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 
 from src.data.load import PROJECT_ROOT, load_config
 from src.data.split import chronological_split
+from src.utils.console import setup_console
 
 
 def get_feature_columns(config, feature_set=None):
@@ -117,6 +118,7 @@ def build_datasets(df, config):
 
 
 def main():
+    setup_console()  # Windows konsolunda Türkçe karakterler için UTF-8
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
     args = parser.parse_args()
