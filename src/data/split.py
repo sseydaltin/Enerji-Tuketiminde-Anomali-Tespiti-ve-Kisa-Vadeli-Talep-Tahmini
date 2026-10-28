@@ -8,6 +8,7 @@ from src.data.load import PROJECT_ROOT, load_config
 
 
 def chronological_split(df, config):
+    """Saatlik [N, F] tabloyu örtüşmeyen train/val/test tablolarına böler."""
     if not isinstance(df.index, pd.DatetimeIndex):
         raise TypeError("DatetimeIndex gerekli.")
 
@@ -23,7 +24,10 @@ def chronological_split(df, config):
         settings = config["split"][name]
 
         start = pd.Timestamp(settings["start"])
-        end = pd.Timestamp(settings["end"]) + pd.Timedelta(days=1)
+        end = (
+            pd.Timestamp(settings["end"]).normalize()
+            + pd.DateOffset(days=1)
+        )
 
         result[name] = df.loc[
             (df.index >= start) & (df.index < end)

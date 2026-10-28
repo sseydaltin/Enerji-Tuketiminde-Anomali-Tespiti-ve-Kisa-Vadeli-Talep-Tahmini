@@ -61,3 +61,28 @@ def test_no_remaining_missing_values():
     result = fill_missing_hours(df, max_gap=3, lag=168)
 
     assert result.isna().sum().sum() == 0
+
+
+def test_boundary_neighbors_are_not_interpolated():
+    df = make_hourly_data()
+    for column in MEAN_COLUMNS + SUM_COLUMNS:
+        df[column] = np.arange(len(df), dtype=float)
+
+    boundary = df.index[96]
+    missing_indices = [df.index[94], df.index[96], df.index[98]]
+    df.loc[missing_indices, MEAN_COLUMNS + SUM_COLUMNS] = np.nan
+
+    result = fill_missing_hours(
+        df,
+        max_gap=3,
+        lag=24,
+        split_boundaries=[boundary],
+    )
+
+    for column in MEAN_COLUMNS + SUM_COLUMNS:
+        expected = df[column].shift(24).loc[missing_indices]
+        pd.testing.assert_series_equal(
+            result.loc[missing_indices, column],
+            expected,
+            check_names=False,
+        )

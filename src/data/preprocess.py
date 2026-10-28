@@ -24,29 +24,66 @@ SUM_COLUMNS = [
 ]
 
 
-def fill_missing_hours(df, max_gap, lag):
-    """Kısa boşlukları interpolasyonla, uzunları geçmişten doldurur."""
+def fill_missing_hours(df, max_gap, lag, split_boundaries=None):
+    """Saatlik boşlukları doldurur; girdisi ve çıktısı aynı indeksli tablodur.
+
+    En fazla max_gap saatlik boşluklar, aynı küme içindeki iki gözlem
+    arasında doğrusal interpolasyonla doldurulur. Küme sınırının max_gap
+    saatlik çevresindeki boşluklar ve uzun boşluklar lag saat önceki
+    değerle doldurulur; kalan baştaki boşluklar geçmiş değerle tamamlanır.
+    """
     result = df.copy()
     original_missing = result["Global_active_power"].isna()
+    boundaries = sorted(
+        pd.Timestamp(boundary) for boundary in (split_boundaries or [])
+    )
+    protected = np.zeros(len(result), dtype=bool)
 
-    # Gelecek gözlemleri kullanan interpolasyon yalnızca eğitimde
-    # güvenlidir; burada nedensel (geçmişe dayalı) doldurma uygulanır.
+    for boundary in boundaries:
+        distance = np.abs((result.index - boundary).asi8)
+        protected |= distance <= pd.Timedelta(hours=max_gap).value
+
+    segment_starts = [0]
+    segment_starts.extend(
+        int(result.index.searchsorted(boundary))
+        for boundary in boundaries
+    )
+    segment_starts.append(len(result))
+
     for col in MEAN_COLUMNS + SUM_COLUMNS:
         series = result[col].copy()
-        missing = series.isna()
 
-        # Kısa boşluklar: iki gerçek gözlem arasında doğrusal interpolasyon.
-        groups = missing.ne(missing.shift()).cumsum()
-        gap_sizes = missing.groupby(groups).transform("sum")
-        short = missing & (gap_sizes <= max_gap)
+        # Küme sınırının çevresinde interpolasyon yapma; haftalık geçmişi kullan.
+        boundary_missing = series.isna().to_numpy() & protected
+        for i in np.flatnonzero(boundary_missing):
+            if i >= lag and pd.notna(series.iloc[i - lag]):
+                series.iloc[i] = series.iloc[i - lag]
 
-        interpolated = series.interpolate(
-            method="time",
-            limit_area="inside",
-        )
-        series.loc[short] = interpolated.loc[short]
+        # Her küme içinde ayrı interpolasyon, karşı kümeden gözlem kullanmaz.
+        for segment_start, segment_end in zip(
+            segment_starts[:-1],
+            segment_starts[1:],
+        ):
+            if segment_start == segment_end:
+                continue
 
-        # Uzun boşluklar: yalnızca geçmiş haftanın aynı saati.
+            segment = series.iloc[segment_start:segment_end]
+            missing = segment.isna()
+            groups = missing.ne(missing.shift()).cumsum()
+            gap_sizes = missing.groupby(groups).transform("sum")
+            short = missing & (gap_sizes <= max_gap)
+            short.iloc[protected[segment_start:segment_end]] = False
+
+            interpolated = segment.interpolate(
+                method="time",
+                limit_area="inside",
+            )
+            series.iloc[segment_start:segment_end] = segment.where(
+                ~short,
+                interpolated,
+            )
+
+        # Uzun boşluklar: bir hafta önceki aynı saat.
         for i in np.flatnonzero(series.isna().to_numpy()):
             if i >= lag and pd.notna(series.iloc[i - lag]):
                 series.iloc[i] = series.iloc[i - lag]
@@ -60,6 +97,7 @@ def fill_missing_hours(df, max_gap, lag):
 
 
 def preprocess(df, config):
+    """Dakikalık [N, F] veriyi saatlik [T, F] özellik tablosuna dönüştürür."""
     settings = config["preprocess"]
     target = settings["target"]
 
@@ -90,6 +128,10 @@ def preprocess(df, config):
         hourly,
         max_gap=settings["interp_max_gap_hours"],
         lag=settings["long_gap_fill_lag_hours"],
+        split_boundaries=[
+            config["split"][name]["start"]
+            for name in ("val", "test")
+        ],
     )
 
     # Saatlik toplam enerji Wh cinsindedir.

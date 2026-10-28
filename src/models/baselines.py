@@ -1,5 +1,7 @@
 """Kısa vadeli enerji tahmini için basit referans modeller."""
 
+import argparse
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
@@ -26,6 +28,18 @@ def evaluate(y_true, y_pred):
 
 
 def main():
+    """Seçilen kümeyi değerlendirir ve baseline sonuçlarını CSV'ye yazar."""
+    parser = argparse.ArgumentParser(
+        description="Persistence ve Seasonal Naive referanslarını değerlendir."
+    )
+    parser.add_argument(
+        "--split",
+        choices=("val", "test"),
+        default="val",
+        help="Değerlendirme kümesi (varsayılan: val).",
+    )
+    args = parser.parse_args()
+
     config = load_config()
     df = pd.read_parquet(
         PROJECT_ROOT / config["paths"]["processed_file"]
@@ -38,7 +52,7 @@ def main():
 
     results = []
 
-    for name in ("val", "test"):
+    for name in (args.split,):
         part = splits[name]
         start = df.index.get_loc(part.index.min())
         end = df.index.get_loc(part.index.max())
@@ -91,6 +105,12 @@ def main():
 
     output = PROJECT_ROOT / "results/tables/baseline_results.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
+
+    if output.exists():
+        previous = pd.read_csv(output)
+        previous = previous.loc[previous["split"] != args.split]
+        result = pd.concat([previous, result], ignore_index=True)
+
     result.to_csv(output, index=False)
     print("\nKaydedildi:", output)
 
