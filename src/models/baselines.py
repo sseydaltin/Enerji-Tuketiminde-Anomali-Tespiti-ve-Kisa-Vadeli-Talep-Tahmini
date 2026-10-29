@@ -4,10 +4,10 @@ import argparse
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from src.data.load import PROJECT_ROOT, load_config
 from src.data.split import chronological_split
+from src.utils.metrics import calculate_metrics, metrics_by_horizon
 
 
 def persistence(history, horizon):
@@ -21,10 +21,8 @@ def seasonal_naive(history, horizon, period):
 
 
 def evaluate(y_true, y_pred):
-    return {
-        "MAE": mean_absolute_error(y_true, y_pred),
-        "RMSE": np.sqrt(mean_squared_error(y_true, y_pred)),
-    }
+    scores = calculate_metrics(y_true, y_pred)
+    return {"MAE": scores["MAE"], "RMSE": scores["RMSE"]}
 
 
 def main():
@@ -51,6 +49,7 @@ def main():
     horizon = config["forecast"]["horizon"]
 
     results = []
+    horizon_results = []
 
     for name in (args.split,):
         part = splits[name]
@@ -88,16 +87,36 @@ def main():
         if not actual:
             raise ValueError(f"{name} için geçerli pencere bulunamadı.")
 
-        y_true = np.concatenate(actual)
+        y_true = np.stack(actual)
 
         for model, preds in predictions.items():
-            scores = evaluate(y_true, np.concatenate(preds))
+            y_pred = np.stack(preds)
+            scores = calculate_metrics(
+                y_true,
+                y_pred,
+                mape_min_y=config.get("evaluation", {}).get(
+                    "mape_min_y",
+                    0.1,
+                ),
+            )
             results.append({
                 "split": name,
                 "model": model,
                 "windows": len(actual),
                 **scores,
             })
+            horizon_table = metrics_by_horizon(
+                y_true,
+                y_pred,
+                mape_min_y=config.get("evaluation", {}).get(
+                    "mape_min_y",
+                    0.1,
+                ),
+            )
+            horizon_table.insert(0, "model", model)
+            horizon_table.insert(0, "split", name)
+            horizon_table["windows"] = len(actual)
+            horizon_results.extend(horizon_table.to_dict("records"))
 
     result = pd.DataFrame(results)
     print("\n=== BASELINE SONUÇLARI ===")
@@ -108,10 +127,41 @@ def main():
 
     if output.exists():
         previous = pd.read_csv(output)
-        previous = previous.loc[previous["split"] != args.split]
+        result_keys = set(
+            result[["split", "model"]].itertuples(index=False, name=None)
+        )
+        previous_keys = previous[["split", "model"]].itertuples(
+            index=False,
+            name=None,
+        )
+        previous = previous.loc[
+            [key not in result_keys for key in previous_keys]
+        ]
         result = pd.concat([previous, result], ignore_index=True)
 
     result.to_csv(output, index=False)
+    horizon_output = PROJECT_ROOT / "results/tables/forecast_horizon_metrics.csv"
+    horizon_output.parent.mkdir(parents=True, exist_ok=True)
+    horizon_result = pd.DataFrame(horizon_results)
+    if horizon_output.exists():
+        previous_horizon = pd.read_csv(horizon_output)
+        result_keys = set(
+            horizon_result[["split", "model", "horizon"]].itertuples(
+                index=False,
+                name=None,
+            )
+        )
+        previous_keys = previous_horizon[
+            ["split", "model", "horizon"]
+        ].itertuples(index=False, name=None)
+        previous_horizon = previous_horizon.loc[
+            [key not in result_keys for key in previous_keys]
+        ]
+        horizon_result = pd.concat(
+            [previous_horizon, horizon_result],
+            ignore_index=True,
+        )
+    horizon_result.to_csv(horizon_output, index=False)
     print("\nKaydedildi:", output)
 
 

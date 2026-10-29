@@ -195,13 +195,84 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | F0 | Persistence (`ŷ[t+h] = y[t]`) | En basit referans |
 | F1 | Seasonal Naive 24 s (`ŷ[t+h] = y[t+h−24]`) | Günlük periyot referansı |
 | F2 | Seasonal Naive 168 s | Haftalık periyot referansı |
-| F3 | Ridge regresyon (gecikmeler 1–24, 48, 168 + takvim) | **Klasik ML referansı** |
-| F4 | MLP (düzleştirilmiş pencere, 2 gizli katman) | **Daha basit sinir ağı** |
+| F3 | Ridge regresyon (geçmiş 168 saat içinden config'teki lag'ler: 1–24, 48, 168) | **Klasik ML referansı** |
+| F4 | `MLPRegressor` (düzleştirilmiş pencere, 2 gizli katman) | **Daha basit sinir ağı** |
 | F5 | **LSTM** (2 katman, son gizli durum → Linear(24)) | Ana model |
 | F6 | **GRU** (aynı yapı) | Ana model / LSTM ile karşılaştırma |
 | F7 | Ablasyon: öznitelik seti A (yalnız hedef) / B (+takvim) / C (+alt sayaçlar, voltaj, reaktif güç) | Öznitelik etkisi |
 | F8 | Lookback 48 vs 168 | Bağlam uzunluğu etkisi |
 | F9 | En iyi model 3 seed (ortalama ± std) | Sonuçların kararlılığı |
+
+#### F3/F4 baseline yöntemi ve doğrulama sonucu
+
+- F3 Ridge, yalnızca `Global_active_power` geçmişinden config'te tanımlı 26
+  gecikmeyi (1–24, 48, 168 saat) kullanır; 24 saati tek adımda tahmin eder.
+- F4 scikit-learn `MLPRegressor`, aynı geçmiş 168 saatlik tüketim penceresini
+  düzleştirir; `[128, 64]` gizli katmanlarıyla 24 saatlik çıktı üretir.
+  Model train verisinde fit edilir; dahili rastgele validation ayırması kapalıdır.
+- İki modelin ölçekleyicileri yalnız train tüketiminden fit edilir. Eğitim
+  hedefleri train pencerelerinden, değerlendirme hedefleri yalnız val
+  pencerelerinden gelir. Doldurulmuş hedef içeren val pencereleri çıkarılır;
+  eğitim hedefleri train ölçekleyicisiyle normalize edilir ve val tahminleri
+  metriklerden önce kW ölçeğine geri çevrilir.
+- Metrikler `src/utils/metrics.py` üzerinden MAE, RMSE, MAPE* (`y > 0.1 kW`),
+  sMAPE ve R² olarak hesaplanır; ayrıca her 24 tahmin adımı için ayrı sonuç
+  yazılır. MAPE* için eşik üstü hedef yoksa değer `NaN`; sMAPE paydası sıfır
+  olan (gerçek ve tahminin ikisinin de sıfır olduğu) terim sıfır kabul edilir.
+- Çalıştırma: `python -m src.models.forecast_baselines`. Özet
+  `results/tables/baseline_results.csv`, ufuk sonuçları
+  `results/tables/forecast_horizon_metrics.csv`, deney satırları
+  `results/experiments.csv` dosyasına kaydedilir. Bu komut test kümesini
+  değerlendirmez.
+
+2026-10-29 tarihinde 4.213 geçerli val penceresinde elde edilen güncel
+sonuçlar (`results/tables/baseline_results.csv`):
+
+| Model | Val penceresi | MAE (kW) | RMSE (kW) |
+|---|---:|---:|---:|
+| Persistence | 4.213 | 0.9598 | 1.2537 |
+| Seasonal Naive 24 | 4.213 | 0.6913 | 0.9898 |
+| Seasonal Naive 168 | 4.213 | 0.6216 | 0.9053 |
+| Ridge (F3) | 4.213 | 0.6053 | 0.8054 |
+| MLPRegressor (F4) | 4.213 | 0.5774 | 0.8098 |
+
+F4 `MLPRegressor` koşusu `max_iter=60` sonunda durdu; scikit-learn'in
+convergence warning'i kayıt edildi. Bu baseline'da validation ile epoch seçimi
+yoktur. Önceki prototipte kullanılan PyTorch MLP'nin değerleri bu F4
+koşusundan farklıdır; karşılaştırmada güncel, scikit-learn F4 satırı kullanılmalı.
+Test metrikleri bu aşamada hesaplanmamıştır.
+
+#### F5/F6 recurrent model eğitimi
+
+`src/train_forecast.py --model all` tek komutta F3/F4 baseline'ları ile F5
+LSTM ve F6 GRU'yu çalıştırır. Recurrent modeller config'in varsayılan B
+özellik setini, 168 saatlik girdiyi ve 24 saatlik çıktıyı kullanır; varsayılan
+hidden=64, layers=2, dropout=0.2 ayarlarıyla eğitilir. Epoch train/val MSE
+geçmişi `results/tables/F5_training_history.csv` ve
+`F6_training_history.csv` dosyalarına; öğrenme eğrileri
+`results/figures/F5_learning_curve.png` ve `F6_learning_curve.png` dosyalarına
+yazılır. Model seçimi val MAE ile yapılır; scheduler val MSE'yi izler.
+Checkpoint'ler `models/F5_best.pt` ve `models/F6_best.pt` konumuna kaydedilir.
+Ufuk bazındaki MAE, RMSE, MAPE*, sMAPE ve R² değerleri
+`results/tables/forecast_horizon_metrics.csv` içindedir. Güncel sonuçlar
+aşağıda 4.213 doldurulmamış validation penceresi üzerinden verilmiştir
+(`results/tables/baseline_results.csv`):
+
+| Model | MAE (kW) | RMSE (kW) | MAPE* (%) | sMAPE (%) | R² |
+|---|---:|---:|---:|---:|---:|
+| Ridge (F3) | 0.6053 | 0.8054 | 75.0230 | 52.2753 | 0.2208 |
+| MLPRegressor (F4) | 0.5774 | 0.8098 | 56.9711 | 50.8297 | 0.2124 |
+| LSTM (F5) | 0.5308 | 0.7354 | 79.3068 | 88.7618 | 0.4421 |
+| GRU (F6) | 0.5298 | 0.7299 | 77.2918 | 89.8308 | 0.4505 |
+
+F5, 30 epoch sonunda val MAE ile seçilen 22. epoch checkpoint'ini kullandı
+(eğitim süresi 570.4 sn). F6, 26 epoch sonunda seçilen 18. epoch
+checkpoint'ini kullandı (672.5 sn). MPS aygıtı paylaşımlı bellek ayırma
+hatası verdiğinden GRU koşusu aynı config/seed ile CPU'da tamamlandı. Bu
+donanım farkı not edilmelidir; test kümesi kullanılmadı. LSTM ve GRU öğrenme
+eğrileri ile epoch kayıpları yukarıda belirtilen PNG/CSV dosyalarındadır.
+MAPE* yalnızca gerçek hedef `0.1 kW` üstündeyken hesaplanır; ufuk adımı
+başına metrikler karşılaştırmalı tabloya ek olarak ufuk CSV'sinde bulunur.
 
 **Anomali tespiti:**
 
@@ -310,9 +381,9 @@ enerji-anomali-tahmin/
 │   └── 02_results_analysis.ipynb
 ├── src/
 │   ├── data/   load.py · preprocess.py · split.py · windows.py · inject_anomalies.py
-│   ├── models/ baselines.py · mlp.py · lstm.py · gru.py · autoencoder.py · anomaly_baselines.py
+│   ├── models/ baselines.py · forecast_baselines.py · mlp.py · lstm.py · gru.py · autoencoder.py · anomaly_baselines.py
 │   ├── utils/  seed.py · config.py · metrics.py · plots.py · exp_logger.py
-│   ├── train_forecast.py      # python -m src.train_forecast --model gru --exp F6
+│   ├── train_forecast.py      # python -m src.train_forecast --model all
 │   ├── train_autoencoder.py
 │   ├── evaluate_forecast.py   # --split val|test
 │   └── evaluate_anomaly.py    # --split val|test
@@ -326,6 +397,7 @@ enerji-anomali-tahmin/
 └── docs/
     ├── literatur.md           # literatür matrisi
     ├── deney_gunlugu.md       # günlük karar ve gözlem notları
+    ├── yontem_ve_teknikler_dilara.md  # tahmin yöntemleri ve deney protokolü
     ├── oneri_formu/
     ├── rapor/
     └── sunum/
@@ -346,11 +418,15 @@ pytest tests/                     # kurulum testleri geçmeli
 pip install -r requirements.txt
 python -m src.data.load            # ham veriyi indir/oku
 python -m src.data.preprocess      # data/processed/hourly.parquet
-python -m src.train_forecast --model lstm --exp F5
-python -m src.train_forecast --model gru  --exp F6
+python -m src.train_forecast --model all  # Ridge + MLPRegressor + LSTM + GRU, yalnız val
+# MPS belleği yetersizse açık CPU fallback'i:
+python -m src.train_forecast --model gru --device cpu
+python -m src.train_forecast --model lstm # yalnız LSTM, yalnız val
+python -m src.train_forecast --model gru  # yalnız GRU, yalnız val
 python -m src.train_autoencoder --exp A2
 python -m src.models.baselines          # yalnız val
 python -m src.models.baselines --split test
+python -m src.models.forecast_baselines # Ridge + MLP, yalnız val
 python -m src.evaluate_forecast --split test
 python -m src.evaluate_anomaly  --split test
 pytest tests/
