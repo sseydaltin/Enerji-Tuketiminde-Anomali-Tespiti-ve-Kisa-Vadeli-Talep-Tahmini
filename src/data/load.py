@@ -6,6 +6,8 @@ import argparse
 import pandas as pd
 import yaml
 
+from src.utils.console import setup_console
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -105,6 +107,7 @@ def summarize_raw_data(df):
 
 
 def main():
+    setup_console()  # Windows konsolunda Türkçe karakterler için UTF-8
     parser = argparse.ArgumentParser(
         description="UCI enerji tüketimi verisini yükle."
     )

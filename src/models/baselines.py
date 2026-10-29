@@ -8,6 +8,7 @@ import pandas as pd
 from src.data.load import PROJECT_ROOT, load_config
 from src.data.split import chronological_split
 from src.utils.metrics import calculate_metrics, metrics_by_horizon
+from src.utils.console import setup_console
 
 
 def persistence(history, horizon):
@@ -27,6 +28,7 @@ def evaluate(y_true, y_pred):
 
 def main():
     """Seçilen kümeyi değerlendirir ve baseline sonuçlarını CSV'ye yazar."""
+    setup_console()  # Windows konsolunda Türkçe karakterler için UTF-8
     parser = argparse.ArgumentParser(
         description="Persistence ve Seasonal Naive referanslarını değerlendir."
     )

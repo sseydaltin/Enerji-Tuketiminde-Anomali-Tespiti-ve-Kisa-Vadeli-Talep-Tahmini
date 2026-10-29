@@ -5,6 +5,7 @@ import argparse
 import pandas as pd
 
 from src.data.load import PROJECT_ROOT, load_config
+from src.utils.console import setup_console
 
 
 def chronological_split(df, config):
@@ -52,6 +53,7 @@ def chronological_split(df, config):
 
 
 def main():
+    setup_console()  # Windows konsolunda Türkçe karakterler için UTF-8
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
     args = parser.parse_args()
