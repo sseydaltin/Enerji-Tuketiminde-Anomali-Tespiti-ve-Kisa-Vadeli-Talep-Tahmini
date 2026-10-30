@@ -2,6 +2,8 @@
 torch
 # Klasik ML: StandardScaler, Ridge, Isolation Forest, metrikler
 scikit-learn
+# Gradyan artırmalı ağaç referansı (Aşama 3, XGBoost tahmin modeli)
+xgboost
 # Veri işleme
 pandas
 numpy>=2.0,<2.4

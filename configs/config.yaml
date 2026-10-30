@@ -75,6 +75,11 @@ forecast:
   scheduler_patience: 3
   grad_clip: 1.0
   loss: mse                            # alternatif: huber
+  # Aşama 2 seçenekleri (varsayılan kapalı; CLI bayrakları açar)
+  shuffle_train: false                 # eğitim pencerelerini her epoch karıştır (yalnız train)
+  future_features: false               # her hedef saat için y[t+h-168] + takvim (çıktı tarafı)
+  residual_target: false               # hedef y - y_SN168
+  season_lag: 168                      # haftalık gecikme; ufuktan (24) küçük olamaz
   ridge:
     lags: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 48, 168]
     alpha: 0.1                         # alpha_grid'den val MAE ile seçildi (F3-a0.1); fark ihmal edilebilir, bkz. deney günlüğü

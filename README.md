@@ -200,8 +200,19 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | F5 | **LSTM** (2 katman, son gizli durum → Linear(24)) | Ana model |
 | F6 | **GRU** (aynı yapı) | Ana model / LSTM ile karşılaştırma |
 | F7 | Ablasyon: öznitelik seti A (yalnız hedef) / B (+takvim) / C (+alt sayaçlar, voltaj, reaktif güç) | Öznitelik etkisi |
-| F8 | Lookback 48 vs 168 | Bağlam uzunluğu etkisi |
+| F8 | Lookback {48, 168, 336} | Bağlam uzunluğu etkisi |
 | F9 | En iyi model 3 seed (ortalama ± std) | Sonuçların kararlılığı |
+
+**Genişletilmiş tahmin programı (2026-10-31 kararı, yalnız val; test kümesine dokunulmaz):**
+
+| Aşama | İçerik | exp_id örüntüsü |
+|---|---|---|
+| 1 | Ortak değerlendirme doğrulaması; PyTorch MLP ızgarası; Ridge alpha ızgarası | `F3-a*`, `F4-torch-*` |
+| 2 | Sırayla: eğitim karıştırma (shuffle) → Ridge + takvim (`F3-cal`) → bilinen gelecek öznitelikleri (her hedef saat için 168 s önceki değer + takvim) → artık hedef (y − y_SN168) → C seti. Her adımda sızıntı testi; her model bir önceki adımın en iyi ayarıyla devam eder | ek: `-sh`, `-fut`, `-res`, `-C` |
+| 3 | Mimariler: LSTM, GRU, seq2seq LSTM, CNN-LSTM, XGBoost; lookback {48, 168, 336} (F8) | — |
+| 4 | Optuna: en iyi 2 model için 20'şer deneme; seçim kriteri train'in son 12 ayında 3 katlı zamansal çapraz doğrulama MAE'si; val yalnız seçilen konfigürasyonu doğrular | — |
+| 5 | En iyi 3 modelin ağırlıklı ortalaması (ağırlıklar val'de ızgarayla); en iyi tekil model ve topluluk için 3 seed (F9) | — |
+| 6 | Final betiği: train+val üzerinde val'de bulunan epoch sayısıyla yeniden eğitim, test'te tek değerlendirme (yalnız açık onayla çalıştırılır) | — |
 
 #### Tahmin deneyleri: yöntem ve güncel val sonuçları
 
@@ -264,8 +275,11 @@ LSTM-AE bilinçli olarak **yalnız eğitim kümesinde** ve "çoğunlukla normal"
 
 Her deney `results/experiments.csv`'ye şu sütunlarla eklenir: `exp_id, date, model, feature_set, lookback, hidden, layers, dropout, lr, batch, epochs_run, best_epoch, seed, val_mae, val_rmse, test_mae, test_rmse, train_time_s, note` (`test_*` yalnız final değerlendirmede doldurulur).
 
-### 4.8 Hiperparametre ayarı (yalnız doğrulama kümesinde)
-Küçük ve gerekçeli bir ızgara: `hidden ∈ {32, 64, 128}`, `dropout ∈ {0.1, 0.3}`, `lookback ∈ {48, 168}` (F8). Toplam ≤ 12 koşu/model. Yönerge §9: amaç çok model değil, **anlamlı** karşılaştırma.
+### 4.8 Hiperparametre ayarı
+- **Küçük ızgaralar (val MAE ile):** Ridge alpha `{0.1, 1, 10, 100}`, MLP gizli katmanlar `{[64,32], [128,64]}`, lookback `{48, 168, 336}`.
+- **Optuna (Aşama 4):** yalnız en iyi 2 model, model başına en fazla 20 deneme; arama uzayı hidden, katman sayısı, lr, batch, dropout, weight decay, kayıp (MSE/L1/Huber). Seçim kriteri eğitim kümesinin son 12 ayında 3 katlı zamansal çapraz doğrulama ortalama MAE'si; val yalnız seçilen konfigürasyonu doğrulamak için kullanılır (val'e aşırı uyumu azaltmak için).
+- **Şeffaflık:** Her denenen konfigürasyon `results/experiments.csv`'de ayrı bir satırdır (ayrı exp_id; iyileştirmeyenler silinmez). Raporda denenen konfigürasyon sayısı bu dosyadan sayılarak verilir.
+- Kapsam, README'nin ilk sürümündeki "≤ 12 koşu/model" sınırının ötesine 2026-10-31'de bilinçli olarak genişletildi (deney günlüğü). Yönerge §9 gereği her deney bir soruya cevap verir: öznitelik, hedef dönüşümü, mimari, bağlam uzunluğu, kararlılık.
 
 ### 4.9 Anomali enjeksiyonu (değerlendirme protokolü)
 Hem doğrulama (seed=1) hem test (seed=2) kümesinin **kopyasına**, saatlerin ~%2–3'ünü etkileyecek şekilde:

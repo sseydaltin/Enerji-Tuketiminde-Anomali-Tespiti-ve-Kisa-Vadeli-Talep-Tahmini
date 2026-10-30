@@ -59,12 +59,45 @@ def _forecast_device(preference="auto"):
     raise ValueError("device tercihi auto, cuda, mps veya cpu olmalı.")
 
 
+def seasonal_positions(frame_index, target_times, horizon, season):
+    """Her hedef saatin `season` saat önceki satır konumunu verir.
+
+    Girdi: tablonun DatetimeIndex'i, target_times [N] (ilk hedef zamanları),
+    ufuk ve mevsim gecikmesi (168 = bir hafta).
+    Çıktı: [N, ufuk] tamsayı konumlar; hedef t+h için konum(t+h) − season.
+    Neden: y[t+h−168] hem bilinen gelecek özniteliği hem de artık hedefin
+    tabanıdır. season ≥ ufuk olduğundan t+h−season ≤ t−1: hepsi tahmin
+    başlangıcından öncedir (gelecek bilgisi yok).
+    """
+    first = frame_index.get_indexer(target_times)
+    if (first < 0).any():
+        raise ValueError("Hedef zamanları tabloda bulunamadı.")
+    return first[:, None] + np.arange(horizon)[None, :] - season
+
+
+def build_future_features(frame, positions, season, target, calendar, level_scaler):
+    """Bilinen gelecek özniteliklerini [N, ufuk, 1 + takvim] olarak üretir.
+
+    Girdi: ham saatlik tablo, seasonal_positions çıktısı [N, ufuk], takvim
+    sütunları ve train'e fit edilmiş tüketim ölçekleyicisi.
+    Çıktı: her hedef saat için [ölçekli y(hedef − 168), hedef saatin takvimi].
+    Neden: Takvim önceden bilinir; geçen haftanın aynı saati geçmiştir.
+    Takvim sin/cos ve 0/1 değerleri zaten [-1, 1] aralığında olduğundan ölçeklenmez.
+    """
+    level = frame[target].to_numpy(dtype=np.float64)[positions]  # [N, ufuk]
+    level = (level - level_scaler.mean_[0]) / level_scaler.scale_[0]
+    calendar_values = frame[calendar].to_numpy(dtype=np.float64)[positions + season]
+    return np.concatenate((level[..., None], calendar_values), axis=2).astype(np.float32)
+
+
 def prepare_forecast_data(df, config):
     """Train/val pencerelerini train-fit ölçekleyicilerle hazırlar.
 
     Girdi: saatlik [zaman, özellik] DataFrame ve proje config'i.
     Çıktı: train/val X [örnek, lookback, özellik], y [örnek, ufuk] (kW),
-    ölçeklenmiş y, ölçekleyiciler ve özellik adları.
+    model hedefi (ölçekli y veya ölçekli artık), taban [örnek, ufuk] (artık
+    hedefte y_SN168, değilse 0), isteğe bağlı gelecek öznitelikleri
+    F [örnek, ufuk, k], ölçekleyiciler ve özellik adları.
     Neden: Val girdisi train sonundaki geçmişi kullanabilir; val hedefleri val'de
     kalır. Test kümesine pencere veya metrik üretilmez.
     """
@@ -74,9 +107,16 @@ def prepare_forecast_data(df, config):
     features = get_feature_columns(config)
     target = config["preprocess"]["target"]
     forecast = config["forecast"]
+    horizon = forecast["horizon"]
+    season = forecast.get("season_lag", 168)
+    use_future = forecast.get("future_features", False)
+    use_residual = forecast.get("residual_target", False)
+    if (use_future or use_residual) and season < horizon:
+        raise ValueError("season_lag ufuktan küçük olamaz (gelecek bilgisi sızar).")
 
     feature_scaler = StandardScaler().fit(train_frame[features])
-    target_scaler = StandardScaler().fit(
+    # Tüketim düzeyi ölçekleyicisi: yalnız train serisi.
+    level_scaler = StandardScaler().fit(
         train_frame[[target]].to_numpy(dtype=np.float64)
     )
 
@@ -84,8 +124,9 @@ def prepare_forecast_data(df, config):
     train_feature_values = feature_scaler.transform(train_frame[features])
     for column_index, column in enumerate(features):
         train_scaled[column] = train_feature_values[:, column_index]
+    # Val girdisi ve haftalık gecikme için train sonundan yeterli geçmiş alınır.
     val_context = pd.concat(
-        (train_frame.tail(forecast["lookback"]), val_frame)
+        (train_frame.tail(max(forecast["lookback"], season)), val_frame)
     )
     val_scaled = val_context.copy()
     val_feature_values = feature_scaler.transform(val_context[features])
@@ -121,37 +162,73 @@ def prepare_forecast_data(df, config):
     # İki çağrı aynı pencereleri seçmeli (aynı indeks ve is_imputed bayrakları).
     if not val_times.equals(val_y_times):
         raise RuntimeError("Val X ve y pencereleri eşleşmiyor.")
+    train_positions = seasonal_positions(train_frame.index, train_times, horizon, season)
+    val_positions = seasonal_positions(val_context.index, val_times, horizon, season)
+    if use_future or use_residual:
+        # Train'in ilk haftasında y(hedef − 168) yoktur; bu pencereler atlanır.
+        keep = train_positions.min(axis=1) >= 0
+        train_X, train_y = train_X[keep], train_y[keep]
+        train_times, train_positions = train_times[keep], train_positions[keep]
+        if (val_positions < 0).any():
+            raise RuntimeError("Val bağlamı haftalık gecikme için yetersiz.")
     if not len(train_X):
         raise ValueError("Train kümesinde tahmin penceresi bulunamadı.")
     if not len(val_X):
         raise ValueError("Geçerli validation penceresi bulunamadı.")
 
+    if use_residual:
+        # Taban = Seasonal Naive 168 tahmini (kW); model y − taban'ı öğrenir.
+        train_base = train_frame[target].to_numpy(dtype=np.float64)[train_positions]
+        val_base = val_context[target].to_numpy(dtype=np.float64)[val_positions]
+        # Artık ölçekleyicisi yalnız train artıklarına fit edilir.
+        target_scaler = StandardScaler().fit((train_y - train_base).reshape(-1, 1))
+    else:
+        train_base = np.zeros(train_y.shape)
+        val_base = np.zeros(val_y.shape)
+        target_scaler = level_scaler
+
     train_y_scaled = target_scaler.transform(
-        train_y.reshape(-1, 1)
+        (train_y - train_base).reshape(-1, 1)
     ).reshape(train_y.shape)
     val_y_scaled = target_scaler.transform(
-        val_y.reshape(-1, 1)
+        (val_y - val_base).reshape(-1, 1)
     ).reshape(val_y.shape)
+
+    future_train = future_val = None
+    if use_future:
+        calendar = config["features"]["calendar"]
+        future_train = build_future_features(
+            train_frame, train_positions, season, target, calendar, level_scaler
+        )
+        future_val = build_future_features(
+            val_context, val_positions, season, target, calendar, level_scaler
+        )
     return {
         "X_train": train_X,
         "y_train": train_y,
         "y_train_scaled": train_y_scaled,
+        "base_train": train_base,
+        "future_train": future_train,
         "train_times": train_times,
         "X_val": val_X,
         "y_val": val_y,
         "y_val_scaled": val_y_scaled,
+        "base_val": val_base,
+        "future_val": future_val,
         "val_times": val_times,
         "feature_scaler": feature_scaler,
         "target_scaler": target_scaler,
+        "level_scaler": level_scaler,
         "features": features,
         "train_frame": train_frame,
     }
 
 
-def build_model(model_name, input_size, forecast):
+def build_model(model_name, input_size, forecast, future_size=0):
     """Config'teki ayarlarla MLP, LSTM veya GRU modelini kurar.
 
-    Girdi: model adı, özellik sayısı F, config["forecast"] sözlüğü.
+    Girdi: model adı, özellik sayısı F, config["forecast"] sözlüğü,
+    hedef saat başına bilinen gelecek öznitelik sayısı (0 = yok).
     Çıktı: [batch, lookback, F] -> [batch, horizon] nn.Module.
     Neden: Üç model aynı eğitim döngüsünü kullanır; yalnız mimari değişir.
     """
@@ -162,6 +239,7 @@ def build_model(model_name, input_size, forecast):
             hidden_sizes=forecast["mlp"]["hidden_sizes"],
             dropout=forecast["dropout"],
             horizon=forecast["horizon"],
+            future_size=future_size,
         )
     recurrent_classes = {"lstm": LSTMForecaster, "gru": GRUForecaster}
     if model_name not in recurrent_classes:
@@ -172,18 +250,22 @@ def build_model(model_name, input_size, forecast):
         layers=forecast["layers"],
         dropout=forecast["dropout"],
         horizon=forecast["horizon"],
+        future_size=future_size,
     )
 
 
-def _predict_in_batches(model, X, batch_size, device):
+def _predict_in_batches(model, X, future, batch_size, device):
     """Modeli değerlendirme modunda parça parça çalıştırır.
 
-    Girdi: X [N, lookback, F] CPU tensörü. Çıktı: [N, horizon] cihaz tensörü.
+    Girdi: X [N, lookback, F] ve future [N, ufuk, k] (veya None) CPU tensörleri.
+    Çıktı: [N, horizon] cihaz tensörü.
     Neden: Tüm val kümesini tek seferde GPU'ya koymak 4 GB VRAM'i aşabilir.
     """
     outputs = []
     for batch_start in range(0, len(X), batch_size):
-        outputs.append(model(X[batch_start:batch_start + batch_size].to(device)))
+        batch = slice(batch_start, batch_start + batch_size)
+        batch_future = None if future is None else future[batch].to(device)
+        outputs.append(model(X[batch].to(device), batch_future))
     return torch.cat(outputs)
 
 
@@ -235,8 +317,16 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
         prepared["y_val_scaled"].astype(np.float32)
     ).to(device)
     target_scaler = prepared["target_scaler"]
+    # Bilinen gelecek öznitelikleri: [N, ufuk, k] veya None.
+    future_train = future_val = None
+    future_size = 0
+    if prepared["future_train"] is not None:
+        future_train = torch.from_numpy(prepared["future_train"]).to(device)
+        future_val = torch.from_numpy(prepared["future_val"])
+        future_size = future_train.shape[2]
+    shuffle = forecast.get("shuffle_train", False)
 
-    model = build_model(model_name, X_train.shape[2], forecast).to(device)
+    model = build_model(model_name, X_train.shape[2], forecast, future_size).to(device)
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=forecast["lr"],
@@ -260,11 +350,19 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
     for epoch in range(1, forecast["max_epochs"] + 1):
         model.train()
         train_loss_total = torch.zeros((), device=device)
+        # Karıştırma yalnız eğitim pencerelerinin sırasını değiştirir; pencereler
+        # zaten oluşturulmuş olduğundan zaman sırası pencere içinde korunur.
+        # Kapalıyken sıra 0, 1, 2, ... (eski davranışla birebir aynı).
+        if shuffle:
+            order = torch.randperm(len(X_train), device=device)
+        else:
+            order = torch.arange(len(X_train), device=device)
         for batch_start in range(0, len(X_train), batch_size):
-            batch_X = X_train[batch_start:batch_start + batch_size]
-            batch_y = y_train[batch_start:batch_start + batch_size]
+            batch = order[batch_start:batch_start + batch_size]
+            batch_X, batch_y = X_train[batch], y_train[batch]
+            batch_future = None if future_train is None else future_train[batch]
             optimizer.zero_grad()
-            loss = loss_function(model(batch_X), batch_y)
+            loss = loss_function(model(batch_X, batch_future), batch_y)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), forecast["grad_clip"])
             optimizer.step()
@@ -274,13 +372,14 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
         model.eval()
         with torch.no_grad():
             val_predictions_scaled = _predict_in_batches(
-                model, X_val, batch_size, device
+                model, X_val, future_val, batch_size, device
             )
             val_loss = loss_function(val_predictions_scaled, y_val_scaled).item()
-        # Model ölçeklenmiş hedef üretir; MAE kW'da hesaplanır (inverse transform).
+        # Model ölçeklenmiş hedef (veya artık) üretir; inverse transform + taban
+        # (artık hedefte y_SN168, değilse 0) ile kW'a dönülür, MAE kW'da hesaplanır.
         val_predictions = target_scaler.inverse_transform(
             val_predictions_scaled.cpu().numpy().reshape(-1, 1)
-        ).reshape(prepared["y_val"].shape)
+        ).reshape(prepared["y_val"].shape) + prepared["base_val"]
         val_mae = calculate_metrics(
             prepared["y_val"],
             val_predictions,
@@ -351,8 +450,10 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
         hidden, layers = forecast["hidden"], forecast["layers"]
     note = (
         f"Direct {forecast['horizon']}-hour forecast; "
-        f"features={prepared['features']}; device={device.type}; "
-        "train/val only; test not evaluated"
+        f"features={prepared['features']}; shuffle={shuffle}; "
+        f"future_features={future_size > 0}; "
+        f"residual_target={forecast.get('residual_target', False)}; "
+        f"device={device.type}; train/val only; test not evaluated"
     )
     scores = record_forecast_results(
         PROJECT_ROOT, config, "val", exp_id, model_label,
@@ -411,6 +512,13 @@ def apply_cli_overrides(config, args):
         config["forecast"]["mlp"]["hidden_sizes"] = [
             int(size) for size in args.hidden_sizes.split(",")
         ]
+    # Bayraklar yalnız açmak için kullanılır; verilmezse config değeri kalır.
+    if args.shuffle:
+        config["forecast"]["shuffle_train"] = True
+    if args.future:
+        config["forecast"]["future_features"] = True
+    if args.residual:
+        config["forecast"]["residual_target"] = True
     return config
 
 
@@ -435,6 +543,14 @@ def main():
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--hidden_sizes", default=None, help="MLP, ör. 64,32")
     parser.add_argument("--alpha", type=float, default=None, help="Ridge alpha")
+    parser.add_argument("--ridge_calendar", action="store_true",
+                        help="Ridge: gecikmelere son girdi saatinin takvimini ekle")
+    parser.add_argument("--shuffle", action="store_true",
+                        help="Eğitim pencerelerini her epoch karıştır")
+    parser.add_argument("--future", action="store_true",
+                        help="Bilinen gelecek öznitelikleri (y[t+h-168] + takvim)")
+    parser.add_argument("--residual", action="store_true",
+                        help="Hedef: y - y_SN168 (tahmine SN168 geri eklenir)")
     parser.add_argument("--config", default=None)
     parser.add_argument(
         "--device", choices=("auto", "cuda", "mps", "cpu"), default="auto"
@@ -475,7 +591,10 @@ def main():
         return
 
     if args.model in ("all", "ridge"):
-        scores = run_ridge(df, config, alpha=args.alpha, exp_id=args.exp or "F3")
+        scores = run_ridge(
+            df, config, alpha=args.alpha, exp_id=args.exp or "F3",
+            use_calendar=args.ridge_calendar,
+        )
         summaries.append({"exp_id": args.exp or "F3", "model": "Ridge", **scores})
     deep_models = ("mlp", "lstm", "gru") if args.model == "all" else (
         (args.model,) if args.model != "ridge" else ()

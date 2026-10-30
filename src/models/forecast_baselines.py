@@ -21,22 +21,28 @@ from src.utils.results_io import (
 from src.utils.seed import set_seed
 
 
-def build_train_val_windows(splits, target, lookback, horizon, exclude_imputed):
+def build_train_val_windows(
+    splits, target, lookback, horizon, exclude_imputed, features=None,
+):
     """Train ve val için sınırları aşmayan tahmin pencereleri hazırlar.
 
-    Girdi: kronolojik split tabloları; saatlik [N, F] DataFrame'ler.
-    Çıktı: train ve val için (X: [örnek, lookback, 1],
+    Girdi: kronolojik split tabloları; saatlik [N, F] DataFrame'ler;
+    features verilmezse yalnız hedef (ilk sütun her zaman hedef olmalı).
+    Çıktı: train ve val için (X: [örnek, lookback, len(features)],
     y: [örnek, horizon], hedef zamanları) üçlüleri.
     Neden: Eğitim hedefleri train'de kalır; val geçmişi train sonundan
     devam edebilir ancak val hedefleri train/val sınırını aşmaz.
     """
+    features = features or [target]
+    if features[0] != target:
+        raise ValueError("İlk öznitelik hedef olmalı (gecikmeler ondan alınır).")
     train_frame = splits["train"]
     val_frame = pd.concat((train_frame, splits["val"]))
 
     train_windows = make_windows(
         train_frame,
         target,
-        [target],
+        features,
         lookback,
         horizon,
         exclude_imputed=False,
@@ -44,7 +50,7 @@ def build_train_val_windows(splits, target, lookback, horizon, exclude_imputed):
     val_windows = make_windows(
         val_frame,
         target,
-        [target],
+        features,
         lookback,
         horizon,
         target_start=splits["val"].index.min(),
@@ -108,11 +114,26 @@ def fit_ridge(X_train, y_train, X_val, train_target, alpha):
     return predictions, x_scaler, y_scaler, elapsed
 
 
-def run_ridge(df, config, alpha=None, exp_id="F3"):
+def ridge_design_matrix(windows, lags, use_calendar):
+    """Ridge girdisini oluşturur: hedef gecikmeleri (+ son girdi saatinin takvimi).
+
+    Girdi: windows [örnek, lookback, 1 + takvim]; ilk sütun hedef.
+    Çıktı: [örnek, len(lags)] veya [örnek, len(lags) + takvim].
+    Neden: Takvim, son gözlenen saatten (t−1) alınır; LSTM/GRU'nun B setinde
+    gördüğü bilgiyle aynıdır (hedef saatlerin takvimi bundan türetilebilir).
+    """
+    lag_values = select_ridge_lags(windows[:, :, :1], lags)
+    if not use_calendar:
+        return lag_values
+    return np.concatenate((lag_values, windows[:, -1, 1:]), axis=1)
+
+
+def run_ridge(df, config, alpha=None, exp_id="F3", use_calendar=False):
     """F3 Ridge'i train'de fit eder, yalnız val'de değerlendirip kaydeder.
 
     Girdi: saatlik [zaman, özellik] DataFrame, config, isteğe bağlı alpha
-    (verilmezse config'teki değer) ve deney kimliği.
+    (verilmezse config'teki değer), deney kimliği ve takvim bayrağı
+    (True: B setindeki takvim öznitelikleri eklenir, F3-cal).
     Çıktı: val metrik sözlüğü. Sonuç, ufuk ve tahmin dosyaları ile
     experiments.csv satırı record_forecast_results/upsert_csv ile yazılır.
     Neden: Alpha ızgarası her değeri ayrı exp_id ile kaydeder; seçim val MAE
@@ -125,6 +146,7 @@ def run_ridge(df, config, alpha=None, exp_id="F3"):
     lookback = forecast["lookback"]
     alpha = forecast["ridge"]["alpha"] if alpha is None else alpha
     lags = forecast["ridge"]["lags"]
+    calendar = config["features"]["calendar"] if use_calendar else []
 
     (X_train, y_train, _), (X_val, y_val, val_times) = build_train_val_windows(
         splits,
@@ -132,27 +154,32 @@ def run_ridge(df, config, alpha=None, exp_id="F3"):
         lookback,
         forecast["horizon"],
         config["evaluation"]["exclude_imputed_targets"],
+        features=[target] + calendar,
     )
     predictions, _, _, train_time = fit_ridge(
-        select_ridge_lags(X_train, lags),
+        ridge_design_matrix(X_train, lags, use_calendar),
         y_train,
-        select_ridge_lags(X_val, lags),
+        ridge_design_matrix(X_val, lags, use_calendar),
         splits["train"][target].to_numpy(dtype=np.float64),
         alpha,
     )
 
-    note = f"Direct {forecast['horizon']}-hour forecast; lags={lags}; alpha={alpha}"
+    feature_set = "B" if use_calendar else "A"
+    note = (
+        f"Direct {forecast['horizon']}-hour forecast; lags={lags}; "
+        f"calendar={calendar}; alpha={alpha}"
+    )
     scores = record_forecast_results(
         PROJECT_ROOT, config, "val", exp_id, "Ridge",
         y_val, predictions, val_times,
-        train_time_s=train_time, device="cpu", feature_set="A",
+        train_time_s=train_time, device="cpu", feature_set=feature_set,
         lookback=lookback, note=note,
     )
     upsert_csv(
         resolve_path(PROJECT_ROOT, config["paths"]["experiments_file"]),
         [{
             "exp_id": exp_id, "date": date.today().isoformat(),
-            "model": "Ridge", "feature_set": "A", "lookback": lookback,
+            "model": "Ridge", "feature_set": feature_set, "lookback": lookback,
             "seed": config["seed"],
             "val_mae": scores["MAE"], "val_rmse": scores["RMSE"],
             "test_mae": "", "test_rmse": "", "train_time_s": train_time,
