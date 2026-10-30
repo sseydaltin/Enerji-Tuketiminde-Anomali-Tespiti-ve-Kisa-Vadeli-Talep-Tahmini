@@ -17,10 +17,13 @@ from torch import nn
 from src.data.load import PROJECT_ROOT, load_config
 from src.data.split import chronological_split
 from src.data.windows import get_feature_columns, make_windows
+from src.models.cnn_lstm import CNNLSTMForecaster
 from src.models.forecast_baselines import run_ridge
 from src.models.gru import GRUForecaster
 from src.models.lstm import LSTMForecaster
 from src.models.mlp import MLPForecaster
+from src.models.seq2seq import Seq2SeqForecaster
+from src.models.xgb_forecast import run_xgboost
 from src.utils.console import setup_console
 from src.utils.metrics import calculate_metrics
 from src.utils.results_io import record_forecast_results, resolve_path, upsert_csv
@@ -29,7 +32,11 @@ from src.utils.seed import set_seed
 
 # --exp verilmezse kullanılan varsayılan deney kimlikleri. F4 eski sklearn
 # MLPRegressor koşusuna ait olduğundan PyTorch MLP ayrı kimlikle yazılır.
-EXPERIMENT_IDS = {"mlp": "F4-torch", "lstm": "F5", "gru": "F6"}
+EXPERIMENT_IDS = {
+    "mlp": "F4-torch", "lstm": "F5", "gru": "F6",
+    "seq2seq": "F10", "cnn_lstm": "F11", "xgboost": "F12",
+}
+MODEL_LABELS = {"seq2seq": "Seq2Seq-LSTM", "cnn_lstm": "CNN-LSTM"}
 
 
 def _forecast_device(preference="auto"):
@@ -90,6 +97,15 @@ def build_future_features(frame, positions, season, target, calendar, level_scal
     return np.concatenate((level[..., None], calendar_values), axis=2).astype(np.float32)
 
 
+def build_future_calendar(frame, target_positions, calendar):
+    """Hedef saatlerin takvimini [N, ufuk, takvim] olarak verir (seq2seq decoder'ı).
+
+    Girdi: ham saatlik tablo, hedef satır konumları [N, ufuk], takvim sütunları.
+    Neden: Takvim önceden bilinir; hedef değerlerine bakılmaz.
+    """
+    return frame[calendar].to_numpy(dtype=np.float32)[target_positions]
+
+
 def prepare_forecast_data(df, config):
     """Train/val pencerelerini train-fit ölçekleyicilerle hazırlar.
 
@@ -111,6 +127,9 @@ def prepare_forecast_data(df, config):
     season = forecast.get("season_lag", 168)
     use_future = forecast.get("future_features", False)
     use_residual = forecast.get("residual_target", False)
+    decoder_calendar = forecast.get("decoder_calendar", False)
+    if use_future and decoder_calendar:
+        raise ValueError("future_features ve decoder_calendar birlikte kullanılmaz.")
     if (use_future or use_residual) and season < horizon:
         raise ValueError("season_lag ufuktan küçük olamaz (gelecek bilgisi sızar).")
 
@@ -203,6 +222,11 @@ def prepare_forecast_data(df, config):
         future_val = build_future_features(
             val_context, val_positions, season, target, calendar, level_scaler
         )
+    if decoder_calendar:
+        calendar = config["features"]["calendar"]
+        # val_positions + season = hedef saatlerin kendi satır konumları.
+        future_train = build_future_calendar(train_frame, train_positions + season, calendar)
+        future_val = build_future_calendar(val_context, val_positions + season, calendar)
     return {
         "X_train": train_X,
         "y_train": train_y,
@@ -241,9 +265,29 @@ def build_model(model_name, input_size, forecast, future_size=0):
             horizon=forecast["horizon"],
             future_size=future_size,
         )
+    if model_name == "seq2seq":
+        # future_size burada decoder girdisi = hedef saat başına takvim sayısı.
+        return Seq2SeqForecaster(
+            input_size=input_size,
+            decoder_size=future_size,
+            hidden_size=forecast["hidden"],
+            layers=forecast["layers"],
+            dropout=forecast["dropout"],
+        )
+    if model_name == "cnn_lstm":
+        return CNNLSTMForecaster(
+            input_size=input_size,
+            channels=forecast["cnn"]["channels"],
+            kernel_size=forecast["cnn"]["kernel_size"],
+            pool=forecast["cnn"]["pool"],
+            hidden_size=forecast["hidden"],
+            layers=forecast["layers"],
+            dropout=forecast["dropout"],
+            horizon=forecast["horizon"],
+        )
     recurrent_classes = {"lstm": LSTMForecaster, "gru": GRUForecaster}
     if model_name not in recurrent_classes:
-        raise ValueError("Model adı 'mlp', 'lstm' veya 'gru' olmalı.")
+        raise ValueError(f"Bilinmeyen model: {model_name}")
     return recurrent_classes[model_name](
         input_size=input_size,
         hidden_size=forecast["hidden"],
@@ -302,6 +346,10 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
     kullanır; böylece karşılaştırma adil olur.
     """
     exp_id = exp_id or EXPERIMENT_IDS[model_name]
+    if model_name == "seq2seq":
+        # Decoder'ın girdisi hedef saatlerin takvimidir (mimarinin parçası).
+        config = deepcopy(config)
+        config["forecast"]["decoder_calendar"] = True
     set_seed(config["seed"])
     torch.set_num_threads(min(torch.get_num_threads(), 4))
 
@@ -439,7 +487,7 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
     pd.DataFrame(history).to_csv(
         tables_dir / f"{exp_id}_training_history.csv", index=False
     )
-    model_label = model_name.upper()
+    model_label = MODEL_LABELS.get(model_name, model_name.upper())
     _save_learning_curve(history, model_label, exp_id, figures_dir)
 
     feature_set = config["features"]["default_set"]
@@ -451,7 +499,8 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
     note = (
         f"Direct {forecast['horizon']}-hour forecast; "
         f"features={prepared['features']}; shuffle={shuffle}; "
-        f"future_features={future_size > 0}; "
+        f"future_features={forecast.get('future_features', False)}; "
+        f"decoder_calendar={forecast.get('decoder_calendar', False)}; "
         f"residual_target={forecast.get('residual_target', False)}; "
         f"device={device.type}; train/val only; test not evaluated"
     )
@@ -535,7 +584,9 @@ def main():
         description="Tahmin modellerini train'de eğitip yalnız val'de değerlendir."
     )
     parser.add_argument(
-        "--model", choices=("all", "ridge", "mlp", "lstm", "gru"), default="all"
+        "--model",
+        choices=("all", "ridge", "mlp", "lstm", "gru", "seq2seq", "cnn_lstm", "xgboost"),
+        default="all",
     )
     parser.add_argument("--exp", default=None, help="Deney kimliği (exp_id).")
     parser.add_argument("--feature_set", choices=("A", "B", "C"), default=None)
@@ -596,8 +647,12 @@ def main():
             use_calendar=args.ridge_calendar,
         )
         summaries.append({"exp_id": args.exp or "F3", "model": "Ridge", **scores})
+    if args.model == "xgboost":
+        exp_id = args.exp or EXPERIMENT_IDS["xgboost"]
+        scores = run_xgboost(df, config, exp_id=exp_id, device_preference=args.device)
+        summaries.append({"exp_id": exp_id, "model": "XGBoost", **scores})
     deep_models = ("mlp", "lstm", "gru") if args.model == "all" else (
-        (args.model,) if args.model != "ridge" else ()
+        (args.model,) if args.model not in ("ridge", "xgboost") else ()
     )
     for model_name in deep_models:
         scores, _ = train_model(

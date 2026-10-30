@@ -202,6 +202,9 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | F7 | Ablasyon: öznitelik seti A (yalnız hedef) / B (+takvim) / C (+alt sayaçlar, voltaj, reaktif güç) | Öznitelik etkisi |
 | F8 | Lookback {48, 168, 336} | Bağlam uzunluğu etkisi |
 | F9 | En iyi model 3 seed (ortalama ± std) | Sonuçların kararlılığı |
+| F10 | Seq2seq LSTM (encoder geçmişi okur; decoder 24 adımda hedef saatlerin takvimini alır, önceki tahmini almaz) | Aşama 3 mimari karşılaştırması |
+| F11 | CNN-LSTM (Conv1d → ReLU → MaxPool(2) → LSTM → Linear(24)) | Aşama 3 mimari karşılaştırması |
+| F12 | XGBoost (F3-cal ile aynı tablo: hedef gecikmeleri + son gözlenen saatin takvimi; 24 çıktılı tek model, CPU) | Ağaç tabanlı güçlü klasik referans |
 
 **Genişletilmiş tahmin programı (2026-10-31 kararı, yalnız val; test kümesine dokunulmaz):**
 
