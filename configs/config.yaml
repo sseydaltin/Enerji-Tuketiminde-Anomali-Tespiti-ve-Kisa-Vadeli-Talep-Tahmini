@@ -89,6 +89,12 @@ forecast:
 # ---------------------------------------------------------------------
 anomaly:
   zscore_window: 168                   # A0: hareketli z-skoru penceresi (saat)
+  zscore_min_std: 0.05                 # A0: std alt sınırı (kW); sabit gece tüketiminde sıfıra bölmeyi önler
+  isolation_forest:                    # A1: son 24 s istatistikleri + takvim; yalnız train'e fit
+    n_estimators: 200
+    max_samples: 256
+  relative_eps_kw: 0.1                 # A2 göreli skor: |hata| / (pencere ortalaması + eps)
+  contamination_exclude: ["2008-08-20", "2008-08-29"]   # A2 ablasyonu: EDA'daki olağandışı düşük dönem
   ae:                                  # A2: LSTM-Autoencoder
     window: 24
     stride: 1
@@ -112,7 +118,8 @@ anomaly:
 injection:
   val_seed: 1
   test_seed: 2
-  target_ratio: 0.025                  # saatlerin ~%2-3'ü etkilenir
+  target_ratio: 0.025                  # saatlerin ~%2-3'ü etkilenir (bu orana ulaşınca durulur)
+  max_ratio: 0.03                      # üst sınır; bunu aşacak segment eklenmez
   spike:       {min_len: 1,  max_len: 2,  factor_low: 2.0, factor_high: 4.0}
   drop:        {min_len: 2,  max_len: 6,  value_kw: 0.05}
   level_shift: {min_len: 12, max_len: 48, factor: 1.5}

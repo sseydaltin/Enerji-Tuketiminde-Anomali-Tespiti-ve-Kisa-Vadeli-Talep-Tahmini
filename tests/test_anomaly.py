@@ -1,0 +1,160 @@
+"""Anomali hattı testleri: enjeksiyon, geçmişe bakan skorlar, AE yardımcıları, metrikler."""
+
+import numpy as np
+import pandas as pd
+import pytest
+import torch
+
+from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies
+from src.data.load import load_config
+from src.evaluate_anomaly import evaluate_split
+from src.models.anomaly_baselines import rolling_zscore, window_features
+from src.models.autoencoder import LSTMAutoencoder, make_windows, point_scores
+from src.train_autoencoder import clean_windows
+from src.utils.anomaly_metrics import evaluate_threshold, f1_max_threshold
+
+
+def make_frame(days=120, seed=0):
+    """Günlük desenli sentetik saatlik tablo (birkaç doldurulmuş saat ile)."""
+    index = pd.date_range("2024-01-01", periods=days * 24, freq="h")
+    rng = np.random.default_rng(seed)
+    hours = index.hour.to_numpy()
+    values = 0.5 + 1.0 * ((hours >= 7) & (hours <= 22)) + 0.1 * rng.random(len(index))
+    frame = pd.DataFrame({
+        "Global_active_power": values,
+        "is_imputed": np.zeros(len(index), dtype="int8"),
+        "hour_sin": np.sin(2 * np.pi * hours / 24),
+        "hour_cos": np.cos(2 * np.pi * hours / 24),
+    }, index=index)
+    frame.iloc[100:110, frame.columns.get_loc("is_imputed")] = 1
+    return frame
+
+
+@pytest.fixture
+def injection_settings():
+    return load_config()["injection"]
+
+
+def test_injection_is_reproducible_and_does_not_modify_original(injection_settings):
+    frame = make_frame()
+    before = frame.copy()
+
+    first, labels_1 = inject_anomalies(frame, "Global_active_power", injection_settings, seed=1)
+    second, labels_2 = inject_anomalies(frame, "Global_active_power", injection_settings, seed=1)
+    _, labels_other = inject_anomalies(frame, "Global_active_power", injection_settings, seed=2)
+
+    pd.testing.assert_frame_equal(frame, before)          # orijinal değişmedi
+    pd.testing.assert_frame_equal(labels_1, labels_2)     # aynı seed → aynı etiket
+    pd.testing.assert_frame_equal(first, second)
+    assert not labels_1.equals(labels_other)              # farklı seed → farklı etiket
+
+
+def test_injection_ratio_types_and_imputed_hours(injection_settings):
+    frame = make_frame()
+    injected, labels = inject_anomalies(frame, "Global_active_power", injection_settings, seed=1)
+
+    ratio = labels["is_anomaly"].mean()
+    assert injection_settings["target_ratio"] <= ratio <= injection_settings["max_ratio"]
+    assert set(labels["anomaly_type"]) <= set(ANOMALY_TYPES) | {"none"}
+    assert (labels["is_anomaly"] == 1).eq(labels["anomaly_type"] != "none").all()
+    # Doldurulmuş saatlere enjeksiyon yapılmaz.
+    assert labels.loc[frame["is_imputed"] == 1, "is_anomaly"].sum() == 0
+    # Yalnız etiketli saatlerin değeri değişir; diğer sütunlar hiç değişmez.
+    changed = ~np.isclose(injected["Global_active_power"], frame["Global_active_power"])
+    assert not (changed & (labels["is_anomaly"] == 0).to_numpy()).any()
+    pd.testing.assert_frame_equal(injected.drop(columns="Global_active_power"),
+                                  frame.drop(columns="Global_active_power"))
+
+
+def test_injected_values_follow_type_rules(injection_settings):
+    frame = make_frame(days=200)
+    injected, labels = inject_anomalies(frame, "Global_active_power", injection_settings, seed=3)
+    original = frame["Global_active_power"]
+    new = injected["Global_active_power"]
+    types = labels["anomaly_type"]
+
+    drop = types == "drop"
+    if drop.any():
+        assert np.allclose(new[drop], injection_settings["drop"]["value_kw"])
+    spike = types == "spike"
+    if spike.any():
+        factor = new[spike] / original[spike]
+        assert factor.between(injection_settings["spike"]["factor_low"],
+                              injection_settings["spike"]["factor_high"]).all()
+    shift = types == "level_shift"
+    if shift.any():
+        assert np.allclose(new[shift] / original[shift], injection_settings["level_shift"]["factor"])
+    pattern = types == "pattern"
+    if pattern.any():
+        assert set(frame.index[pattern].hour) <= set(injection_settings["pattern"]["night_hours"])
+
+
+def test_rolling_zscore_looks_only_at_the_past():
+    frame = make_frame()
+    series = frame["Global_active_power"]
+    base = rolling_zscore(series, 168, 0.05)
+    t = 400
+
+    future_changed = series.copy()
+    future_changed.iloc[t + 1:] += 10.0                   # gelecek değişirse
+    assert rolling_zscore(future_changed, 168, 0.05).iloc[t] == pytest.approx(base.iloc[t])
+    now_changed = series.copy()
+    now_changed.iloc[t] += 10.0                           # saatin kendisi değişirse
+    assert rolling_zscore(now_changed, 168, 0.05).iloc[t] > base.iloc[t]
+    assert base.iloc[:168].isna().all()                   # 7 günlük geçmiş yoksa skor yok
+
+
+def test_window_features_do_not_use_future_values():
+    frame = make_frame()
+    base = window_features(frame, "Global_active_power", ["hour_sin", "hour_cos"])
+    changed = frame.copy()
+    changed.iloc[401:, 0] += 10.0
+    after = window_features(changed, "Global_active_power", ["hour_sin", "hour_cos"])
+    pd.testing.assert_series_equal(base.iloc[400], after.iloc[400])
+
+
+def test_autoencoder_shapes_and_point_score_averaging():
+    model = LSTMAutoencoder(1, hidden=64, latent=32, dropout=0.1)
+    assert model(torch.zeros((3, 24, 1))).shape == (3, 24, 1)
+
+    windows, starts = make_windows(np.arange(5.0), window=3)
+    assert windows.shape == (3, 3)
+    errors = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+    scores = point_scores(errors, starts, length=5, window=3)
+    # Saat 2 üç pencerede: konum 2 (3), konum 1 (5), konum 0 (7) → ortalama 5.
+    np.testing.assert_allclose(scores, [1.0, 3.0, 5.0, 7.0, 9.0])
+
+
+def test_clean_windows_drop_imputed_and_excluded_period():
+    frame = make_frame(days=20)
+    all_windows = clean_windows(frame, "Global_active_power", 24, 0.0, 1.0)
+    excluded = clean_windows(frame, "Global_active_power", 24, 0.0, 1.0,
+                             exclude=("2024-01-10", "2024-01-11"))
+    total = len(frame) - 24 + 1
+    # Saat 100–109 doldurulmuş: bunları içeren 24 + 10 − 1 = 33 pencere atılır.
+    assert len(all_windows) == total - 33
+    assert len(excluded) < len(all_windows)
+
+
+def test_f1_max_threshold_and_type_recall():
+    labels = np.array([0, 0, 0, 1, 1, 0])
+    scores = np.array([0.1, 0.2, 0.1, 0.9, 0.8, 0.3])
+    types = np.array(["none", "none", "none", "spike", "drop", "none"])
+
+    threshold = f1_max_threshold(labels, scores)
+    result = evaluate_threshold(labels, scores, types, threshold)
+    assert result["f1"] == pytest.approx(1.0)
+    assert result["recall_spike"] == 1.0 and result["recall_drop"] == 1.0
+    assert np.isnan(result["recall_pattern"])
+    assert result["pr_auc"] == pytest.approx(1.0)
+
+
+def test_test_split_reuses_val_thresholds_without_selecting_new_ones():
+    config = load_config()
+    labels = pd.DataFrame({"is_anomaly": [0, 1, 0, 1], "anomaly_type": ["none", "spike", "none", "drop"]})
+    scores = pd.DataFrame({"A0": [0.1, 0.9, 0.2, 0.4]})
+    val_thresholds = pd.DataFrame({"method": ["A0"], "rule": ["f1max"], "threshold": [0.5]})
+
+    result = evaluate_split(scores, labels, np.zeros(4, dtype=bool), "test", config, val_thresholds)
+    assert result["threshold"].tolist() == [0.5]          # val eşiği aynen
+    assert result.loc[0, "recall"] == pytest.approx(0.5)  # 0.4 < 0.5 kaçırıldı
