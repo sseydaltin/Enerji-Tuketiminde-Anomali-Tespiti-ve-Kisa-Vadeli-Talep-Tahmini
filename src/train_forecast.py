@@ -334,18 +334,30 @@ def _save_learning_curve(history, model_label, exp_id, figures_dir):
     plt.close(figure)
 
 
-def train_model(df, config, model_name, device_preference="auto", exp_id=None):
-    """MLP/LSTM/GRU'yu train'de eğitir, val MAE ile seçip sonuçları kaydeder.
+def make_loss(name):
+    """Config'teki kayıp adını PyTorch kayıp fonksiyonuna çevirir.
 
-    Girdi: saatlik DataFrame, config, `mlp`/`lstm`/`gru`, cihaz tercihi ve
-    isteğe bağlı exp_id (verilmezse EXPERIMENT_IDS).
-    Çıktı: val metrik sözlüğü ve epoch geçmişi (DataFrame).
-    Neden: Early stopping, scheduler ve checkpoint seçimi yalnız val üzerinden
-    yapılır; test kümesi eğitim veya değerlendirme hattına alınmaz. Üç model
-    aynı optimizer, lr, scheduler, grad clip, early stopping ve pencereleri
-    kullanır; böylece karşılaştırma adil olur.
+    mse: büyük hataları kareyle cezalar; l1: medyana yönelir, aykırılara
+    dayanıklı; huber: küçük hatada MSE, büyük hatada L1 gibi davranır
+    (delta=1, ölçeklenmiş hedefte yaklaşık bir standart sapma).
     """
-    exp_id = exp_id or EXPERIMENT_IDS[model_name]
+    losses = {"mse": nn.MSELoss, "l1": nn.L1Loss, "huber": nn.HuberLoss}
+    if name not in losses:
+        raise ValueError(f"Bilinmeyen kayıp: {name}")
+    return losses[name]()
+
+
+def fit_forecaster(df, config, model_name, device_preference="auto", label="fit"):
+    """Modeli config'teki train'de eğitir, config'teki val ile erken durdurur.
+
+    Girdi: saatlik DataFrame, config (split tarihleri dahil), model adı,
+    cihaz tercihi ve log etiketi.
+    Çıktı: sözlük — en iyi model, hazırlanan veri, en iyi val tahminleri (kW),
+    en iyi epoch, epoch geçmişi, süre ve cihaz. Dosyaya hiçbir şey yazmaz.
+    Neden: Aynı eğitim döngüsü hem normal deneylerde (train_model) hem de
+    Optuna'nın train içi çapraz doğrulamasında (split tarihleri değiştirilmiş
+    config ile) kullanılır; böylece CV ile val aynı kodla ölçülür.
+    """
     if model_name == "seq2seq":
         # Decoder'ın girdisi hedef saatlerin takvimidir (mimarinin parçası).
         config = deepcopy(config)
@@ -386,7 +398,7 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
         factor=forecast["scheduler_factor"],
         patience=forecast["scheduler_patience"],
     )
-    loss_function = nn.MSELoss()
+    loss_function = make_loss(forecast.get("loss", "mse"))
     batch_size = forecast["batch_size"]
     best_mae = float("inf")
     best_state = None
@@ -442,7 +454,7 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
             "val_mae": val_mae,
         })
         print(
-            f"{exp_id} epoch {epoch}: train_loss={train_loss:.6f}, "
+            f"{label} epoch {epoch}: train_loss={train_loss:.6f}, "
             f"val_loss={val_loss:.6f}, val_mae={val_mae:.6f} kW"
         )
 
@@ -459,9 +471,48 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
             break
 
     if best_state is None:
-        raise RuntimeError(f"{exp_id} için en iyi val checkpoint'i oluşmadı.")
+        raise RuntimeError(f"{label} için en iyi val checkpoint'i oluşmadı.")
     elapsed = time.perf_counter() - start_time
     model.load_state_dict(best_state)
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    elif device.type == "mps":
+        torch.mps.empty_cache()
+    return {
+        "model": model,
+        "config": config,
+        "prepared": prepared,
+        "best_predictions": best_predictions,
+        "best_epoch": best_epoch,
+        "best_mae": best_mae,
+        "history": history,
+        "elapsed": elapsed,
+        "device": device,
+        "shuffle": shuffle,
+    }
+
+
+def train_model(df, config, model_name, device_preference="auto", exp_id=None):
+    """Modeli train'de eğitir, val MAE ile seçer ve tüm sonuçları kaydeder.
+
+    Girdi: saatlik DataFrame, config, model adı (`mlp`, `lstm`, `gru`,
+    `seq2seq`, `cnn_lstm`), cihaz tercihi ve isteğe bağlı exp_id.
+    Çıktı: val metrik sözlüğü ve epoch geçmişi (DataFrame); checkpoint,
+    öğrenme eğrisi, sonuç/ufuk/tahmin dosyaları ve experiments.csv satırı.
+    Neden: Early stopping, scheduler ve checkpoint seçimi yalnız val üzerinden
+    yapılır; test kümesi eğitim veya değerlendirme hattına alınmaz. Tüm
+    modeller aynı optimizer, scheduler, grad clip, early stopping ve
+    pencereleri kullanır; böylece karşılaştırma adil olur.
+    """
+    exp_id = exp_id or EXPERIMENT_IDS[model_name]
+    fitted = fit_forecaster(df, config, model_name, device_preference, label=exp_id)
+    model, config = fitted["model"], fitted["config"]
+    prepared, history = fitted["prepared"], fitted["history"]
+    best_predictions, best_epoch = fitted["best_predictions"], fitted["best_epoch"]
+    elapsed, device, shuffle = fitted["elapsed"], fitted["device"], fitted["shuffle"]
+    forecast = config["forecast"]
+    target_scaler = prepared["target_scaler"]
+    batch_size = forecast["batch_size"]
 
     models_dir = resolve_path(PROJECT_ROOT, config["paths"]["models_dir"])
     models_dir.mkdir(parents=True, exist_ok=True)
@@ -502,6 +553,8 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
         f"future_features={forecast.get('future_features', False)}; "
         f"decoder_calendar={forecast.get('decoder_calendar', False)}; "
         f"residual_target={forecast.get('residual_target', False)}; "
+        f"loss={forecast.get('loss', 'mse')}; "
+        f"weight_decay={forecast['weight_decay']}; "
         f"device={device.type}; train/val only; test not evaluated"
     )
     scores = record_forecast_results(
@@ -535,11 +588,6 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
         }],
         ["exp_id"],
     )
-
-    if device.type == "cuda":
-        torch.cuda.empty_cache()
-    elif device.type == "mps":
-        torch.mps.empty_cache()
     return scores, pd.DataFrame(history)
 
 

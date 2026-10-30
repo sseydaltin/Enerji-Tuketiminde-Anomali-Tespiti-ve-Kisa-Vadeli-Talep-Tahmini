@@ -105,6 +105,33 @@ forecast:
     lookback: [48, 168]
 
 # ---------------------------------------------------------------------
+# Aşama 4: Optuna (yalnız train içi zamansal CV; gerçek val aramaya girmez)
+# ---------------------------------------------------------------------
+optuna:
+  n_trials: 20                         # model başına üst sınır
+  timeout_minutes: 70                  # model başına süre kotası (toplam GPU ≤ 3 saat)
+  cv_months: 12                        # train'in son 12 ayı
+  cv_folds: 3                          # 4'er aylık ardışık doğrulama katları (genişleyen pencere)
+  cv_max_epochs: 40                    # CV'de epoch üst sınırı (early stopping patience aynı: 8)
+  sampler_seed: 42                     # TPESampler
+  pruner_startup_trials: 5             # MedianPruner ilk 5 denemeyi kesmez
+  space:
+    hidden: [32, 64, 128]
+    layers: [1, 2, 3]
+    lr: [0.0001, 0.003]                # log-uniform
+    batch_size: [32, 64, 128]
+    dropout: [0.0, 0.4]
+    weight_decay: [0.000001, 0.001]    # log-uniform
+    loss: [mse, l1, huber]
+    shuffle_train: [false, true]       # hipotez: shuffle × lr etkileşimi (deney günlüğü)
+
+# ---------------------------------------------------------------------
+# Aşama 5: topluluk (ağırlıklar val'de basit ızgarayla) ve seed kararlılığı
+# ---------------------------------------------------------------------
+ensemble:
+  weight_step: 0.1                     # ağırlıklar {0, 0.1, ..., 1}, toplamı 1
+
+# ---------------------------------------------------------------------
 # Anomali tespiti (README §4.6, §4.7, §4.9)
 # ---------------------------------------------------------------------
 anomaly:

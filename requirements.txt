@@ -4,6 +4,8 @@ torch
 scikit-learn
 # Gradyan artırmalı ağaç referansı (Aşama 3, XGBoost tahmin modeli)
 xgboost
+# Hiperparametre araması (Aşama 4: TPE + MedianPruner, train içi zamansal CV)
+optuna
 # Veri işleme
 pandas
 numpy>=2.0,<2.4
