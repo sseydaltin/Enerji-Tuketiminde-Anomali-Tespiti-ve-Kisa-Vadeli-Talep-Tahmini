@@ -1,13 +1,11 @@
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.neural_network import MLPRegressor
 
 from src.models.forecast_baselines import (
     build_train_val_windows,
-    fit_mlp,
     fit_ridge,
-    run_forecast_baselines,
+    run_ridge,
     select_ridge_lags,
 )
 
@@ -34,6 +32,7 @@ def make_config():
             "tables_dir": "results/tables",
             "experiments_file": "results/experiments.csv",
             "models_dir": "models",
+            "predictions_dir": "results/predictions",
         },
         "preprocess": {"target": "target"},
         "split": {
@@ -69,44 +68,6 @@ def test_configured_lags_select_newest_to_oldest_history_values():
     result = select_ridge_lags(windows, [1, 2, 4])
 
     np.testing.assert_array_equal(result, [[9, 6, 0]])
-
-
-def test_mlp_regressor_supports_168_hour_input_and_24_hour_output():
-    rng = np.random.default_rng(42)
-    X_train = rng.normal(size=(12, 168, 1)).astype(np.float32)
-    y_train = rng.normal(size=(12, 24)).astype(np.float32)
-    X_val = rng.normal(size=(3, 168, 1)).astype(np.float32)
-    y_val = rng.normal(size=(3, 24)).astype(np.float32)
-    forecast = make_config()["forecast"]
-    forecast["max_epochs"] = 2
-    forecast["mlp"]["hidden_sizes"] = [4, 3]
-
-    (
-        predictions,
-        x_scaler,
-        y_scaler,
-        model,
-        epochs,
-        _,
-        _,
-        convergence_warning,
-    ) = fit_mlp(
-        X_train,
-        y_train,
-        X_val,
-        y_val,
-        np.arange(20, dtype=float),
-        forecast,
-        seed=42,
-    )
-
-    assert isinstance(model, MLPRegressor)
-    assert predictions.shape == (3, 24)
-    assert epochs <= 2
-    assert isinstance(convergence_warning, bool)
-    assert model.early_stopping is False
-    assert x_scaler.mean_[0] == pytest.approx(X_train.mean())
-    assert y_scaler.mean_[0] == pytest.approx(np.arange(20).mean())
 
 
 def test_build_windows_keeps_train_and_val_targets_in_their_splits():
@@ -162,29 +123,28 @@ def test_ridge_rejects_lags_outside_history():
         select_ridge_lags(windows, [5])
 
 
-def test_run_uses_val_only_and_logs_schema(tmp_path, monkeypatch):
+def test_run_ridge_uses_val_only_and_logs_schema(tmp_path, monkeypatch):
     frame = make_hourly_data()
     config = make_config()
-    config["paths"]["results_dir"] = "results"
     monkeypatch.setattr(
         "src.models.forecast_baselines.PROJECT_ROOT",
         tmp_path,
     )
 
-    results = run_forecast_baselines(frame, config)
+    scores = run_ridge(frame, config, alpha=10.0, exp_id="F3-a10")
 
-    assert results["split"].tolist() == ["val", "val"]
-    assert results["model"].tolist() == ["Ridge", "MLP"]
-    assert set(results["windows"]) == {22}
-
+    assert {"MAE", "RMSE", "MAPE*", "sMAPE", "R2"}.issubset(scores)
     experiments = pd.read_csv(tmp_path / "results/experiments.csv")
-    assert experiments["exp_id"].tolist() == ["F3", "F4"]
+    assert experiments["exp_id"].tolist() == ["F3-a10"]
+    assert "alpha=10.0" in experiments.loc[0, "note"]
     assert experiments["test_mae"].isna().all()
     assert experiments["test_rmse"].isna().all()
-    assert {"MAPE*", "sMAPE", "R2"}.issubset(results.columns)
 
+    results = pd.read_csv(tmp_path / "results/tables/forecast_val_results.csv")
+    assert results["split"].tolist() == ["val"]
+    assert results["windows"].tolist() == [22]
     horizon_metrics = pd.read_csv(
-        tmp_path / "results/tables/forecast_horizon_metrics.csv"
+        tmp_path / "results/tables/forecast_val_horizon.csv"
     )
     assert set(horizon_metrics["horizon"]) == {1, 2, 3}
-    assert set(horizon_metrics["split"]) == {"val"}
+    assert (tmp_path / "results/predictions/F3-a10_val.npz").is_file()

@@ -5,6 +5,7 @@ import torch
 
 from src.models.gru import GRUForecaster
 from src.models.lstm import LSTMForecaster
+from src.models.mlp import MLPForecaster
 from src.train_forecast import _forecast_device, prepare_forecast_data
 
 
@@ -33,6 +34,7 @@ def make_config():
             "tables_dir": "results/tables",
             "figures_dir": "results/figures",
             "experiments_file": "results/experiments.csv",
+            "predictions_dir": "results/predictions",
         },
         "preprocess": {"target": "target"},
         "features": {
@@ -60,6 +62,7 @@ def make_config():
             "scheduler_factor": 0.5,
             "scheduler_patience": 1,
             "grad_clip": 1.0,
+            "mlp": {"hidden_sizes": [6, 5]},
         },
         "evaluation": {
             "exclude_imputed_targets": True,
@@ -84,6 +87,22 @@ def test_recurrent_models_map_168_steps_to_24_outputs(model):
     predictions = network(torch.zeros((2, 168, 9)))
 
     assert predictions.shape == (2, 24)
+
+
+def test_mlp_maps_168_steps_to_24_outputs():
+    network = MLPForecaster(
+        input_size=9,
+        lookback=168,
+        hidden_sizes=[64, 32],
+        dropout=0.2,
+        horizon=24,
+    )
+
+    predictions = network(torch.zeros((2, 168, 9)))
+
+    assert predictions.shape == (2, 24)
+    # İlk katman düzleştirilmiş pencereyi alır: 168 saat x 9 öznitelik.
+    assert network.network[0].in_features == 168 * 9
 
 
 def test_forecast_device_accepts_cpu_and_rejects_unknown_preferences():
@@ -114,28 +133,59 @@ def test_prepare_forecast_data_fits_scalers_on_train_only_and_excludes_imputed()
     assert prepared["val_times"].max() + pd.Timedelta(hours=2) <= frame.index[71]
 
 
-@pytest.mark.parametrize("model_name", ["lstm", "gru"])
+def test_prepare_forecast_data_keeps_targets_in_original_scale():
+    # Hedef sütunu girdide ölçeklenir; y ise ham (kW) değerlerde kalmalı.
+    # Aksi halde metrikler z-skoru üzerinden hesaplanır (PR #4 hatası).
+    frame = make_hourly_data()
+    config = make_config()
+
+    prepared = prepare_forecast_data(frame, config)
+
+    first_val_target = prepared["val_times"][0]
+    expected = frame.loc[first_val_target:, "target"].to_numpy()[:3]
+    assert prepared["y_val"][0] == pytest.approx(expected, rel=1e-5)
+    first_train_target = prepared["train_times"][0]
+    expected_train = frame.loc[first_train_target:, "target"].to_numpy()[:3]
+    assert prepared["y_train"][0] == pytest.approx(expected_train, rel=1e-5)
+    # Girdideki hedef sütunu ise yalnız train istatistikleriyle ölçeklenmiş olmalı.
+    scaler = prepared["feature_scaler"]
+    raw_last_input = frame.loc[:first_val_target, "target"].to_numpy()[-2]
+    assert prepared["X_val"][0, -1, 0] == pytest.approx(
+        (raw_last_input - scaler.mean_[0]) / scaler.scale_[0], rel=1e-4
+    )
+
+
+@pytest.mark.parametrize(
+    ("model_name", "exp_id"),
+    [("mlp", "F4-test"), ("lstm", "F5"), ("gru", "F6")],
+)
 def test_train_model_saves_validation_outputs_only(
     tmp_path,
     monkeypatch,
     model_name,
+    exp_id,
 ):
     import src.train_forecast as trainer
 
     monkeypatch.setattr(trainer, "PROJECT_ROOT", tmp_path)
-    summary, horizon_metrics, history = trainer.train_model(
+    scores, history = trainer.train_model(
         make_hourly_data(),
         make_config(),
         model_name,
         device_preference="cpu",
+        exp_id=exp_id,
     )
 
-    assert summary["split"] == "val"
-    assert summary["windows"] == 22
-    assert horizon_metrics["horizon"].tolist() == [1, 2, 3]
+    assert {"MAE", "RMSE", "sMAPE", "R2"}.issubset(scores)
     assert len(history) == 1
-    assert (tmp_path / "models" / f"{'F5' if model_name == 'lstm' else 'F6'}_best.pt").is_file()
-    assert (tmp_path / "results/figures" / f"{'F5' if model_name == 'lstm' else 'F6'}_learning_curve.png").is_file()
+    assert (tmp_path / "models" / f"{exp_id}_best.pt").is_file()
+    assert (tmp_path / "results/figures" / f"{exp_id}_learning_curve.png").is_file()
+    assert (tmp_path / "results/predictions" / f"{exp_id}_val.npz").is_file()
+    results = pd.read_csv(tmp_path / "results/tables/forecast_val_results.csv")
+    assert results["exp_id"].tolist() == [exp_id]
+    assert results["windows"].tolist() == [22]
+    assert results["device"].tolist() == ["cpu"]
     experiments = pd.read_csv(tmp_path / "results/experiments.csv")
+    assert experiments["exp_id"].tolist() == [exp_id]
     assert experiments["test_mae"].isna().all()
     assert experiments["test_rmse"].isna().all()

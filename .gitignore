@@ -25,3 +25,18 @@ models/*.pt
 # --- İşletim sistemi ---
 .DS_Store
 Thumbs.db
+
+# Ruflo local secrets and runtime data
+.env
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+
+# Yerel ajan/araç çalışma klasörleri (proje kodu değil)
+.claude-flow/
+.swarm/
+
+# Kayıtlı val/test tahminleri (yeniden üretilebilir, büyük)
+results/predictions/

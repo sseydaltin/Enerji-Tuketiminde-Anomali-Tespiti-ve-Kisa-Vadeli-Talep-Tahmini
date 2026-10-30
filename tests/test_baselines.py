@@ -84,10 +84,16 @@ def test_main_evaluates_only_requested_split(
         "test": frame.iloc[174:180],
     }
     config = {
-        "paths": {"processed_file": "hourly.parquet"},
+        "seed": 42,
+        "paths": {
+            "processed_file": "hourly.parquet",
+            "tables_dir": "results/tables",
+            "predictions_dir": "results/predictions",
+            "experiments_file": "results/experiments.csv",
+        },
         "preprocess": {"target": "target"},
         "forecast": {"lookback": 168, "horizon": 2},
-        "evaluation": {"exclude_imputed_targets": False},
+        "evaluation": {"exclude_imputed_targets": False, "mape_min_y": 0.1},
     }
     monkeypatch.setattr(baselines, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(baselines, "load_config", lambda: config)
@@ -97,6 +103,11 @@ def test_main_evaluates_only_requested_split(
 
     baselines.main()
 
-    results = pd.read_csv(tmp_path / "results/tables/baseline_results.csv")
+    results = pd.read_csv(
+        tmp_path / f"results/tables/forecast_{expected_split}_results.csv"
+    )
     assert set(results["split"]) == {expected_split}
-    assert len(results) == 3
+    assert results["exp_id"].tolist() == ["F0", "F1", "F2"]
+    # experiments.csv yalnız val koşularında yazılır; test sütunları boş kalır.
+    experiments_file = tmp_path / "results/experiments.csv"
+    assert experiments_file.exists() == (expected_split == "val")

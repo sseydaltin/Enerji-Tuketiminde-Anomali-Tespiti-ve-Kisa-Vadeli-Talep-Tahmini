@@ -1,14 +1,20 @@
 """Kısa vadeli enerji tahmini için basit referans modeller."""
 
 import argparse
+from datetime import date
 
 import numpy as np
 import pandas as pd
 
 from src.data.load import PROJECT_ROOT, load_config
 from src.data.split import chronological_split
-from src.utils.metrics import calculate_metrics, metrics_by_horizon
+from src.utils.metrics import calculate_metrics
 from src.utils.console import setup_console
+from src.utils.results_io import (
+    record_forecast_results,
+    resolve_path,
+    upsert_csv,
+)
 
 
 def persistence(history, horizon):
@@ -26,8 +32,60 @@ def evaluate(y_true, y_pred):
     return {"MAE": scores["MAE"], "RMSE": scores["RMSE"]}
 
 
+NAIVE_EXPERIMENT_IDS = {
+    "Persistence": "F0",
+    "SeasonalNaive24": "F1",
+    "SeasonalNaive168": "F2",
+}
+
+
+def naive_forecasts(df, part, target, lookback, horizon, exclude_imputed):
+    """Bir kümedeki tüm pencereler için üç naive tahmini üretir.
+
+    Girdi: tüm saatlik tablo df (geçmiş için), değerlendirilen küme part.
+    Çıktı: y_true [N, horizon] kW, {model: y_pred [N, horizon]} ve
+    target_times [N] (her pencerenin ilk hedef zamanı).
+    Neden: Hedef penceresi kümenin içinde kalır; geçmiş önceki kümeden
+    gelebilir (gelecek bilgisi değil). Doldurulmuş hedefli pencereler
+    LSTM/GRU/Ridge ile aynı kuralla atlanır.
+    """
+    start = df.index.get_loc(part.index.min())
+    end = df.index.get_loc(part.index.max())
+    actual, times = [], []
+    predictions = {name: [] for name in NAIVE_EXPERIMENT_IDS}
+
+    for i in range(start, end - horizon + 2):
+        if i < lookback:
+            continue
+        if exclude_imputed and df["is_imputed"].iloc[i:i + horizon].any():
+            continue
+
+        history = df[target].iloc[i - lookback:i].to_numpy()
+        actual.append(df[target].iloc[i:i + horizon].to_numpy())
+        times.append(df.index[i])
+        predictions["Persistence"].append(persistence(history, horizon))
+        predictions["SeasonalNaive24"].append(
+            seasonal_naive(history, horizon, 24)
+        )
+        predictions["SeasonalNaive168"].append(
+            seasonal_naive(history, horizon, 168)
+        )
+
+    if not actual:
+        raise ValueError("Geçerli pencere bulunamadı.")
+    return (
+        np.stack(actual),
+        {name: np.stack(values) for name, values in predictions.items()},
+        pd.DatetimeIndex(times),
+    )
+
+
 def main():
-    """Seçilen kümeyi değerlendirir ve baseline sonuçlarını CSV'ye yazar."""
+    """Seçilen kümede naive referansları değerlendirir ve sonuçları yazar.
+
+    Çıktı: results/tables/forecast_{split}_results.csv ve _horizon.csv
+    satırları (F0, F1, F2); val için experiments.csv satırları.
+    """
     setup_console()  # Windows konsolunda Türkçe karakterler için UTF-8
     parser = argparse.ArgumentParser(
         description="Persistence ve Seasonal Naive referanslarını değerlendir."
@@ -41,130 +99,47 @@ def main():
     args = parser.parse_args()
 
     config = load_config()
-    df = pd.read_parquet(
-        PROJECT_ROOT / config["paths"]["processed_file"]
-    )
-
-    splits = chronological_split(df, config)
+    df = pd.read_parquet(PROJECT_ROOT / config["paths"]["processed_file"])
+    part = chronological_split(df, config)[args.split]
     target = config["preprocess"]["target"]
     lookback = config["forecast"]["lookback"]
-    horizon = config["forecast"]["horizon"]
 
-    results = []
-    horizon_results = []
+    y_true, predictions, times = naive_forecasts(
+        df,
+        part,
+        target,
+        lookback,
+        config["forecast"]["horizon"],
+        config["evaluation"]["exclude_imputed_targets"],
+    )
 
-    for name in (args.split,):
-        part = splits[name]
-        start = df.index.get_loc(part.index.min())
-        end = df.index.get_loc(part.index.max())
-
-        actual, predictions = [], {
-            "Persistence": [],
-            "SeasonalNaive24": [],
-            "SeasonalNaive168": [],
-        }
-
-        for i in range(start, end - horizon + 2):
-            if i < lookback:
-                continue
-
-            if config["evaluation"]["exclude_imputed_targets"]:
-                if df["is_imputed"].iloc[i:i + horizon].any():
-                    continue
-
-            history = df[target].iloc[i - lookback:i].to_numpy()
-            truth = df[target].iloc[i:i + horizon].to_numpy()
-
-            actual.append(truth)
-            predictions["Persistence"].append(
-                persistence(history, horizon)
-            )
-            predictions["SeasonalNaive24"].append(
-                seasonal_naive(history, horizon, 24)
-            )
-            predictions["SeasonalNaive168"].append(
-                seasonal_naive(history, horizon, 168)
-            )
-
-        if not actual:
-            raise ValueError(f"{name} için geçerli pencere bulunamadı.")
-
-        y_true = np.stack(actual)
-
-        for model, preds in predictions.items():
-            y_pred = np.stack(preds)
-            scores = calculate_metrics(
-                y_true,
-                y_pred,
-                mape_min_y=config.get("evaluation", {}).get(
-                    "mape_min_y",
-                    0.1,
-                ),
-            )
-            results.append({
-                "split": name,
-                "model": model,
-                "windows": len(actual),
-                **scores,
-            })
-            horizon_table = metrics_by_horizon(
-                y_true,
-                y_pred,
-                mape_min_y=config.get("evaluation", {}).get(
-                    "mape_min_y",
-                    0.1,
-                ),
-            )
-            horizon_table.insert(0, "model", model)
-            horizon_table.insert(0, "split", name)
-            horizon_table["windows"] = len(actual)
-            horizon_results.extend(horizon_table.to_dict("records"))
-
-    result = pd.DataFrame(results)
-    print("\n=== BASELINE SONUÇLARI ===")
-    print(result.to_string(index=False))
-
-    output = PROJECT_ROOT / "results/tables/baseline_results.csv"
-    output.parent.mkdir(parents=True, exist_ok=True)
-
-    if output.exists():
-        previous = pd.read_csv(output)
-        result_keys = set(
-            result[["split", "model"]].itertuples(index=False, name=None)
+    rows = []
+    for model, y_pred in predictions.items():
+        exp_id = NAIVE_EXPERIMENT_IDS[model]
+        scores = record_forecast_results(
+            PROJECT_ROOT, config, args.split, exp_id, model,
+            y_true, y_pred, times,
+            train_time_s=0.0, device="cpu", feature_set="A",
+            lookback=lookback, note="parametresiz referans",
         )
-        previous_keys = previous[["split", "model"]].itertuples(
-            index=False,
-            name=None,
-        )
-        previous = previous.loc[
-            [key not in result_keys for key in previous_keys]
-        ]
-        result = pd.concat([previous, result], ignore_index=True)
-
-    result.to_csv(output, index=False)
-    horizon_output = PROJECT_ROOT / "results/tables/forecast_horizon_metrics.csv"
-    horizon_output.parent.mkdir(parents=True, exist_ok=True)
-    horizon_result = pd.DataFrame(horizon_results)
-    if horizon_output.exists():
-        previous_horizon = pd.read_csv(horizon_output)
-        result_keys = set(
-            horizon_result[["split", "model", "horizon"]].itertuples(
-                index=False,
-                name=None,
+        rows.append({"exp_id": exp_id, "model": model,
+                     "windows": len(y_true), **scores})
+        if args.split == "val":
+            upsert_csv(
+                resolve_path(PROJECT_ROOT, config["paths"]["experiments_file"]),
+                [{
+                    "exp_id": exp_id, "date": date.today().isoformat(),
+                    "model": model, "feature_set": "A", "lookback": lookback,
+                    "seed": config["seed"],
+                    "val_mae": scores["MAE"], "val_rmse": scores["RMSE"],
+                    "test_mae": "", "test_rmse": "", "train_time_s": 0.0,
+                    "note": "parametresiz referans; device=cpu",
+                }],
+                ["exp_id"],
             )
-        )
-        previous_keys = previous_horizon[
-            ["split", "model", "horizon"]
-        ].itertuples(index=False, name=None)
-        previous_horizon = previous_horizon.loc[
-            [key not in result_keys for key in previous_keys]
-        ]
-        horizon_result = pd.concat(
-            [previous_horizon, horizon_result],
-            ignore_index=True,
-        )
-    horizon_result.to_csv(horizon_output, index=False)
-    print("\nKaydedildi:", output)
+
+    print(f"\n=== NAIVE REFERANSLAR ({args.split}) ===")
+    print(pd.DataFrame(rows).to_string(index=False))
 
 
 if __name__ == "__main__":
