@@ -13,6 +13,42 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 
 ---
 
+## Final sonuçlar (özet)
+
+Test kümeleri **bir kez** kullanıldı; test sonucuna göre hiçbir model, eşik, pencere veya yöntem değiştirilmedi. Ayrıntı ve sapma nedenleri: `docs/final_sonuclar.md` (hane), `docs/hane_vs_sebeke.md` (hane ve şebeke). Sayıların kaynağı `results/tables/` ve `results/eld/tables/`.
+
+**Final seçimler (yalnız val ile yapıldı):** tahmin **F13-ens** = 0,8 · F10-opt (Seq2Seq-LSTM) + 0,2 · F5-opt (LSTM); anomali **A3-s2s-norm** = F10-opt'un |h=1 hatası| / OOF std (saat × gün), w = 3, olay-F1 eşiği 3,558 (`docs/final_test_protokolu.md`).
+
+**Tahmin, hane testi (2010-04-01 – 2010-11-26), 24 saat ufuk:**
+
+| Model | Test MAE (kW) | Test RMSE (kW) | Test R² | SN168'e göre MAE kazancı |
+|---|---|---|---|---|
+| F2 Seasonal Naive 168 | 0,549 | 0,795 | −0,244 | 0 |
+| F3-cal Ridge | 0,467 | 0,612 | 0,262 | +15,0 % |
+| F5-opt LSTM (3 seed) | 0,413 ± 0,005 | 0,581 | 0,336 | +24,8 % |
+| F10-opt Seq2Seq (3 seed) | 0,414 ± 0,007 | 0,612 | 0,263 | +24,7 % |
+| F12-L336 XGBoost | 0,416 | **0,568** | **0,364** | +24,2 % |
+| **F13-ens (final, 3 seed)** | **0,4062 ± 0,0047** | 0,598 | 0,297 | **+26,0 %** |
+
+F13-ens MAE'de birinci; RMSE, R² ve günlük toplamda XGBoost daha iyi. Proje hedefi H2 (en iyi modelin test RMSE'si SN168'den ≥ %10 düşük) karşılandı: XGBoost −28,6 %, F13-ens −24,8 %.
+
+**Anomali, hane testi (ana senaryo, σ tabanlı enjeksiyon, 5 seed), olay F1:** A0 z-skoru 0,398 ± 0,064 · A1 Isolation Forest 0,378 ± 0,144 · A2 LSTM-AE 0,352 ± 0,099 · **A3-s2s-norm (final) 0,384 ± 0,170** · A5-mean-z 0,463 ± 0,048. Final yöntem testte A0'dan ayırt edilemedi (−0,015 ± 0,184); PR-AUC'de ise A0'ın üzerinde (0,241 / 0,148). Olası neden: val kış, test yaz; kışta kalibre edilen eşik ve yıllık normalizasyon yaza taşınamadı. Hedef H3'teki F1 ≥ 0,70 **karşılanmadı**.
+
+**Şebeke düzeyi (ELD, 160 müşteri toplamı, test 2014-07-01 – 2014-12-31; household ayarları aynen, yeni arama yok):**
+
+| | Hane | Şebeke |
+|---|---|---|
+| F13-ens 24 saat MAPE* | 49,4 % | 3,24 % |
+| F13-ens 24 saat R² | 0,297 | 0,974 |
+| F13-ens SN168'e göre kazanç | +26,0 % | +35,4 % |
+| En iyi model (24 saat MAE) | F13-ens | XGBoost (+45,1 %) |
+| A3-s2s-norm olay F1 / PR-AUC | 0,384 / 0,241 | 0,927 / 0,978 |
+| A0 olay F1 / PR-AUC | 0,398 / 0,148 | 0,860 / 0,761 |
+
+Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomali tespitini kolaylaştırıyor. Şebeke testindeki bozulmanın çoğu Aralık'tan (Noel) geliyor. Protokol: `docs/eld_protokol.md`.
+
+---
+
 ## İçindekiler
 1. [Temel kararlar (özet)](#1-temel-kararlar-özet)
 2. [Görev dağılımı](#2-görev-dağılımı)
@@ -34,7 +70,7 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 
 | Konu | Karar | Gerekçe (savunmada söylenecek) |
 |---|---|---|
-| **Veri seti** | **UCI Individual Household Electric Power Consumption** (ana). ElectricityLoadDiagrams20112014 yalnızca "gelecek çalışma"da anılır. | Tek hane, ~4 yıl, dakikalık ölçüm (~2,07 milyon satır), alt sayaç (sub-metering) bilgisi var. Saatliğe indirgenince (~34 bin saat) CPU/Colab'da 4 günde eğitilebilir. ElectricityLoadDiagrams 370 müşteri × 15 dk ile 4 gün için fazla büyük ve müşteri başlangıçları (sıfır dolgular) ek temizlik gerektirir. |
+| **Veri seti** | **UCI Individual Household Electric Power Consumption** (ana). ElectricityLoadDiagrams20112014 ek deney olarak şebeke düzeyinde (160 müşteri toplamı) aynı ayarlarla değerlendirildi (`docs/eld_protokol.md`). | Tek hane, ~4 yıl, dakikalık ölçüm (~2,07 milyon satır), alt sayaç (sub-metering) bilgisi var. Saatliğe indirgenince (~34 bin saat) CPU/Colab'da 4 günde eğitilebilir. ElectricityLoadDiagrams 370 müşteri × 15 dk ile 4 gün için fazla büyük ve müşteri başlangıçları (sıfır dolgular) ek temizlik gerektirir. |
 | **Zaman çözünürlüğü** | Dakikalık → **saatlik** (ortalama kW = saatlik kWh) | Gürültüyü azaltır, kısa vadeli talep tahmininin pratik ölçeği; eğitim süresi makul. |
 | **Görev 1 – Tahmin** | Geçmiş **168 saat** (1 hafta) → gelecek **24 saat** (çok çıktılı, doğrudan tahmin) | Günlük ve haftalık periyodikliği yakalar; "gün öncesi" talep tahmini pratik bir senaryodur. |
 | **Görev 2 – Anomali** | **LSTM-Autoencoder** (yeniden yapılandırma hatası) + **GRU tahmin artığı** (residual) yaklaşımı | İki görevi tek bir hatta bağlar; özgün değerin bir parçası. |
@@ -524,7 +560,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 | 6 | Deneysel tasarım | İkisi | §4.6 deney tablosu |
 | 7 | Sonuçlar | İkisi | Karşılaştırma tabloları, figürler, ablasyon |
 | 8 | Hata analizi ve tartışma | İkisi | §4.12 soruları, literatürle kıyas (koşul farklarıyla) |
-| 9 | Sınırlılıklar ve gelecek çalışmalar | İkisi | Tek hane, sentetik etiket, kış dışı test dönemi, hava durumu yok; kısa boşluk interpolasyonunda sonraki gözlem kullanılır, ancak hedefi doldurulmuş pencereler değerlendirme metriklerine alınmaz; ElectricityLoadDiagrams'a genişletme, Transformer, rolling-origin, olasılıksal tahmin |
+| 9 | Sınırlılıklar ve gelecek çalışmalar | İkisi | Tek hane, sentetik etiket, kış dışı test dönemi, hava durumu yok; kısa boşluk interpolasyonunda sonraki gözlem kullanılır, ancak hedefi doldurulmuş pencereler değerlendirme metriklerine alınmaz; ElectricityLoadDiagrams ek deneyi (`docs/hane_vs_sebeke.md`), Transformer, rolling-origin, olasılıksal tahmin |
 | 10 | Sonuç | İkisi | Hipotezlerin kabul/red durumu |
 | — | Kaynakça (IEEE), Ekler (kod deposu bağlantısı, ek figürler) | | |
 
