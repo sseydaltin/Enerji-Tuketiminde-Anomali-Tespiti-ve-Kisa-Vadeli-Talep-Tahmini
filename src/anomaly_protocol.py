@@ -32,13 +32,14 @@ from src.evaluate_anomaly import (
     fit_detectors,
     make_runs,
     paired_differences,
+    smooth_scores,
     score_frame,
     summarize,
     valid_hours,
     with_context,
 )
-from src.models.residual_detector import combine_predictions, residual_std_table
-from src.utils.anomaly_metrics import evaluate_threshold, event_f1_max_threshold
+from src.models.residual_detector import combine_predictions, one_step_predictions, residual_std_table
+from src.utils.anomaly_metrics import evaluate_threshold, event_f1_max_threshold, runs
 from src.utils.console import setup_console
 from src.utils.results_io import resolve_path, upsert_csv
 from src.utils.seed import set_seed
@@ -261,6 +262,67 @@ def save_event_f1_figure(summaries, final, figures_dir):
     plt.close(figure)
 
 
+def top_clean_events(splits, config, fitted, device, combination, method, window, threshold, k=10):
+    """Enjeksiyonsuz test verisinde final yöntemin en yüksek skorlu k alarm bloğu.
+
+    Çıktı: [başlangıç, bitiş, süre (saat), en yüksek skor, gerçek ve h=1 tahmini
+    ortalama kW, gün adı, tatil] tablosu. Neden: Gerçek etiket yok; bu bloklar
+    nitel olarak incelenir (açıklamalar hipotezdir, doğrulanmış değildir).
+    """
+    target = config["preprocess"]["target"]
+    test = splits["test"]
+    scores = score_frame(with_context(splits, "test", test, config), config, fitted, device)
+    add_combinations(scores, combination)
+    smoothed = smooth_scores(scores[[method]], window)[method].loc[test.index]
+    model, checkpoint = fitted["forecasters"][config["anomaly"]["residual"]["seq2seq"]]
+    predicted = one_step_predictions(model, checkpoint, with_context(splits, "test", test, config),
+                                     device).loc[test.index]
+    flagged = (smoothed >= threshold).to_numpy() & (test["is_imputed"].to_numpy() == 0)
+    rows = []
+    for start, end in runs(flagged):
+        hours = test.index[start:end]
+        rows.append({
+            "start": hours[0], "end": hours[-1], "hours": end - start,
+            "max_score": smoothed.iloc[start:end].max(),
+            "actual_kw_mean": test[target].iloc[start:end].mean(),
+            "predicted_h1_kw_mean": predicted.iloc[start:end].mean(),
+            "weekday": hours[0].day_name(), "is_holiday": int(test["is_holiday"].iloc[start:end].max()),
+        })
+    table = pd.DataFrame(rows).sort_values("max_score", ascending=False)
+    return table.head(k).reset_index(drop=True), len(table)
+
+
+def run_test(splits, config, fitted, device, combination, sigma_table, tables_dir):
+    """Final değerlendirme: pencere, eşik ve final yöntem val_dev tablosundan; test'te seçim yok."""
+    chosen = pd.read_csv(tables_dir / "anomaly_protocol_selection.csv")
+    windows = dict(zip(chosen["method"], chosen["smooth"].astype(int)))
+    thresholds = dict(zip(chosen["method"], chosen["threshold"]))
+    final = chosen.loc[chosen["final"], "method"].iloc[0]
+    results, paired_rows = [], []
+    for scenario in ("main", "hard"):
+        outputs = score_copies(splits, config, "test", scenario, fitted, device,
+                               combination, sigma_table)
+        table = apply_fixed(outputs, windows, thresholds, "test", scenario)
+        results.append(table)
+        paired = paired_differences(table, "A0", metrics=("event_f1", "f1", "pr_auc", "event_recall"),
+                                    rule=RULE)
+        paired_rows.append(paired.assign(split="test", scenario=scenario))
+    per_seed = pd.concat(results, ignore_index=True)
+    per_seed.to_csv(tables_dir / "anomaly_protocol_test_per_seed.csv", index=False)
+    summary = summarize(per_seed, ("split", "scenario", "method", "rule", "smooth"))
+    summary["final"] = summary["method"] == final
+    summary.to_csv(tables_dir / "anomaly_protocol_test.csv", index=False)
+    pd.concat(paired_rows, ignore_index=True).to_csv(
+        tables_dir / "anomaly_protocol_test_paired_vs_A0.csv", index=False)
+    events, n_blocks = top_clean_events(splits, config, fitted, device, combination, final,
+                                        windows[final], thresholds[final])
+    events.to_csv(tables_dir / "anomaly_test_top_events_clean.csv", index=False)
+    print(summary[["scenario", "method", "final", "event_f1_mean", "event_f1_std", "f1_mean",
+                   "pr_auc_mean"]].round(3).to_string(index=False))
+    print(f"\nEnjeksiyonsuz testte {final} alarm bloğu: {n_blocks}")
+    print(events.round(3).to_string(index=False))
+
+
 def main():
     """Varsayılan: val_dev seçimi + val_hold ölçümü. --split test yalnız final değerlendirmede."""
     setup_console()
@@ -286,21 +348,7 @@ def main():
                                   protocol["combination_components"], reference_split="val_dev")
 
     if args.split == "test":
-        # Final değerlendirme: pencere, eşik ve final yöntem val_dev tablosundan; seçim yok.
-        chosen = pd.read_csv(tables_dir / "anomaly_protocol_selection.csv")
-        windows = dict(zip(chosen["method"], chosen["smooth"].astype(int)))
-        thresholds = dict(zip(chosen["method"], chosen["threshold"]))
-        results = []
-        for scenario in ("main", "hard"):
-            outputs = score_copies(splits, config, "test", scenario, fitted, device,
-                                   combination, sigma_table)
-            results.append(apply_fixed(outputs, windows, thresholds, "test", scenario))
-        per_seed = pd.concat(results, ignore_index=True)
-        per_seed.to_csv(tables_dir / "anomaly_protocol_test_per_seed.csv", index=False)
-        summary = summarize(per_seed, ("split", "scenario", "method", "rule", "smooth"))
-        summary.to_csv(tables_dir / "anomaly_protocol_test.csv", index=False)
-        print(summary[["scenario", "method", "event_f1_mean", "f1_mean", "pr_auc_mean"]]
-              .round(3).to_string(index=False))
+        run_test(splits, config, fitted, device, combination, sigma_table, tables_dir)
         return
 
     # 1. Std karşılaştırması (train; in-sample vs OOF).

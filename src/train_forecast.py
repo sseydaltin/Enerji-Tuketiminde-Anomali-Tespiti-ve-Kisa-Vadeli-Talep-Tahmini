@@ -107,7 +107,7 @@ def build_future_calendar(frame, target_positions, calendar):
     return frame[calendar].to_numpy(dtype=np.float32)[target_positions]
 
 
-def prepare_forecast_data(df, config):
+def prepare_forecast_data(df, config, eval_split="val"):
     """Train/val pencerelerini train-fit ölçekleyicilerle hazırlar.
 
     Girdi: saatlik [zaman, özellik] DataFrame ve proje config'i.
@@ -116,11 +116,15 @@ def prepare_forecast_data(df, config):
     hedefte y_SN168, değilse 0), isteğe bağlı gelecek öznitelikleri
     F [örnek, ufuk, k], ölçekleyiciler ve özellik adları.
     Neden: Val girdisi train sonundaki geçmişi kullanabilir; val hedefleri val'de
-    kalır. Test kümesine pencere veya metrik üretilmez.
+    kalır. eval_split="test" YALNIZ final değerlendirmede (src/evaluate_forecast.py)
+    kullanılır: "val_*" anahtarları o zaman test pencerelerini taşır, girdi geçmişi
+    val'in sonundan gelir; ölçekleyiciler yine yalnız train'e fit edilir.
     """
     split_frames = chronological_split(df, config)
     train_frame = split_frames["train"]
-    val_frame = split_frames["val"]
+    val_frame = split_frames[eval_split]
+    # Değerlendirme pencerelerinin geçmiş bağlamı: kümeden hemen önceki saatler.
+    history = train_frame if eval_split == "val" else pd.concat((train_frame, split_frames["val"]))
     features = get_feature_columns(config)
     target = config["preprocess"]["target"]
     forecast = config["forecast"]
@@ -149,7 +153,7 @@ def prepare_forecast_data(df, config):
         train_scaled[column] = train_feature_values[:, column_index]
     # Val girdisi ve haftalık gecikme için train sonundan yeterli geçmiş alınır.
     val_context = pd.concat(
-        (train_frame.tail(max(forecast["lookback"], season)), val_frame)
+        (history.tail(max(forecast["lookback"], season)), val_frame)
     )
     val_scaled = val_context.copy()
     val_feature_values = feature_scaler.transform(val_context[features])

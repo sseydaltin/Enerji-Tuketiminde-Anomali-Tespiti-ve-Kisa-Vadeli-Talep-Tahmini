@@ -18,6 +18,24 @@ def xgboost_lags(config):
     return [lag for lag in config["forecast"]["xgboost"]["lags"] if lag <= lookback]
 
 
+def make_xgboost(settings, seed):
+    """Config ayarlarıyla (CPU, hist, early stopping val MAE) XGBRegressor kurar."""
+    # Bu makinede XGBoost GPU'yu göremiyor (PyTorch görüyor); sessizce CPU'ya
+    # düşüp yanlış cihaz kaydetmemek için XGBoost açıkça CPU'da çalıştırılır.
+    return XGBRegressor(
+        n_estimators=settings["n_estimators"],
+        learning_rate=settings["learning_rate"],
+        max_depth=settings["max_depth"],
+        subsample=settings["subsample"],
+        colsample_bytree=settings["colsample_bytree"],
+        early_stopping_rounds=settings["early_stopping_rounds"],
+        eval_metric="mae",
+        tree_method="hist",
+        device="cpu",
+        random_state=seed,
+    )
+
+
 def run_xgboost(df, config, exp_id="F12", device_preference="cpu"):
     """XGBoost'u train'de eğitir; early stopping ve değerlendirme val'de.
 
@@ -46,21 +64,8 @@ def run_xgboost(df, config, exp_id="F12", device_preference="cpu"):
     design_train = ridge_design_matrix(X_train, lags, use_calendar=True)
     design_val = ridge_design_matrix(X_val, lags, use_calendar=True)
 
-    # Bu makinede XGBoost GPU'yu göremiyor (PyTorch görüyor); sessizce CPU'ya
-    # düşüp yanlış cihaz kaydetmemek için XGBoost açıkça CPU'da çalıştırılır.
     device = "cpu"
-    model = XGBRegressor(
-        n_estimators=settings["n_estimators"],
-        learning_rate=settings["learning_rate"],
-        max_depth=settings["max_depth"],
-        subsample=settings["subsample"],
-        colsample_bytree=settings["colsample_bytree"],
-        early_stopping_rounds=settings["early_stopping_rounds"],
-        eval_metric="mae",
-        tree_method="hist",
-        device=device,
-        random_state=config["seed"],
-    )
+    model = make_xgboost(settings, config["seed"])
     start_time = time.perf_counter()
     # 24 çıktılı tek model; her boosting turu her ufuk için bir ağaç ekler.
     model.fit(design_train, y_train, eval_set=[(design_val, y_val)], verbose=False)

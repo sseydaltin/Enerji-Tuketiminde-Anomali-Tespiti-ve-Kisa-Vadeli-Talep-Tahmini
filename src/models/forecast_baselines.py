@@ -22,7 +22,7 @@ from src.utils.seed import set_seed
 
 
 def build_train_val_windows(
-    splits, target, lookback, horizon, exclude_imputed, features=None,
+    splits, target, lookback, horizon, exclude_imputed, features=None, eval_split="val",
 ):
     """Train ve val için sınırları aşmayan tahmin pencereleri hazırlar.
 
@@ -37,7 +37,9 @@ def build_train_val_windows(
     if features[0] != target:
         raise ValueError("İlk öznitelik hedef olmalı (gecikmeler ondan alınır).")
     train_frame = splits["train"]
-    val_frame = pd.concat((train_frame, splits["val"]))
+    # eval_split="test" yalnız final değerlendirmede: geçmiş train + val'den gelir.
+    history = train_frame if eval_split == "val" else pd.concat((train_frame, splits["val"]))
+    val_frame = pd.concat((history, splits[eval_split]))
 
     train_windows = make_windows(
         train_frame,
@@ -53,8 +55,8 @@ def build_train_val_windows(
         features,
         lookback,
         horizon,
-        target_start=splits["val"].index.min(),
-        target_end=splits["val"].index.max(),
+        target_start=splits[eval_split].index.min(),
+        target_end=splits[eval_split].index.max(),
         exclude_imputed=exclude_imputed,
     )
 
