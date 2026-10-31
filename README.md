@@ -323,12 +323,14 @@ Hem doğrulama (seed=1) hem test (seed=2) kümesinin **kopyasına**, saatlerin ~
 
 - Etiketler saat düzeyinde (0/1). Enjeksiyon **ölçeklemeden önce ham kW** üzerinde yapılır; ölçekleyici yine eğitimden gelir.
 - **Eşik doğrulama kümesinde seçilir**, test kümesine aynen uygulanır (sızıntı yok).
+- **Çok seed'li val protokolü (A-1):** val'e 5 ayrı kopyada seed ∈ {1, 11, 21, 31, 41} ile enjeksiyon yapılır; her yöntemin tek eşiği 5 kopyanın birleşiminde F1-max ile seçilir, metrikler kopya başına hesaplanıp ortalama ± std verilir. Test tek kopyadır (seed=2).
+- **Olay bazlı metrikler:** bir olay (aynı tipten ardışık etiketli saatler) en az bir saati işaretlenince yakalanmış sayılır (olay recall'ü); olay precision'ı = gerçek bir anomaliyle kesişen alarm bloklarının oranı. Bu kural yalnız olay metriklerinde kullanılır; nokta metriklerine *point-adjust* (yakalanan olayın tüm saatlerini doğru saymak) uygulanmaz, çünkü point-adjust rastgele skorlara bile yüksek F1 verebildiği için eleştirilmektedir (Kim vd., AAAI 2022 – kaynak doğrulanmalı).
 - Raporlanan: Precision, Recall, F1, ROC-AUC, PR-AUC (dengesiz sınıf → PR-AUC daha bilgilendirici), karmaşıklık matrisi, **tip bazında recall**.
 - Ek nitel analiz: enjeksiyonsuz test verisinde en yüksek skorlu 10 olay → gerçekte ne olmuş olabilir (tatil, ev boş, mevsim geçişi)?
 
 ### 4.10 Metrikler ve neden
 - **Tahmin:** MAE (kW, yorumlanması kolay), RMSE (büyük hataları cezalandırır, tepe talep için önemli), R², **MAPE** (sıfıra yakın değerlerde patlar → yalnız `y > 0.1 kW` için hesaplanır veya **sMAPE** ile desteklenir; bunu açıklayın). Ufka göre (h=1…24) MAE eğrisi.
-- **Anomali:** Precision (yanlış alarm maliyeti), Recall (kaçırılan anomali maliyeti), F1, ROC-AUC, PR-AUC, karmaşıklık matrisi.
+- **Anomali:** Precision (yanlış alarm maliyeti), Recall (kaçırılan anomali maliyeti), F1, ROC-AUC, PR-AUC, karmaşıklık matrisi. Ek olarak olay bazlı recall/precision (§4.9); val'de 5 enjeksiyon seed'inin ortalaması ± std.
 - Yönerge §11: yalnız tek metrik raporlanmaz; sınıf dengesizliğinin etkisi tartışılır.
 
 ### 4.11 Figür listesi (her figürde eksen adı + birim + model adı + **hangi küme** olduğu yazılı)

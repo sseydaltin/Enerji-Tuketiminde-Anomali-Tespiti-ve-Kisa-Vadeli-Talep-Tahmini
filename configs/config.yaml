@@ -116,7 +116,8 @@ anomaly:
 # Ham kW üzerinde, ayrı kopyada. Orijinal veri asla değiştirilmez.
 # ---------------------------------------------------------------------
 injection:
-  val_seed: 1
+  val_seed: 1                          # tek seed'li eski protokol (geriye dönük kayıt için)
+  val_seeds: [1, 11, 21, 31, 41]       # A-1: val 5 enjeksiyon; metrikler ortalama ± std
   test_seed: 2
   target_ratio: 0.025                  # saatlerin ~%2-3'ü etkilenir (bu orana ulaşınca durulur)
   max_ratio: 0.03                      # üst sınır; bunu aşacak segment eklenmez

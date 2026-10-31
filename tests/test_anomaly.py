@@ -11,7 +11,7 @@ from src.evaluate_anomaly import evaluate_split
 from src.models.anomaly_baselines import rolling_zscore, window_features
 from src.models.autoencoder import LSTMAutoencoder, make_windows, point_scores
 from src.train_autoencoder import clean_windows
-from src.utils.anomaly_metrics import evaluate_threshold, f1_max_threshold
+from src.utils.anomaly_metrics import evaluate_threshold, event_metrics, f1_max_threshold, runs
 
 
 def make_frame(days=120, seed=0):
@@ -149,12 +149,47 @@ def test_f1_max_threshold_and_type_recall():
     assert result["pr_auc"] == pytest.approx(1.0)
 
 
+def make_run(seed, scores, labels):
+    """evaluate_split'in beklediği tek kopya sözlüğü (doldurulmuş saat yok)."""
+    return {"seed": seed, "scores": scores, "labels": labels,
+            "imputed": np.zeros(len(labels), dtype=bool)}
+
+
 def test_test_split_reuses_val_thresholds_without_selecting_new_ones():
     config = load_config()
     labels = pd.DataFrame({"is_anomaly": [0, 1, 0, 1], "anomaly_type": ["none", "spike", "none", "drop"]})
     scores = pd.DataFrame({"A0": [0.1, 0.9, 0.2, 0.4]})
     val_thresholds = pd.DataFrame({"method": ["A0"], "rule": ["f1max"], "threshold": [0.5]})
 
-    result = evaluate_split(scores, labels, np.zeros(4, dtype=bool), "test", config, val_thresholds)
+    result = evaluate_split([make_run(2, scores, labels)], "test", config, val_thresholds)
     assert result["threshold"].tolist() == [0.5]          # val eşiği aynen
     assert result.loc[0, "recall"] == pytest.approx(0.5)  # 0.4 < 0.5 kaçırıldı
+
+
+def test_val_threshold_is_pooled_over_injection_seeds():
+    config = load_config()
+    labels = pd.DataFrame({"is_anomaly": [0, 1, 0, 0], "anomaly_type": ["none", "spike", "none", "none"]})
+    run_a = make_run(1, pd.DataFrame({"A0": [0.1, 0.9, 0.2, 0.3]}), labels)
+    run_b = make_run(11, pd.DataFrame({"A0": [0.1, 0.5, 0.6, 0.2]}), labels)
+
+    result = evaluate_split([run_a, run_b], "val", config)
+    f1max = result[result["rule"] == "f1max"]
+    assert f1max["seed"].tolist() == [1, 11]
+    assert f1max["threshold"].nunique() == 1              # her yöntemin TEK eşiği
+    assert result["threshold"].nunique() == 1 + len(config["anomaly"]["threshold_percentiles"])
+
+
+def test_event_metrics_count_an_event_if_any_hour_is_flagged():
+    assert runs(np.array([0, 1, 1, 0, 1])) == [(1, 3), (4, 5)]
+    types = np.array(["none", "level_shift", "level_shift", "level_shift", "none",
+                      "drop", "drop", "none", "none", "none"])
+    predicted = np.array([0, 0, 1, 0, 0, 0, 0, 0, 1, 1], dtype=bool)
+
+    result = event_metrics(types, predicted)
+    assert result["n_events"] == 2
+    assert result["event_recall"] == pytest.approx(0.5)            # seviye kayması yakalandı, drop kaçtı
+    assert result["event_recall_level_shift"] == 1.0 and result["event_recall_drop"] == 0.0
+    assert result["event_precision"] == pytest.approx(0.5)         # 2 tahmin bloğundan 1'i doğru
+    # Nokta recall'ü olay recall'ünden düşük: 5 anomali saatinden 1'i işaretli.
+    point = evaluate_threshold((types != "none").astype(int), predicted.astype(float), types, 0.5)
+    assert point["recall"] == pytest.approx(0.2)
