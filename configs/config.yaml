@@ -52,8 +52,31 @@ split:
 features:
   calendar: [hour_sin, hour_cos, dow_sin, dow_cos, month_sin, month_cos, is_weekend, is_holiday]
   extra: [Sub_metering_1, Sub_metering_2, Sub_metering_3, other_energy, Voltage, Global_reactive_power]
-  # A = yalnız hedef, B = A + calendar, C = B + extra
+  # Aşama 3b: hava öznitelikleri (src/data/weather.py ile eklenir)
+  weather: [temperature_2m, relative_humidity_2m, cloud_cover, precipitation,
+            heating_degree_hours, cooling_degree_hours]
+  # A = yalnız hedef, B = A + calendar, C = B + extra,
+  # W1 = B + weather (yalnız encoder/geçmiş), W2 = W1 + hedef saatlerin GERÇEK havası
+  # seq2seq decoder'ında (ORACLE / üst sınır, gerçekte bilinemez)
   default_set: B
+
+# ---------------------------------------------------------------------
+# Hava durumu (Aşama 3b). Open-Meteo Historical Weather API, ERA5 yeniden analizi.
+# Lisans: CC BY 4.0 (atıf gerekli; README §2). API UTC döndürür; veri seti
+# Europe/Paris yerel saatindedir (yaz saatli) → hizalama src/data/weather.py.
+# ---------------------------------------------------------------------
+weather:
+  file: data/raw/weather_sceaux.csv
+  url: https://archive-api.open-meteo.com/v1/archive
+  latitude: 48.78                     # Sceaux (API en yakın ERA5 hücresini döndürür)
+  longitude: 2.29
+  model: era5
+  start_date: "2006-12-15"            # UTC; yerel 2006-12-16 00:00 = UTC 2006-12-15 23:00
+  end_date: "2010-11-27"
+  local_timezone: Europe/Paris
+  variables: [temperature_2m, relative_humidity_2m, cloud_cover, precipitation]
+  heating_base_c: 18                  # ısıtma derece-saati = max(0, 18 − T)
+  cooling_base_c: 24                  # soğutma derece-saati = max(0, T − 24)
 
 # ---------------------------------------------------------------------
 # Tahmin (README §4.5, §4.7)

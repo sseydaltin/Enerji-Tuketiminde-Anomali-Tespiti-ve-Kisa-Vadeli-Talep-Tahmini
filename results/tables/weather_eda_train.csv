@@ -1,0 +1,2 @@
+split,days,pearson_kwh_temperature,spearman_kwh_temperature,pearson_kwh_hdh,slope_kwh_per_c,days_with_cdh,temperature_min,temperature_max
+train,1007,-0.5705056607660185,-0.6265975678733002,0.5605599495295618,-0.970563120546505,125,-6.841666666666666,25.816666666666666

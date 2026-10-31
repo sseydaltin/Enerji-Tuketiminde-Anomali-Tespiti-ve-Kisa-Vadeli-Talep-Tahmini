@@ -141,9 +141,14 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 - Sütunlar: `Date`, `Time`, `Global_active_power` (kW), `Global_reactive_power` (kW), `Voltage` (V), `Global_intensity` (A), `Sub_metering_1` (mutfak, Wh), `Sub_metering_2` (çamaşır odası, Wh), `Sub_metering_3` (su ısıtıcı + klima, Wh).
 - Türetilen: `other_energy = Global_active_power*1000/60 − Sub_1 − Sub_2 − Sub_3` (alt sayaçlarca ölçülmeyen aktif enerji, Wh/dk).
 - Lisans: CC BY 4.0 → raporda kaynak gösterilecek (Yönerge §5).
+
+**Hava durumu verisi (Aşama 3b):** Open-Meteo Historical Weather API (`archive-api.open-meteo.com`), ERA5 yeniden analizi; Sceaux (enlem 48,78, boylam 2,29 → en yakın ERA5 hücresi 48,75 / 2,25), saatlik `temperature_2m`, `relative_humidity_2m`, `cloud_cover`, `precipitation`. İndirme ve hizalama: `python -m src.data.weather` → `data/raw/weather_sceaux.csv` (git'e girmez, betikle yeniden üretilir).
+- Lisans: Open-Meteo verisi **CC BY 4.0**; atıf zorunlu: "Weather data by Open-Meteo.com" (https://open-meteo.com/). ERA5 için Copernicus Climate Change Service (C3S) atfı da verilmeli; tam ERA5 künyesi (Hersbach vd., 2020) raporda kullanılmadan önce **doğrulanmalı**.
+- Saat dilimi: API'den UTC istenir; UCI veri seti Europe/Paris **yerel saatinde (yaz saatli)** — her ilkbahar geçişinde var olmayan 02:xx saati 03:xx'in kopyasıdır. Hizalama ve kurallar `src/data/weather.py` ve `tests/test_weather.py`'de.
+- Türetilen: ısıtma derece-saati `max(0, 18 − T)`, soğutma derece-saati `max(0, T − 24)`.
 - ⚠️ Yukarıdaki sayıları raporda kullanmadan önce **kendi EDA çıktınızla doğrulayın**; rapordaki her sayı kodunuzdan gelmeli.
 
-**Neden bu veri seti uygun (Yönerge §5 kriterleri):** probleme uygunluk (gerçek konut tüketimi), yeterli miktar (saatlikte ~34 bin örnek), kalite sorunları bilinir ve yönetilebilir, zamansal bölmeye uygun, LSTM/GRU giriş yapısına uygun, donanımla gerçekleştirilebilir. **Sınırlılıklar:** tek hane (genellenebilirlik düşük), gerçek anomali etiketi yok, hava durumu verisi yok.
+**Neden bu veri seti uygun (Yönerge §5 kriterleri):** probleme uygunluk (gerçek konut tüketimi), yeterli miktar (saatlikte ~34 bin örnek), kalite sorunları bilinir ve yönetilebilir, zamansal bölmeye uygun, LSTM/GRU giriş yapısına uygun, donanımla gerçekleştirilebilir. **Sınırlılıklar:** tek hane (genellenebilirlik düşük), gerçek anomali etiketi yok, hava durumu veri setinde yok (Aşama 3b'de Open-Meteo'dan eklendi; ERA5 noktasal ölçüm değil, ~25 km'lik hücre ortalaması).
 
 ### 4.2 EDA kontrol listesi (Yönerge §6)
 - [ ] Satır sayısı, tarih aralığı, örnekleme aralığı tutarlılığı (eksik dakikalar var mı?)
@@ -215,6 +220,7 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | 3 | Mimariler: LSTM, GRU, seq2seq LSTM, CNN-LSTM, XGBoost; lookback {48, 168, 336} (F8) | — |
 | 4 | Optuna: en iyi 2 model için 20'şer deneme; seçim kriteri train'in son 12 ayında 3 katlı zamansal çapraz doğrulama MAE'si; val yalnız seçilen konfigürasyonu doğrular | — |
 | 5 | En iyi 3 modelin ağırlıklı ortalaması (ağırlıklar val'de ızgarayla); en iyi tekil model ve topluluk için 3 seed (F9) | — |
+| 3b | Hava durumu öznitelikleri (Open-Meteo ERA5; §4.1): **W1** = B + geçmiş hava (yalnız encoder, ana deney); **W2** = W1 + hedef saatlerin *gerçek* havası seq2seq decoder'ında — **oracle / üst sınır, gerçekte bilinemez**, model seçiminde kullanılmaz. F10-opt ve F5-opt Optuna parametreleriyle, 3 seed. Sonuç: W1 katkı sağlamadı (seq2seq fark seed std'si içinde, LSTM'de hafif zarar), W2 aşırı öğrendi; tablo `results/tables/weather_val_summary.md` | `-W1`, `-W2` |
 | ↳ | Aşama 1–5 özeti ve val sonuçları: `docs/tahmin_deneyleri_ozet.md` (sayılar `results/` dosyalarından) | — |
 | 6 | Final betiği: train+val üzerinde val'de bulunan epoch sayısıyla yeniden eğitim, test'te tek değerlendirme (yalnız açık onayla çalıştırılır) | — |
 
@@ -397,6 +403,9 @@ python -m src.train_forecast --model ridge --grid        # alpha ızgarası (F3-
 python -m src.train_forecast --model mlp --grid          # gizli katman ızgarası (F4-torch-*)
 python -m src.train_forecast --model gru --exp F6 [--feature_set B] [--lookback 168] [--seed 42] [--device cuda|cpu]
 python -m src.verify_forecast_eval       # tüm modeller aynı val pencereleri/kuralları mı?
+python -m src.data.weather                # Open-Meteo ERA5 indir + yerel saate hizala
+python -m src.weather_eda                 # sıcaklık – günlük tüketim (yalnız train)
+python -m src.train_forecast --model seq2seq --config configs/optuna_seq2seq_best.yaml --feature_set W1 --exp F10-opt-W1
 python -m src.analyze_forecast_errors --exp F3-a0.1 F5 F6   # saat, düzey, ufuk analizi
 python -m src.train_autoencoder --exp A2
 python -m src.models.baselines          # yalnız val

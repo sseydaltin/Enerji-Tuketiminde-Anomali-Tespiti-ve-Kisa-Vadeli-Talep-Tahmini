@@ -16,6 +16,7 @@ from torch import nn
 
 from src.data.load import PROJECT_ROOT, load_config
 from src.data.split import chronological_split
+from src.data.weather import load_weather_frame
 from src.data.windows import get_feature_columns, make_windows
 from src.models.cnn_lstm import CNNLSTMForecaster
 from src.models.forecast_baselines import run_ridge
@@ -128,6 +129,9 @@ def prepare_forecast_data(df, config):
     use_future = forecast.get("future_features", False)
     use_residual = forecast.get("residual_target", False)
     decoder_calendar = forecast.get("decoder_calendar", False)
+    decoder_weather = forecast.get("decoder_weather", False)
+    if decoder_weather and not decoder_calendar:
+        raise ValueError("decoder_weather (W2) yalnız seq2seq decoder'ı ile kullanılır.")
     if use_future and decoder_calendar:
         raise ValueError("future_features ve decoder_calendar birlikte kullanılmaz.")
     if (use_future or use_residual) and season < horizon:
@@ -227,6 +231,19 @@ def prepare_forecast_data(df, config):
         # val_positions + season = hedef saatlerin kendi satır konumları.
         future_train = build_future_calendar(train_frame, train_positions + season, calendar)
         future_val = build_future_calendar(val_context, val_positions + season, calendar)
+    if decoder_weather:
+        # W2 – ORACLE / ÜST SINIR: hedef saatlerin GERÇEK havası decoder'a verilir.
+        # Gerçekte bilinemez (mükemmel hava tahmini varsayımı); bilinçli sızıntı
+        # istisnasıdır ve ana model seçiminde kullanılmaz. Ölçek: train-fit scaler.
+        weather = config["features"]["weather"]
+        train_weather = train_scaled[weather].to_numpy(dtype=np.float32)
+        val_weather = val_scaled[weather].to_numpy(dtype=np.float32)
+        future_train = np.concatenate(
+            (future_train, train_weather[train_positions + season]), axis=2
+        )
+        future_val = np.concatenate(
+            (future_val, val_weather[val_positions + season]), axis=2
+        )
     return {
         "X_train": train_X,
         "y_train": train_y,
@@ -358,10 +375,15 @@ def fit_forecaster(df, config, model_name, device_preference="auto", label="fit"
     Optuna'nın train içi çapraz doğrulamasında (split tarihleri değiştirilmiş
     config ile) kullanılır; böylece CV ile val aynı kodla ölçülür.
     """
+    oracle = config["features"]["default_set"] == "W2"
+    if oracle and model_name != "seq2seq":
+        raise ValueError("W2 (oracle hava) yalnız seq2seq ile tanımlı.")
     if model_name == "seq2seq":
-        # Decoder'ın girdisi hedef saatlerin takvimidir (mimarinin parçası).
+        # Decoder'ın girdisi hedef saatlerin takvimidir (mimarinin parçası);
+        # W2'de buna hedef saatlerin gerçek havası eklenir (oracle).
         config = deepcopy(config)
         config["forecast"]["decoder_calendar"] = True
+        config["forecast"]["decoder_weather"] = oracle
     set_seed(config["seed"])
     torch.set_num_threads(min(torch.get_num_threads(), 4))
 
@@ -539,15 +561,22 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
         tables_dir / f"{exp_id}_training_history.csv", index=False
     )
     model_label = MODEL_LABELS.get(model_name, model_name.upper())
+    feature_set = config["features"]["default_set"]
+    if feature_set == "W2":
+        # Oracle sonuçları her tabloda ayırt edilebilir olmalı.
+        model_label += " [W2 ORACLE – üst sınır]"
     _save_learning_curve(history, model_label, exp_id, figures_dir)
 
-    feature_set = config["features"]["default_set"]
     if model_name == "mlp":
         hidden = "x".join(str(size) for size in forecast["mlp"]["hidden_sizes"])
         layers = len(forecast["mlp"]["hidden_sizes"])
     else:
         hidden, layers = forecast["hidden"], forecast["layers"]
-    note = (
+    oracle_note = (
+        "ORACLE/UPPER BOUND (W2): decoder sees TRUE target-hour weather, unknowable "
+        "in practice, not used for model selection; " if feature_set == "W2" else ""
+    )
+    note = oracle_note + (
         f"Direct {forecast['horizon']}-hour forecast; "
         f"features={prepared['features']}; shuffle={shuffle}; "
         f"future_features={forecast.get('future_features', False)}; "
@@ -637,7 +666,7 @@ def main():
         default="all",
     )
     parser.add_argument("--exp", default=None, help="Deney kimliği (exp_id).")
-    parser.add_argument("--feature_set", choices=("A", "B", "C"), default=None)
+    parser.add_argument("--feature_set", choices=("A", "B", "C", "W1", "W2"), default=None)
     parser.add_argument("--lookback", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--hidden_sizes", default=None, help="MLP, ör. 64,32")
@@ -664,6 +693,13 @@ def main():
 
     config = apply_cli_overrides(load_config(args.config), args)
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
+    if config["features"]["default_set"] in ("W1", "W2"):
+        # Aşama 3b: hava öznitelikleri (UTC → yerel saat hizalı). Optuna'nın
+        # ürettiği config'ler Aşama 3b'den eskidir; hava ayarları ana config'ten gelir.
+        base = load_config()
+        config.setdefault("weather", base["weather"])
+        config["features"].setdefault("weather", base["features"]["weather"])
+        df = load_weather_frame(df, config)
     summaries = []
 
     if args.grid:
