@@ -141,9 +141,14 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 - Sütunlar: `Date`, `Time`, `Global_active_power` (kW), `Global_reactive_power` (kW), `Voltage` (V), `Global_intensity` (A), `Sub_metering_1` (mutfak, Wh), `Sub_metering_2` (çamaşır odası, Wh), `Sub_metering_3` (su ısıtıcı + klima, Wh).
 - Türetilen: `other_energy = Global_active_power*1000/60 − Sub_1 − Sub_2 − Sub_3` (alt sayaçlarca ölçülmeyen aktif enerji, Wh/dk).
 - Lisans: CC BY 4.0 → raporda kaynak gösterilecek (Yönerge §5).
+
+**Hava durumu verisi (Aşama 3b):** Open-Meteo Historical Weather API (`archive-api.open-meteo.com`), ERA5 yeniden analizi; Sceaux (enlem 48,78, boylam 2,29 → en yakın ERA5 hücresi 48,75 / 2,25), saatlik `temperature_2m`, `relative_humidity_2m`, `cloud_cover`, `precipitation`. İndirme ve hizalama: `python -m src.data.weather` → `data/raw/weather_sceaux.csv` (git'e girmez, betikle yeniden üretilir).
+- Lisans: Open-Meteo verisi **CC BY 4.0**; atıf zorunlu: "Weather data by Open-Meteo.com" (https://open-meteo.com/). ERA5 için Copernicus Climate Change Service (C3S) atfı da verilmeli; tam ERA5 künyesi (Hersbach vd., 2020) raporda kullanılmadan önce **doğrulanmalı**.
+- Saat dilimi: API'den UTC istenir; UCI veri seti Europe/Paris **yerel saatinde (yaz saatli)** — her ilkbahar geçişinde var olmayan 02:xx saati 03:xx'in kopyasıdır. Hizalama ve kurallar `src/data/weather.py` ve `tests/test_weather.py`'de.
+- Türetilen: ısıtma derece-saati `max(0, 18 − T)`, soğutma derece-saati `max(0, T − 24)`.
 - ⚠️ Yukarıdaki sayıları raporda kullanmadan önce **kendi EDA çıktınızla doğrulayın**; rapordaki her sayı kodunuzdan gelmeli.
 
-**Neden bu veri seti uygun (Yönerge §5 kriterleri):** probleme uygunluk (gerçek konut tüketimi), yeterli miktar (saatlikte ~34 bin örnek), kalite sorunları bilinir ve yönetilebilir, zamansal bölmeye uygun, LSTM/GRU giriş yapısına uygun, donanımla gerçekleştirilebilir. **Sınırlılıklar:** tek hane (genellenebilirlik düşük), gerçek anomali etiketi yok, hava durumu verisi yok.
+**Neden bu veri seti uygun (Yönerge §5 kriterleri):** probleme uygunluk (gerçek konut tüketimi), yeterli miktar (saatlikte ~34 bin örnek), kalite sorunları bilinir ve yönetilebilir, zamansal bölmeye uygun, LSTM/GRU giriş yapısına uygun, donanımla gerçekleştirilebilir. **Sınırlılıklar:** tek hane (genellenebilirlik düşük), gerçek anomali etiketi yok, hava durumu veri setinde yok (Aşama 3b'de Open-Meteo'dan eklendi; ERA5 noktasal ölçüm değil, ~25 km'lik hücre ortalaması).
 
 ### 4.2 EDA kontrol listesi (Yönerge §6)
 - [ ] Satır sayısı, tarih aralığı, örnekleme aralığı tutarlılığı (eksik dakikalar var mı?)
@@ -196,83 +201,55 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | F1 | Seasonal Naive 24 s (`ŷ[t+h] = y[t+h−24]`) | Günlük periyot referansı |
 | F2 | Seasonal Naive 168 s | Haftalık periyot referansı |
 | F3 | Ridge regresyon (geçmiş 168 saat içinden config'teki lag'ler: 1–24, 48, 168) | **Klasik ML referansı** |
-| F4 | `MLPRegressor` (düzleştirilmiş pencere, 2 gizli katman) | **Daha basit sinir ağı** |
+| F4 | MLP (PyTorch; düzleştirilmiş pencere, 2 gizli katman, LSTM/GRU ile aynı eğitim döngüsü) | **Daha basit sinir ağı** |
 | F5 | **LSTM** (2 katman, son gizli durum → Linear(24)) | Ana model |
 | F6 | **GRU** (aynı yapı) | Ana model / LSTM ile karşılaştırma |
 | F7 | Ablasyon: öznitelik seti A (yalnız hedef) / B (+takvim) / C (+alt sayaçlar, voltaj, reaktif güç) | Öznitelik etkisi |
-| F8 | Lookback 48 vs 168 | Bağlam uzunluğu etkisi |
+| F8 | Lookback {48, 168, 336} | Bağlam uzunluğu etkisi |
 | F9 | En iyi model 3 seed (ortalama ± std) | Sonuçların kararlılığı |
+| F10 | Seq2seq LSTM (encoder geçmişi okur; decoder 24 adımda hedef saatlerin takvimini alır, önceki tahmini almaz) | Aşama 3 mimari karşılaştırması |
+| F11 | CNN-LSTM (Conv1d → ReLU → MaxPool(2) → LSTM → Linear(24)) | Aşama 3 mimari karşılaştırması |
+| F12 | XGBoost (F3-cal ile aynı tablo: hedef gecikmeleri + son gözlenen saatin takvimi; 24 çıktılı tek model, CPU) | Ağaç tabanlı güçlü klasik referans |
 
-#### F3/F4 baseline yöntemi ve doğrulama sonucu
+**Genişletilmiş tahmin programı (2026-10-31 kararı, yalnız val; test kümesine dokunulmaz):**
 
-- F3 Ridge, yalnızca `Global_active_power` geçmişinden config'te tanımlı 26
-  gecikmeyi (1–24, 48, 168 saat) kullanır; 24 saati tek adımda tahmin eder.
-- F4 scikit-learn `MLPRegressor`, aynı geçmiş 168 saatlik tüketim penceresini
-  düzleştirir; `[128, 64]` gizli katmanlarıyla 24 saatlik çıktı üretir.
-  Model train verisinde fit edilir; dahili rastgele validation ayırması kapalıdır.
-- İki modelin ölçekleyicileri yalnız train tüketiminden fit edilir. Eğitim
-  hedefleri train pencerelerinden, değerlendirme hedefleri yalnız val
-  pencerelerinden gelir. Doldurulmuş hedef içeren val pencereleri çıkarılır;
-  eğitim hedefleri train ölçekleyicisiyle normalize edilir ve val tahminleri
-  metriklerden önce kW ölçeğine geri çevrilir.
-- Metrikler `src/utils/metrics.py` üzerinden MAE, RMSE, MAPE* (`y > 0.1 kW`),
-  sMAPE ve R² olarak hesaplanır; ayrıca her 24 tahmin adımı için ayrı sonuç
-  yazılır. MAPE* için eşik üstü hedef yoksa değer `NaN`; sMAPE paydası sıfır
-  olan (gerçek ve tahminin ikisinin de sıfır olduğu) terim sıfır kabul edilir.
-- Çalıştırma: `python -m src.models.forecast_baselines`. Özet
-  `results/tables/baseline_results.csv`, ufuk sonuçları
-  `results/tables/forecast_horizon_metrics.csv`, deney satırları
-  `results/experiments.csv` dosyasına kaydedilir. Bu komut test kümesini
-  değerlendirmez.
+| Aşama | İçerik | exp_id örüntüsü |
+|---|---|---|
+| 1 | Ortak değerlendirme doğrulaması; PyTorch MLP ızgarası; Ridge alpha ızgarası | `F3-a*`, `F4-torch-*` |
+| 2 | Sırayla: eğitim karıştırma (shuffle) → Ridge + takvim (`F3-cal`) → bilinen gelecek öznitelikleri (her hedef saat için 168 s önceki değer + takvim) → artık hedef (y − y_SN168) → C seti. Her adımda sızıntı testi; her model bir önceki adımın en iyi ayarıyla devam eder | ek: `-sh`, `-fut`, `-res`, `-C` |
+| 3 | Mimariler: LSTM, GRU, seq2seq LSTM, CNN-LSTM, XGBoost; lookback {48, 168, 336} (F8) | — |
+| 4 | Optuna: en iyi 2 model için 20'şer deneme; seçim kriteri train'in son 12 ayında 3 katlı zamansal çapraz doğrulama MAE'si; val yalnız seçilen konfigürasyonu doğrular | — |
+| 5 | En iyi 3 modelin ağırlıklı ortalaması (ağırlıklar val'de ızgarayla); en iyi tekil model ve topluluk için 3 seed (F9) | — |
+| 3b | Hava durumu öznitelikleri (Open-Meteo ERA5; §4.1): **W1** = B + geçmiş hava (yalnız encoder, ana deney); **W2** = W1 + hedef saatlerin *gerçek* havası seq2seq decoder'ında — **oracle / üst sınır, gerçekte bilinemez**, model seçiminde kullanılmaz. F10-opt ve F5-opt Optuna parametreleriyle, 3 seed. Sonuç: W1 katkı sağlamadı (seq2seq fark seed std'si içinde, LSTM'de hafif zarar), W2 aşırı öğrendi; tablo `results/tables/weather_val_summary.md` | `-W1`, `-W2` |
+| ↳ | Aşama 1–5 özeti ve val sonuçları: `docs/tahmin_deneyleri_ozet.md` (sayılar `results/` dosyalarından) | — |
+| 6 | Final betiği: train+val üzerinde val'de bulunan epoch sayısıyla yeniden eğitim, test'te tek değerlendirme (yalnız açık onayla çalıştırılır) | — |
 
-2026-10-29 tarihinde 4.213 geçerli val penceresinde elde edilen güncel
-sonuçlar (`results/tables/baseline_results.csv`):
+#### Tahmin deneyleri: yöntem ve güncel val sonuçları
 
-| Model | Val penceresi | MAE (kW) | RMSE (kW) |
-|---|---:|---:|---:|
-| Persistence | 4.213 | 0.9598 | 1.2537 |
-| Seasonal Naive 24 | 4.213 | 0.6913 | 0.9898 |
-| Seasonal Naive 168 | 4.213 | 0.6216 | 0.9053 |
-| Ridge (F3) | 4.213 | 0.6053 | 0.8054 |
-| MLPRegressor (F4) | 4.213 | 0.5774 | 0.8098 |
+- **Tek değerlendirme kuralı:** Tüm modeller (F0–F6) aynı 4.213 val penceresinde
+  (2009-10-01 → 2010-03-31; doldurulmuş hedefli 132 pencere çıkarılmış), aynı
+  `calculate_metrics` fonksiyonuyla ve tahminler kW'a geri çevrildikten sonra
+  değerlendirilir. Sonuçlar tek yardımcı (`src/utils/results_io.py`) ile yazılır:
+  özet `results/tables/forecast_val_results.csv` (anahtar `exp_id`), ufuk metrikleri
+  `results/tables/forecast_val_horizon.csv`, tahmin dizileri
+  `results/predictions/{exp_id}_val.npz` (git'e girmez, yeniden üretilebilir).
+  `python -m src.verify_forecast_eval` bu kuralın sağlandığını kontrol eder
+  (`results/tables/eval_consistency_val.csv`).
+- **F3 Ridge:** yalnız `Global_active_power` geçmişinden 26 gecikme (1–24, 48, 168);
+  alpha `{0.1, 1, 10, 100}` ızgarasından val MAE ile seçilir (`--grid`).
+- **F4 MLP:** PyTorch `MLPForecaster` (düzleştirilmiş 168×9 pencere, ReLU + dropout);
+  LSTM/GRU ile aynı eğitim döngüsü, B öznitelikleri, optimizer, lr, early stopping,
+  scheduler ve grad clip. Gizli katmanlar `{[64,32], [128,64]}` ızgarasından val MAE
+  ile seçilir. İlk F4 koşusu (scikit-learn `MLPRegressor`, 60 iterasyonda
+  yakınsamadı) `experiments.csv`'de tarihsel satır olarak durur; kodu kaldırıldı.
+- **F5 LSTM / F6 GRU:** B öznitelikleri, 168 → 24, hidden=64, 2 katman,
+  dropout=0.2. Early stopping ve checkpoint seçimi val MAE (kW), scheduler val MSE.
+- 2026-10-31'de LSTM/GRU metriklerinin z-skoru üzerinden hesaplandığı bir hata
+  bulunup düzeltildi; PR #4'teki F5/F6 sayıları geçersizdir
+  (`docs/deney_gunlugu.md`, Olay 1).
 
-F4 `MLPRegressor` koşusu `max_iter=60` sonunda durdu; scikit-learn'in
-convergence warning'i kayıt edildi. Bu baseline'da validation ile epoch seçimi
-yoktur. Önceki prototipte kullanılan PyTorch MLP'nin değerleri bu F4
-koşusundan farklıdır; karşılaştırmada güncel, scikit-learn F4 satırı kullanılmalı.
-Test metrikleri bu aşamada hesaplanmamıştır.
-
-#### F5/F6 recurrent model eğitimi
-
-`src/train_forecast.py --model all` tek komutta F3/F4 baseline'ları ile F5
-LSTM ve F6 GRU'yu çalıştırır. Recurrent modeller config'in varsayılan B
-özellik setini, 168 saatlik girdiyi ve 24 saatlik çıktıyı kullanır; varsayılan
-hidden=64, layers=2, dropout=0.2 ayarlarıyla eğitilir. Epoch train/val MSE
-geçmişi `results/tables/F5_training_history.csv` ve
-`F6_training_history.csv` dosyalarına; öğrenme eğrileri
-`results/figures/F5_learning_curve.png` ve `F6_learning_curve.png` dosyalarına
-yazılır. Model seçimi val MAE ile yapılır; scheduler val MSE'yi izler.
-Checkpoint'ler `models/F5_best.pt` ve `models/F6_best.pt` konumuna kaydedilir.
-Ufuk bazındaki MAE, RMSE, MAPE*, sMAPE ve R² değerleri
-`results/tables/forecast_horizon_metrics.csv` içindedir. Güncel sonuçlar
-aşağıda 4.213 doldurulmamış validation penceresi üzerinden verilmiştir
-(`results/tables/baseline_results.csv`):
-
-| Model | MAE (kW) | RMSE (kW) | MAPE* (%) | sMAPE (%) | R² |
-|---|---:|---:|---:|---:|---:|
-| Ridge (F3) | 0.6053 | 0.8054 | 75.0230 | 52.2753 | 0.2208 |
-| MLPRegressor (F4) | 0.5774 | 0.8098 | 56.9711 | 50.8297 | 0.2124 |
-| LSTM (F5) | 0.5308 | 0.7354 | 79.3068 | 88.7618 | 0.4421 |
-| GRU (F6) | 0.5298 | 0.7299 | 77.2918 | 89.8308 | 0.4505 |
-
-F5, 30 epoch sonunda val MAE ile seçilen 22. epoch checkpoint'ini kullandı
-(eğitim süresi 570.4 sn). F6, 26 epoch sonunda seçilen 18. epoch
-checkpoint'ini kullandı (672.5 sn). MPS aygıtı paylaşımlı bellek ayırma
-hatası verdiğinden GRU koşusu aynı config/seed ile CPU'da tamamlandı. Bu
-donanım farkı not edilmelidir; test kümesi kullanılmadı. LSTM ve GRU öğrenme
-eğrileri ile epoch kayıpları yukarıda belirtilen PNG/CSV dosyalarındadır.
-MAPE* yalnızca gerçek hedef `0.1 kW` üstündeyken hesaplanır; ufuk adımı
-başına metrikler karşılaştırmalı tabloya ek olarak ufuk CSV'sinde bulunur.
+Güncel val sonuçlarının tamamı `results/tables/forecast_val_results.csv`
+dosyasındadır; rapor ve sunumdaki sayılar bu dosyadan alınır.
 
 **Anomali tespiti:**
 
@@ -308,8 +285,11 @@ LSTM-AE bilinçli olarak **yalnız eğitim kümesinde** ve "çoğunlukla normal"
 
 Her deney `results/experiments.csv`'ye şu sütunlarla eklenir: `exp_id, date, model, feature_set, lookback, hidden, layers, dropout, lr, batch, epochs_run, best_epoch, seed, val_mae, val_rmse, test_mae, test_rmse, train_time_s, note` (`test_*` yalnız final değerlendirmede doldurulur).
 
-### 4.8 Hiperparametre ayarı (yalnız doğrulama kümesinde)
-Küçük ve gerekçeli bir ızgara: `hidden ∈ {32, 64, 128}`, `dropout ∈ {0.1, 0.3}`, `lookback ∈ {48, 168}` (F8). Toplam ≤ 12 koşu/model. Yönerge §9: amaç çok model değil, **anlamlı** karşılaştırma.
+### 4.8 Hiperparametre ayarı
+- **Küçük ızgaralar (val MAE ile):** Ridge alpha `{0.1, 1, 10, 100}`, MLP gizli katmanlar `{[64,32], [128,64]}`, lookback `{48, 168, 336}`.
+- **Optuna (Aşama 4):** yalnız en iyi 2 model, model başına en fazla 20 deneme; arama uzayı hidden, katman sayısı, lr, batch, dropout, weight decay, kayıp (MSE/L1/Huber). Seçim kriteri eğitim kümesinin son 12 ayında 3 katlı zamansal çapraz doğrulama ortalama MAE'si; val yalnız seçilen konfigürasyonu doğrulamak için kullanılır (val'e aşırı uyumu azaltmak için).
+- **Şeffaflık:** Her denenen konfigürasyon `results/experiments.csv`'de ayrı bir satırdır (ayrı exp_id; iyileştirmeyenler silinmez). Raporda denenen konfigürasyon sayısı bu dosyadan sayılarak verilir.
+- Kapsam, README'nin ilk sürümündeki "≤ 12 koşu/model" sınırının ötesine 2026-10-31'de bilinçli olarak genişletildi (deney günlüğü). Yönerge §9 gereği her deney bir soruya cevap verir: öznitelik, hedef dönüşümü, mimari, bağlam uzunluğu, kararlılık.
 
 ### 4.9 Anomali enjeksiyonu (değerlendirme protokolü)
 Hem doğrulama (seed=1) hem test (seed=2) kümesinin **kopyasına**, saatlerin ~%2–3'ünü etkileyecek şekilde:
@@ -418,15 +398,19 @@ pytest tests/                     # kurulum testleri geçmeli
 pip install -r requirements.txt
 python -m src.data.load            # ham veriyi indir/oku
 python -m src.data.preprocess      # data/processed/hourly.parquet
-python -m src.train_forecast --model all  # Ridge + MLPRegressor + LSTM + GRU, yalnız val
-# MPS belleği yetersizse açık CPU fallback'i:
-python -m src.train_forecast --model gru --device cpu
-python -m src.train_forecast --model lstm # yalnız LSTM, yalnız val
-python -m src.train_forecast --model gru  # yalnız GRU, yalnız val
+python -m src.train_forecast --model all  # Ridge + MLP + LSTM + GRU, yalnız val
+python -m src.train_forecast --model ridge --grid        # alpha ızgarası (F3-a*)
+python -m src.train_forecast --model mlp --grid          # gizli katman ızgarası (F4-torch-*)
+python -m src.train_forecast --model gru --exp F6 [--feature_set B] [--lookback 168] [--seed 42] [--device cuda|cpu]
+python -m src.verify_forecast_eval       # tüm modeller aynı val pencereleri/kuralları mı?
+python -m src.data.weather                # Open-Meteo ERA5 indir + yerel saate hizala
+python -m src.weather_eda                 # sıcaklık – günlük tüketim (yalnız train)
+python -m src.train_forecast --model seq2seq --config configs/optuna_seq2seq_best.yaml --feature_set W1 --exp F10-opt-W1
+python -m src.analyze_forecast_errors --exp F3-a0.1 F5 F6   # saat, düzey, ufuk analizi
 python -m src.train_autoencoder --exp A2
 python -m src.models.baselines          # yalnız val
 python -m src.models.baselines --split test
-python -m src.models.forecast_baselines # Ridge + MLP, yalnız val
+python -m src.models.forecast_baselines # yalnız Ridge, yalnız val
 python -m src.evaluate_forecast --split test
 python -m src.evaluate_anomaly  --split test
 pytest tests/

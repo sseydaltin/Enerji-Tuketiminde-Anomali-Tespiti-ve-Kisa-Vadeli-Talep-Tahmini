@@ -1,0 +1,254 @@
+# Otomatik üretildi: src/tune_optuna.py --model seq2seq (en iyi CV denemesi 16). Elle düzenlemeyin.
+seed: 42
+multi_seeds:
+- 42
+- 7
+- 2026
+paths:
+  raw_dir: data/raw
+  raw_file: data/raw/household_power_consumption.txt
+  raw_url: https://archive.ics.uci.edu/static/public/235/individual+household+electric+power+consumption.zip
+  processed_file: data/processed/hourly.parquet
+  models_dir: models
+  scaler_file: models/scaler.pkl
+  results_dir: results
+  figures_dir: results/figures
+  tables_dir: results/tables
+  experiments_file: results/experiments.csv
+  predictions_dir: results/predictions
+preprocess:
+  target: Global_active_power
+  max_missing_ratio_per_hour: 0.5
+  interp_max_gap_hours: 3
+  long_gap_fill_lag_hours: 168
+  holiday_country: FR
+  log1p_target: false
+split:
+  train:
+    start: '2006-12-16'
+    end: '2009-09-30'
+  val:
+    start: '2009-10-01'
+    end: '2010-03-31'
+  test:
+    start: '2010-04-01'
+    end: '2010-11-26'
+features:
+  calendar:
+  - hour_sin
+  - hour_cos
+  - dow_sin
+  - dow_cos
+  - month_sin
+  - month_cos
+  - is_weekend
+  - is_holiday
+  extra:
+  - Sub_metering_1
+  - Sub_metering_2
+  - Sub_metering_3
+  - other_energy
+  - Voltage
+  - Global_reactive_power
+  default_set: B
+forecast:
+  lookback: 48
+  horizon: 24
+  stride: 1
+  hidden: 128
+  layers: 1
+  dropout: 0.3552602990767793
+  lr: 0.001780071422797252
+  weight_decay: 5.6635422301858856e-05
+  batch_size: 64
+  max_epochs: 60
+  early_stopping_patience: 8
+  early_stopping_monitor: val_mae
+  scheduler_factor: 0.5
+  scheduler_patience: 3
+  grad_clip: 1.0
+  loss: l1
+  shuffle_train: true
+  future_features: false
+  residual_target: false
+  season_lag: 168
+  ridge:
+    lags:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+    - 22
+    - 23
+    - 24
+    - 48
+    - 168
+    alpha: 0.1
+    alpha_grid:
+    - 0.1
+    - 1.0
+    - 10.0
+    - 100.0
+  mlp:
+    hidden_sizes:
+    - 128
+    - 64
+    hidden_grid:
+    - - 64
+      - 32
+    - - 128
+      - 64
+  cnn:
+    channels: 32
+    kernel_size: 3
+    pool: 2
+  xgboost:
+    lags:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 20
+    - 21
+    - 22
+    - 23
+    - 24
+    - 48
+    - 168
+    - 336
+    n_estimators: 1000
+    learning_rate: 0.05
+    max_depth: 6
+    subsample: 0.8
+    colsample_bytree: 0.8
+    early_stopping_rounds: 30
+  grid:
+    hidden:
+    - 32
+    - 64
+    - 128
+    dropout:
+    - 0.1
+    - 0.3
+    lookback:
+    - 48
+    - 168
+optuna:
+  n_trials: 20
+  timeout_minutes: 70
+  cv_months: 12
+  cv_folds: 3
+  cv_max_epochs: 40
+  sampler_seed: 42
+  pruner_startup_trials: 5
+  space:
+    hidden:
+    - 32
+    - 64
+    - 128
+    layers:
+    - 1
+    - 2
+    - 3
+    lr:
+    - 0.0001
+    - 0.003
+    batch_size:
+    - 32
+    - 64
+    - 128
+    dropout:
+    - 0.0
+    - 0.4
+    weight_decay:
+    - 1.0e-06
+    - 0.001
+    loss:
+    - mse
+    - l1
+    - huber
+    shuffle_train:
+    - false
+    - true
+ensemble:
+  weight_step: 0.1
+anomaly:
+  zscore_window: 168
+  ae:
+    window: 24
+    stride: 1
+    hidden: 64
+    latent: 32
+    dropout: 0.1
+    lr: 0.001
+    weight_decay: 0.0
+    batch_size: 128
+    max_epochs: 60
+    early_stopping_patience: 8
+    scheduler_factor: 0.5
+    scheduler_patience: 3
+    grad_clip: 1.0
+  threshold_percentiles:
+  - 95
+  - 99
+  - 99.5
+injection:
+  val_seed: 1
+  test_seed: 2
+  target_ratio: 0.025
+  spike:
+    min_len: 1
+    max_len: 2
+    factor_low: 2.0
+    factor_high: 4.0
+  drop:
+    min_len: 2
+    max_len: 6
+    value_kw: 0.05
+  level_shift:
+    min_len: 12
+    max_len: 48
+    factor: 1.5
+  pattern:
+    night_hours:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+evaluation:
+  mape_min_y: 0.1
+  exclude_imputed_targets: true
