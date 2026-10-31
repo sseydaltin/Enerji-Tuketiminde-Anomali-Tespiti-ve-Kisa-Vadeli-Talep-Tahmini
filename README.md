@@ -312,7 +312,7 @@ Her deney `results/experiments.csv`'ye şu sütunlarla eklenir: `exp_id, date, m
 Küçük ve gerekçeli bir ızgara: `hidden ∈ {32, 64, 128}`, `dropout ∈ {0.1, 0.3}`, `lookback ∈ {48, 168}` (F8). Toplam ≤ 12 koşu/model. Yönerge §9: amaç çok model değil, **anlamlı** karşılaştırma.
 
 ### 4.9 Anomali enjeksiyonu (değerlendirme protokolü)
-Hem doğrulama (seed=1) hem test (seed=2) kümesinin **kopyasına**, saatlerin ~%2–3'ünü etkileyecek şekilde:
+Hem doğrulama hem test kümesinin **kopyasına** (seed'ler aşağıda; ilk protokolde val seed=1, test seed=2), saatlerin ~%2–3'ünü etkileyecek şekilde:
 
 | Tip | Uygulama | Gerçek dünya karşılığı |
 |---|---|---|
@@ -327,7 +327,20 @@ Hem doğrulama (seed=1) hem test (seed=2) kümesinin **kopyasına**, saatlerin ~
 - **Skor yumuşatma (A-3):** her yöntemin skoruna yalnız geçmişe bakan hareketli ortalama (pencere 1/3/6 saat) uygulanır; pencere val'de F1-max eşiğindeki ortalama F1 ile seçilir (eşitlikte küçük pencere), test'e aynen uygulanır.
 - **Şiddet taraması (A-4):** seviye kayması ×{1,5; 2; 3} ve spike ×{2; 4; 6}; en iyi 3 yöntem, val'de seçilmiş eşik ve pencere sabit, olay recall'ü ayrı tabloda (`anomaly_val_severity.csv`); ana sonuçları değiştirmez.
 - **Çok ufuklu artık ve birleşim (A-5):** A-5a — her saat için F10-opt'un h = 1…24 ufuklu tahminlerinin (başlangıç t−h) her biri kendi train std'siyle (saat × gün) normalize edilir; skor h ∈ {1, 6, 12, 24} ortalaması, 24 ufkun ortalaması veya maksimumu. A-5b — A0 ile en iyi A3 varyantı, enjeksiyonsuz val skor dağılımına göre z-skoru veya rank (ampirik dağılım) ölçeğine getirilip ortalaması / maksimumu alınır (`anomaly_val_combination.csv`).
-- **Final yöntem seçim kuralı:** val F1 (5 seed ortalaması) en yüksek yöntem referanstır; ona karşı eşleştirilmiş seed farkının |ortalaması| ≤ std'si olan yöntemler gürültü düzeyinde sayılır ve aralarından en basit olanı seçilir (basitlik: A0 < A3 tek model h=1 < A3 çok ufuklu < A3 topluluk < birleşim). Seçim: **A3-s2s-norm** (F10-opt, |h=1 hatası| / std saat×gün, w = 3) — gerekçe `docs/deney_gunlugu.md`, A-5.
+- **A-5 seçim kuralı (yerini aşağıdaki final protokol aldı):** val F1 (5 seed ortalaması) en yüksek yöntem referanstır; ona karşı eşleştirilmiş seed farkının |ortalaması| ≤ std'si olan yöntemler gürültü düzeyinde sayılır ve aralarından en basit olanı seçilir (basitlik: A0 < A3 tek model h=1 < A3 çok ufuklu < A3 topluluk < birleşim). Seçim: **A3-s2s-norm** (F10-opt, |h=1 hatası| / std saat×gün, w = 3) — gerekçe `docs/deney_gunlugu.md`, A-5.
+- **Final protokol (test öncesi sabitlendi; ayrıntı `docs/final_test_protokolu.md`):** train/OOF → val-dev (2009-10-01 – 2009-12-31; pencere, eşik, yöntem seçimi) → val-hold (2010-01-01 – 2010-03-31; bağımsız ölçüm, hiçbir seçim yok) → test. A3'ün normalize skorunda std, tüm train ile eğitilmiş modelin train artıklarından değil, 3 katlı zamansal CV'nin **OOF (kat dışı) artıklarından** hesaplanır; skor yine tüm train ile eğitilmiş F10-opt / F13-ens ile üretilir.
+- **Anomali tanımı – iki senaryo:** anomali, o saatin **olağan oynaklığının dışında kalan sapma** olarak tanımlanır; bu yüzden ana senaryoda büyüklük, train'den saat × haftanın günü için hesaplanan tüketim std'sine (σ) göre verilir. Literatürde sentetik anomali büyüklüğünü verinin std'si cinsinden vermek yaygın bir pratiktir [KAYNAK YER TUTUCUSU – doğrulanmalı].
+
+| Tip | Ana senaryo (seçim burada) | Zor senaryo (yukarıdaki tablo, aynı eşiklerle ayrıca raporlanır) |
+|---|---|---|
+| Spike | 1–2 saat, değer + U(3, 5)·σ(saat, gün) | 1–2 saat, değer × U(2, 4) |
+| Drop | 2–6 saat, ~0,05 kW; yalnız gerçek değeri > 1,0 kW olan saatte başlar | 2–6 saat, ~0,05 kW |
+| Seviye kayması | 12–48 saat, değer × U(2; 2,5) (olay başına tek çarpan) | 12–48 saat, değer × 1,5 |
+| Desen | aynı | aynı |
+
+- **Seed'ler (yalnız enjeksiyon yerini/büyüklüğünü belirler):** ana — val-dev 1, 11, …, 91; val-hold 3, 13, …, 93; test 2, 12, 22, 32, 42. Zor — val-dev 5, 15, …, 95; val-hold 7, 17, …, 97; test 4, 14, 24, 34, 44. Test bağımsızlığı seed farkıyla değil **zaman ayrımıyla** sağlanır.
+- **Ana metrik: olay F1.** Olay recall'ü = en az bir saati işaretlenen olay oranı; olay precision'ı = gerçek bir anomaliyle örtüşen alarm segmentleri / tüm alarm segmentleri. Eşik, val-dev ana senaryonun 10 kopyasında birleşik olay F1'ini en büyük yapan değerdir (birleşik skor yüzdeliklerinde 300 noktalı ızgara); pencere ∈ {1, 3, 6} ortalama olay F1 ile seçilir. Nokta P/R/F1, PR-AUC ve ROC-AUC tabloda kalır.
+- **Final yöntem kuralı:** val-dev ana senaryoda ortalama olay F1'i en yüksek yöntem referanstır; ona karşı eşleştirilmiş seed farkının |ortalaması| ≤ std'si olan yöntemler gürültü düzeyinde sayılır ve aralarından en basiti seçilir (basitlik: A0 < A1 < A2 < A3-s2s-norm < A3-s2s-hmean < A3-ens-norm < A5-mean-z). Komut: `python -m src.anomaly_protocol` (val), final değerlendirmede `--split test`.
 - **Olay bazlı metrikler:** bir olay (aynı tipten ardışık etiketli saatler) en az bir saati işaretlenince yakalanmış sayılır (olay recall'ü); olay precision'ı = gerçek bir anomaliyle kesişen alarm bloklarının oranı. Bu kural yalnız olay metriklerinde kullanılır; nokta metriklerine *point-adjust* (yakalanan olayın tüm saatlerini doğru saymak) uygulanmaz, çünkü point-adjust rastgele skorlara bile yüksek F1 verebildiği için eleştirilmektedir (Kim vd., AAAI 2022 – kaynak doğrulanmalı).
 - Raporlanan: Precision, Recall, F1, ROC-AUC, PR-AUC (dengesiz sınıf → PR-AUC daha bilgilendirici), karmaşıklık matrisi, **tip bazında recall**.
 - Ek nitel analiz: enjeksiyonsuz test verisinde en yüksek skorlu 10 olay → gerçekte ne olmuş olabilir (tatil, ev boş, mevsim geçişi)?

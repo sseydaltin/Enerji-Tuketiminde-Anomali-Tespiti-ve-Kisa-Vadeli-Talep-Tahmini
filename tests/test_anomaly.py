@@ -326,3 +326,115 @@ def test_paired_differences_per_seed():
     })
     row = paired_differences(per_seed, "A0").iloc[0]
     assert row["f1_diff_mean"] == pytest.approx(0.1) and row["f1_n_positive"] == 2
+
+
+# ---------------------------------------------------------------- Final protokol
+
+from src.anomaly_protocol import choose_final, protocol_splits, scenario_settings
+from src.data.inject_anomalies import sigma_for, train_sigma_table
+from src.evaluate_anomaly import with_context
+from src.models.residual_detector import load_forecaster, out_of_fold_predictions
+from src.utils.anomaly_metrics import event_f1_max_threshold
+
+
+def full_period_frame():
+    """Config tarihlerini kapsayan sentetik saatlik tablo (train başından test sonuna)."""
+    index = pd.date_range("2006-12-16", "2010-11-26 23:00", freq="h")
+    rng = np.random.default_rng(0)
+    return pd.DataFrame({"Global_active_power": 1.0 + rng.random(len(index)), "is_imputed": 0},
+                        index=index)
+
+
+def test_val_dev_and_val_hold_are_disjoint_contiguous_and_hold_context_is_clean():
+    config = load_config()
+    frame = full_period_frame()
+    splits = protocol_splits(frame, config)
+    dev, hold = splits["val_dev"], splits["val_hold"]
+    assert dev.index.max() + pd.Timedelta(hours=1) == hold.index.min()     # bitişik, boşluksuz
+    assert dev.index.min() == splits["val"].index.min()
+    assert hold.index.max() == splits["val"].index.max()
+
+    injected = hold.copy()
+    injected["Global_active_power"] += 100.0                               # hold kopyası değişse de
+    full = with_context(splits, "val_hold", injected, config)
+    context = full.loc[:dev.index.max()]
+    pd.testing.assert_frame_equal(context, dev.tail(len(context)))         # bağlam = TEMİZ val_dev
+    # val_dev'in bağlamlı tablosu val_hold'a hiç uzanmaz (geleceği görmez).
+    assert with_context(splits, "val_dev", dev, config).index.max() < hold.index.min()
+
+
+def test_main_scenario_uses_train_sigma_and_hard_scenario_is_unchanged(injection_settings):
+    config = load_config()
+    frame = make_frame(days=200)
+    target = "Global_active_power"
+    sigma_table = train_sigma_table(frame, target)
+    sigma = sigma_for(frame, sigma_table)
+
+    # Zor senaryo: σ verilse de eski ayarlarla birebir aynı çıktı (A-1–A-5 yeniden üretilebilir).
+    old = inject_anomalies(frame, target, injection_settings, seed=1)
+    hard = inject_anomalies(frame, target, injection_settings, seed=1, sigma=sigma)
+    pd.testing.assert_frame_equal(old[0], hard[0])
+    pd.testing.assert_frame_equal(old[1], hard[1])
+
+    main = scenario_settings(config, "main")
+    injected, labels = inject_anomalies(frame, target, main, seed=1, sigma=sigma)
+    original = frame[target].to_numpy()
+    values = injected[target].to_numpy()
+    types = labels["anomaly_type"].to_numpy()
+    spike = types == "spike"
+    added = (values[spike] - original[spike]) / sigma[spike]
+    assert ((added >= 3.0) & (added <= 5.0)).all()
+    from src.utils.anomaly_metrics import runs as blocks
+    for kind in ("drop", "level_shift"):
+        for start, end in blocks(types == kind):
+            if kind == "drop":
+                assert original[start] > 1.0                         # yalnız > 1 kW'ta başlar
+                assert np.allclose(values[start:end], 0.05)
+            else:
+                factor = values[start:end] / original[start:end]
+                assert np.allclose(factor, factor[0]) and 2.0 <= factor[0] <= 2.5
+
+
+def test_event_f1_threshold_search_pools_copies():
+    types = np.array(["none"] * 20, dtype=object)
+    types[5:8] = "level_shift"
+    scores = np.zeros(20)
+    scores[6] = 5.0                       # olay içinde tek yüksek saat
+    scores[15] = 3.0                      # yanlış alarm
+    valid = np.ones(20, dtype=bool)
+    threshold, f1 = event_f1_max_threshold([(types, scores, valid)] * 2, np.linspace(0, 1, 101))
+    assert threshold == pytest.approx(5.0) and f1 == pytest.approx(1.0)    # 3.0'ı dışarıda bırakır
+
+
+def test_out_of_fold_predictions_use_each_fold_model_only_on_its_fold(tmp_path):
+    frame = make_frame(days=12)
+    paths = []
+    folds = [("2024-01-05", "2024-01-07"), ("2024-01-08", "2024-01-10")]
+    for k, (start, end) in enumerate(folds):
+        _, checkpoint = tiny_seq2seq_checkpoint()
+        torch.manual_seed(k + 1)                       # katlar farklı ağırlıklı
+        model = Seq2SeqForecaster(3, 2, 8, 1, 0.0)
+        checkpoint = {**checkpoint, "state_dict": model.state_dict(),
+                      "forecast": {**checkpoint["forecast"], "hidden": 8, "layers": 1,
+                                   "dropout": 0.0}, "oof_fold": {"start": start, "end": end}}
+        paths.append(tmp_path / f"m{k}.pt")
+        torch.save(checkpoint, paths[-1])
+    oof = out_of_fold_predictions(frame, paths, "cpu")
+    models = [load_forecaster(path, "cpu") for path in paths]
+    other = one_step_predictions(*models[1], frame, "cpu").loc[folds[0][0]:f"{folds[0][1]} 23:00"]
+    assert not np.allclose(oof.loc[other.index], other)    # kat 1'i kat 2 modeli tahmin etmez
+    assert oof.loc[:"2024-01-04"].isna().all() and oof.loc["2024-01-11":].isna().all()
+    for path, (start, end) in zip(paths, folds):
+        model, checkpoint = load_forecaster(path, "cpu")
+        direct = one_step_predictions(model, checkpoint, frame, "cpu")
+        np.testing.assert_allclose(oof.loc[start:f"{end} 23:00"], direct.loc[start:f"{end} 23:00"],
+                                   rtol=1e-5)
+
+
+def test_final_choice_prefers_simpler_method_within_noise():
+    per_seed = pd.DataFrame({
+        "method": ["A0"] * 3 + ["B"] * 3 + ["C"] * 3, "seed": [1, 2, 3] * 3, "rule": "evf1max",
+        "event_f1": [0.30, 0.31, 0.29, 0.33, 0.28, 0.34, 0.10, 0.12, 0.11],
+    })
+    final, best, _ = choose_final(per_seed, ["A0", "B", "C"])
+    assert best == "B" and final == "A0"               # A0 – B farkı gürültü düzeyinde

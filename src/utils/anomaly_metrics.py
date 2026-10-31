@@ -25,6 +25,40 @@ def f1_max_threshold(labels, scores):
     return float(thresholds[np.nanargmax(f1)])
 
 
+def event_f1_max_threshold(copies, quantiles):
+    """Birleşik (tüm kopyalar) olay F1'ini en büyük yapan eşiği aday ızgarasında arar.
+
+    Girdi: copies = [(types [N], scores [N], valid [N]), ...] (her biri TAM zaman
+    ekseninde bir enjekte kopya); quantiles = aday eşiklerin birleşik skor
+    dağılımındaki yüzdelikleri (0–1).
+    Çıktı: (eşik, birleşik olay F1). Tahmin kuralı `score >= eşik`.
+    Neden: Olay F1 eşiğe göre basamaklıdır ve kapalı bir çözümü yoktur; ızgara
+    araması yapılır. Birleşik: yakalanan olaylar / tüm olaylar ve doğru alarm
+    blokları / tüm bloklar kopyalar üzerinden toplanır. Eşitlikte YÜKSEK eşik
+    seçilir (daha az alarm).
+    """
+    pooled = np.concatenate([scores[valid] for _, scores, valid in copies])
+    candidates = np.unique(np.quantile(pooled, quantiles))
+    best_threshold, best_f1 = float(candidates[-1]), -1.0
+    for threshold in candidates:
+        detected = n_events = correct = n_blocks = 0.0
+        for types, scores, valid in copies:
+            with np.errstate(invalid="ignore"):
+                flagged = (scores >= threshold) & valid
+            metrics = event_metrics(types, flagged)
+            if metrics["n_events"]:                      # olaysız kopyada recall NaN'dır
+                n_events += metrics["n_events"]
+                detected += metrics["event_recall"] * metrics["n_events"]
+            n_blocks += metrics["n_pred_blocks"]
+            correct += metrics["event_precision"] * metrics["n_pred_blocks"]
+        recall = detected / n_events
+        precision = correct / n_blocks if n_blocks else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        if f1 >= best_f1:
+            best_threshold, best_f1 = float(threshold), f1
+    return best_threshold, best_f1
+
+
 def runs(mask):
     """Ardışık True bloklarını [(başlangıç, bitiş), ...] olarak döndürür (bitiş hariç).
 

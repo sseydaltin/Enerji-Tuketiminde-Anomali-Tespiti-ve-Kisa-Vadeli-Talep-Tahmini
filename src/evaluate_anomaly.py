@@ -37,6 +37,7 @@ from src.models.residual_detector import (
     multi_step_predictions,
     normalized_scores,
     one_step_predictions,
+    out_of_fold_predictions,
     residual_std_table,
 )
 from src.utils.anomaly_metrics import evaluate_threshold, f1_max_threshold
@@ -121,13 +122,16 @@ def autoencoder_scores(checkpoint_path, series, window, relative_eps, device):
     )
 
 
-def fit_detectors(splits, config, device):
+def fit_detectors(splits, config, device, std_source="in_sample"):
     """Train'e bağlı her şeyi bir kez hazırlar: Isolation Forest, tahmin modelleri, artık std'leri.
 
-    Çıktı: {"forest", "forecasters": {exp_id: (model, checkpoint)}, "std_tables": {...}}.
+    Girdi: std_source = "in_sample" (A-1–A-5: tüm train ile eğitilmiş modelin
+    train artıkları) veya "oof" (final protokol: CV katlarının kat dışı artıkları).
+    Çıktı: {"forest", "forecasters": {exp_id: (model, checkpoint)}, "std_tables",
+    "multi_std", "in_sample_std_tables"} — skorlar seçilen kaynağın tablolarını kullanır.
     Neden: A1 yalnız train'e fit edilir; A3'ün tahmin modelleri train'de eğitilmiş
-    kayıtlı ağırlıklardır; normalize skorun std tablosu yalnız train artıklarından gelir.
-    Hiçbiri val/test enjeksiyonunu görmez.
+    kayıtlı ağırlıklardır (OOF'ta da skor bu ağırlıklarla hesaplanır; OOF modelleri
+    yalnız std için). Hiçbiri val/test enjeksiyonunu görmez.
     """
     target = config["preprocess"]["target"]
     anomaly = config["anomaly"]
@@ -149,12 +153,26 @@ def fit_detectors(splits, config, device):
             train, combine_predictions(train_predictions, residual["ensemble"]), target
         ),
     }
-    # A-5a: her ufuk h için ayrı std tablosu (yalnız train artıkları).
-    model, checkpoint = forecasters[residual["seq2seq"]]
-    train_multi = multi_step_predictions(model, checkpoint, train, device)
+    in_sample_std_tables = std_tables
+    oof = None
+    if std_source == "oof":
+        # Kat checkpoint'leri: models/{ana model}-oof{k}_best.pt (yalnız std kalibrasyonu).
+        paths = {name: [models_dir / f"{name}-oof{k}_best.pt"
+                        for k in range(1, residual["oof_folds"] + 1)] for name in names}
+        oof = {name: out_of_fold_predictions(train, paths[name], device) for name in names}
+        std_tables = {
+            "A3-s2s": residual_std_table(train, oof[residual["seq2seq"]], target),
+            "A3-ens": residual_std_table(train, combine_predictions(oof, residual["ensemble"]), target),
+        }
+        train_multi = out_of_fold_predictions(train, paths[residual["seq2seq"]], device, multi=True)
+    else:
+        # A-5a: her ufuk h için ayrı std tablosu (yalnız train artıkları).
+        model, checkpoint = forecasters[residual["seq2seq"]]
+        train_multi = multi_step_predictions(model, checkpoint, train, device)
     multi_std = {h: residual_std_table(train, train_multi[h], target) for h in train_multi.columns}
     return {"forest": forest, "forecasters": forecasters, "std_tables": std_tables,
-            "multi_std": multi_std}
+            "multi_std": multi_std, "in_sample_std_tables": in_sample_std_tables,
+            "train_predictions": train_predictions, "oof_predictions": oof}
 
 
 def residual_scores(full, config, fitted, device):
@@ -202,10 +220,14 @@ def multi_horizon_scores(full, config, fitted, device):
     }
 
 
+# Her değerlendirme kümesinin geçmiş bağlamını veren (ENJEKSİYONSUZ) önceki küme.
+PREVIOUS_SPLIT = {"val": "train", "val_dev": "train", "val_hold": "val_dev", "test": "val"}
+
+
 def with_context(splits, split, frame, config):
     """Değerlendirilen kopyanın önüne bir önceki kümenin son 8 gününü (ENJEKSİYONSUZ) ekler."""
     anomaly = config["anomaly"]
-    previous = splits["train"] if split == "val" else splits["val"]
+    previous = splits[PREVIOUS_SPLIT[split]]
     context_hours = anomaly["zscore_window"] + anomaly["ae"]["window"]
     return pd.concat((previous.tail(context_hours), frame))
 
@@ -256,7 +278,7 @@ def score_frame(full, config, fitted, device):
     return scores
 
 
-def fit_combination(splits, config, fitted, device, components):
+def fit_combination(splits, config, fitted, device, components, reference_split="val"):
     """A-5b: birleşimin ölçek referansı = ENJEKSİYONSUZ val'deki ham skor dağılımı.
 
     Girdi: bileşen yöntem adları (ör. ["A0", "A3-ens-norm"]).
@@ -265,8 +287,8 @@ def fit_combination(splits, config, fitted, device, components):
     ölçekli olanı baskın yapar. Referans val'den alınır (etiket ve enjeksiyon
     yok); test'te aynı referans aynen uygulanır. Doldurulmuş saatler hariç.
     """
-    val = splits["val"]
-    clean = score_frame(with_context(splits, "val", val, config), config, fitted, device)
+    val = splits[reference_split]
+    clean = score_frame(with_context(splits, reference_split, val, config), config, fitted, device)
     clean = clean.loc[val.index][val["is_imputed"].to_numpy() == 0]
     references = {m: np.sort(clean[m].dropna().to_numpy()) for m in components}
     return {"components": list(components), "references": references}
@@ -393,14 +415,14 @@ def evaluate_smoothing(outputs, methods, config):
     return pd.concat(rows, ignore_index=True)
 
 
-def paired_differences(per_seed, reference, metrics=("f1", "pr_auc", "event_recall")):
+def paired_differences(per_seed, reference, metrics=("f1", "pr_auc", "event_recall"), rule="f1max"):
     """Her yöntem için (yöntem − referans) farkının seed'ler üzerinden ort ± std'si.
 
     Neden: Aynı seed'de iki yöntem aynı enjekte kopyayı görür; fark, kopyadan
     gelen ortak oynamayı (olayların kolay/zor yerleşimi) büyük ölçüde siler.
     n_positive = farkın pozitif olduğu seed sayısı.
     """
-    best = per_seed[per_seed["rule"] == "f1max"].set_index(["method", "seed"])
+    best = per_seed[per_seed["rule"] == rule].set_index(["method", "seed"])
     rows = []
     for method in best.index.get_level_values("method").unique():
         if method == reference:

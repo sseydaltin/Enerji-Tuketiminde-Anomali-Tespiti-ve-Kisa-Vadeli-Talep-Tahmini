@@ -115,6 +115,38 @@ def multi_step_predictions(model, checkpoint, frame, device, batch_size=1024):
     return pd.DataFrame(by_target, index=frame.index, columns=range(1, horizon + 1))
 
 
+def out_of_fold_predictions(train, fold_paths, device, multi=False):
+    """OOF tahminleri: her CV katının saatleri, YALNIZ o kattan önceki veriyle eğitilmiş modelle.
+
+    Girdi: train tablosu, kat checkpoint yolları (her biri "oof_fold" = {start,
+    end} taşır; seyda/model-fixes src/train_oof.py), cihaz, multi=True ise 24 ufuk.
+    Çıktı: train indeksli Series (h=1) veya [T, 24] DataFrame; kat dışı saatler NaN.
+    Neden: Tüm train ile eğitilmiş modelin train artıkları iyimserdir (model bu
+    saatleri görmüştür) → std küçük, val skoru şişer. OOF artıkları modelin
+    görmediği saatlerdeki olağan hatayı ölçer. Kat öncesindeki saatler yalnız
+    girdi penceresi (bağlam) olarak kullanılır.
+    """
+    parts = []
+    for path in fold_paths:
+        model, checkpoint = load_forecaster(path, device)
+        fold = checkpoint["oof_fold"]
+        start = pd.Timestamp(fold["start"])
+        end = pd.Timestamp(fold["end"]) + pd.Timedelta(hours=23)
+        forecast = checkpoint["forecast"]
+        context = forecast["lookback"] + (forecast["horizon"] - 1 if multi else 0)
+        first = train.index.searchsorted(start) - context
+        frame = train.loc[:end].iloc[first:]
+        if multi:
+            prediction = multi_step_predictions(model, checkpoint, frame, device)
+        else:
+            prediction = one_step_predictions(model, checkpoint, frame, device)
+        parts.append(prediction.loc[start:end])          # yalnız kat saatleri
+    combined = pd.concat(parts)
+    if combined.index.has_duplicates:
+        raise ValueError("OOF katları çakışıyor.")
+    return combined.reindex(train.index)
+
+
 def combine_predictions(predictions, weights):
     """Topluluk h=1 tahmini: Σ ağırlık · üye tahmini (F13-ens ağırlıkları)."""
     return sum(weights[name] * predictions[name] for name in weights)
