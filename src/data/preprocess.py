@@ -144,6 +144,17 @@ def preprocess(df, config):
         - hourly["Sub_metering_3"]
     )
 
+    return add_calendar_features(hourly, settings["holiday_country"])
+
+
+def add_calendar_features(hourly, holiday_country):
+    """Saatlik tabloya takvim özniteliklerini ekler (yerinde) ve tabloyu döndürür.
+
+    Girdi: saatlik DatetimeIndex'li tablo, tatil ülkesi kodu (FR, PT, ...).
+    Çıktı: hour/dow/month sin-cos, is_weekend, is_holiday sütunları eklenmiş tablo.
+    Neden: Takvim önceden bilinir (gelecek bilgisi değildir); household ve ELD
+    aynı fonksiyonu kullanır.
+    """
     idx = hourly.index
     hour = idx.hour
     dow = idx.day_of_week
@@ -157,12 +168,12 @@ def preprocess(df, config):
     hourly["month_cos"] = np.cos(2 * np.pi * (month - 1) / 12)
     hourly["is_weekend"] = (dow >= 5).astype("int8")
 
-    fr_holidays = holidays.country_holidays(
-        settings["holiday_country"],
+    country_holidays = holidays.country_holidays(
+        holiday_country,
         years=range(idx.min().year, idx.max().year + 1),
     )
     hourly["is_holiday"] = [
-        int(timestamp.date() in fr_holidays)
+        int(timestamp.date() in country_holidays)
         for timestamp in idx
     ]
 

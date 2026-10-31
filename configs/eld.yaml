@@ -1,0 +1,46 @@
+# =====================================================================
+# ELD (UCI ElectricityLoadDiagrams20112014) – şebeke düzeyi toplam yük
+# Yalnız household configs/config.yaml'dan FARKLI olan ayarlar. Yükleme:
+# src.data.eld.eld_config() = config.yaml + (model için) optuna_*_best.yaml
+# forecast bölümü + bu dosya. Model/anomali hiperparametreleri household'dan AYNEN.
+# Protokol: docs/eld_protokol.md
+# =====================================================================
+eld:
+  raw_file: data/raw/eld/LD2011_2014.txt
+  url: https://archive.ics.uci.edu/static/public/321/electricityloaddiagrams20112014.zip
+  active_before: "2012-01-01 00:00"    # bu damgaya kadar (2011) sıfır dışı değeri olan müşteriler
+  start: "2012-01-01"
+  end: "2014-12-31"
+
+paths:
+  processed_file: data/processed/eld_hourly.parquet
+  models_dir: models/eld
+  results_dir: results/eld
+  figures_dir: results/eld/figures
+  tables_dir: results/eld/tables
+  predictions_dir: results/eld/predictions
+  experiments_file: results/eld/experiments.csv   # household experiments.csv'ye dokunulmaz
+
+preprocess:
+  target: total_load_kw                # seçili müşterilerin toplamı, saatlik ortalama kW
+  holiday_country: PT
+
+split:
+  train: {start: "2012-01-01", end: "2013-12-31"}
+  val:   {start: "2014-01-01", end: "2014-06-30"}
+  test:  {start: "2014-07-01", end: "2014-12-31"}
+
+anomaly:
+  residual:
+    seq2seq: ELD-F10-opt
+    ensemble: {ELD-F10-opt: 0.8, ELD-F5-opt: 0.2}   # household F13-ens ağırlıkları
+    oof_folds: 3
+
+protocol:
+  methods: [A0, A3-s2s-norm, A5-mean-z]
+  combination_components: [A0, A3-ens-norm]        # household A5-mean-z ile aynı tanım
+  scenarios:
+    main:
+      seeds:
+        val:  [1, 11, 21, 31, 41]
+        test: [2, 12, 22, 32, 42]

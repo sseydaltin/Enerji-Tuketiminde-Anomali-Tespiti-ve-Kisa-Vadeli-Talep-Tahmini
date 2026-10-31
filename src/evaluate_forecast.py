@@ -144,8 +144,14 @@ def xgboost_predictions(df, config, lookback, split):
     return y_eval, model.predict(ridge_design_matrix(X_eval, lags, True)), times
 
 
-def all_predictions(df, config, split, device):
-    """Kadrodaki her exp_id için (y_true, y_pred, zamanlar)."""
+def all_predictions(df, config, split, device, roster=None, ensemble=None, prefix=""):
+    """Kadrodaki her exp_id için (y_true, y_pred, zamanlar).
+
+    Girdi: roster/ensemble verilmezse household kadrosu; prefix naif modellerin
+    exp_id önekidir (ELD: "ELD-"). Kadro test öncesi sabittir.
+    """
+    roster = ROSTER if roster is None else roster
+    ensemble = ENSEMBLE if ensemble is None else ensemble
     results = {}
     part = chronological_split(df, config)[split]
     y_true, naive, times = naive_forecasts(
@@ -153,8 +159,8 @@ def all_predictions(df, config, split, device):
         config["evaluation"]["exclude_imputed_targets"],
     )
     for name, y_pred in naive.items():
-        results[NAIVE_EXPERIMENT_IDS[name]] = (y_true, y_pred, times)
-    for exp_id, (family, _, feature_set, lookback) in ROSTER.items():
+        results[prefix + NAIVE_EXPERIMENT_IDS[name]] = (y_true, y_pred, times)
+    for exp_id, (family, _, feature_set, lookback) in roster.items():
         if family == "torch":
             results[exp_id] = torch_predictions(df, config, exp_id, feature_set, split, device)
         elif family == "ridge":
@@ -162,7 +168,7 @@ def all_predictions(df, config, split, device):
         else:
             results[exp_id] = xgboost_predictions(df, config, lookback, split)
         print(f"{exp_id}: {len(results[exp_id][0])} pencere")
-    for exp_id, (seq2seq_id, lstm_id) in ENSEMBLE.items():
+    for exp_id, (seq2seq_id, lstm_id) in ensemble.items():
         y_true, seq2seq_pred, times = results[seq2seq_id]
         lstm_true, lstm_pred, lstm_times = results[lstm_id]
         if not (pd.DatetimeIndex(times).equals(pd.DatetimeIndex(lstm_times))
@@ -188,10 +194,10 @@ def verify_against_saved_val(results, config):
     return pd.DataFrame(rows)
 
 
-def summarize_levels(results, mape_min_y):
+def summarize_levels(results, mape_min_y, groups=None):
     """Üç seviye (h=1, 24 s, günlük) metrikleri: seed başına ve grup ort ± std."""
     rows = []
-    for group, exp_ids in GROUPS.items():
+    for group, exp_ids in (GROUPS if groups is None else groups).items():
         for exp_id in exp_ids:
             y_true, y_pred, times = results[exp_id]
             for level, metrics in level_metrics(y_true, y_pred, pd.DatetimeIndex(times).asi8,
@@ -207,22 +213,23 @@ def summarize_levels(results, mape_min_y):
     return per_run, summary
 
 
-def save_error_figures(results, figures_dir, split):
+def save_error_figures(results, figures_dir, split, prefix="", dataset="household"):
     """Ufka göre MAE ve günün saatine göre MAE (seed'li modellerde ilk seed) — figürler."""
     shown = {"F2 SN168": "F2", "F3-cal Ridge": "F3-cal", "F5-opt LSTM": "F5-opt",
              "F10-opt Seq2Seq": "F10-opt", "F12-L336 XGBoost": "F12-L336", "F13-ens": "F13-ens"}
-    tag = split.upper()
+    shown = {label: prefix + exp_id for label, exp_id in shown.items()}
+    tag = f"{split.upper()} ({dataset})"
     figure, axis = plt.subplots(figsize=(9, 5))
     for label, exp_id in shown.items():
         y_true, y_pred, _ = results[exp_id]
         axis.plot(range(1, 25), np.abs(y_true - y_pred).mean(axis=0), marker="o", markersize=3,
-                  label=label, linewidth=2.5 if exp_id == "F13-ens" else 1.2)
+                  label=label, linewidth=2.5 if exp_id.endswith("F13-ens") else 1.2)
     axis.set(xlabel="Ufuk h (saat)", ylabel="MAE (kW)",
              title=f"Ufka göre MAE – {tag} (seed 42)")
     axis.set_xticks(range(1, 25, 2))
     axis.legend(fontsize=8)
     figure.tight_layout()
-    figure.savefig(figures_dir / f"F_final_{split}_mae_by_horizon.png", dpi=200)
+    figure.savefig(figures_dir / f"{prefix}F_final_{split}_mae_by_horizon.png", dpi=200)
     plt.close(figure)
 
     figure, axis = plt.subplots(figsize=(9, 5))
@@ -232,13 +239,13 @@ def save_error_figures(results, figures_dir, split):
         hours = (pd.DatetimeIndex(times).hour.to_numpy()[:, None] + np.arange(24)) % 24
         errors = pd.Series(np.abs(y_true - y_pred).ravel()).groupby(hours.ravel()).mean()
         axis.plot(errors.index, errors.to_numpy(), marker="o", markersize=3, label=label,
-                  linewidth=2.5 if exp_id == "F13-ens" else 1.2)
+                  linewidth=2.5 if exp_id.endswith("F13-ens") else 1.2)
     axis.set(xlabel="Hedef saatin günün saati", ylabel="MAE (kW, tüm ufuklar)",
              title=f"Günün saatine göre MAE – {tag} (seed 42)")
     axis.set_xticks(range(0, 24, 2))
     axis.legend(fontsize=8)
     figure.tight_layout()
-    figure.savefig(figures_dir / f"F_final_{split}_mae_by_hour.png", dpi=200)
+    figure.savefig(figures_dir / f"{prefix}F_final_{split}_mae_by_hour.png", dpi=200)
     plt.close(figure)
 
 
