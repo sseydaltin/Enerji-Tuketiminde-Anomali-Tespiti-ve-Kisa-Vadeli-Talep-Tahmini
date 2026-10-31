@@ -151,6 +151,7 @@ protocol:
   std_source: oof                      # A3 normalize skorunun std'si: OOF artıkları
   methods: [A0, A1, A2, A3-s2s-norm, A3-ens-norm, A3-s2s-hmean, A5-mean-z]
   simplicity_order: [A0, A1, A2, A3-s2s-norm, A3-s2s-hmean, A3-ens-norm, A5-mean-z]
+  noise_se_multiplier: 2              # gürültü: |eşleştirilmiş fark ort| ≤ 2·std/√n (revizyon; eski |ort| ≤ std hatalıydı)
   combination_components: [A0, A3-ens-norm]   # A5-mean-z; ölçek referansı enjeksiyonsuz val_dev
   threshold_quantiles: {low: 0.70, high: 0.9995, n: 300}   # olay-F1 eşik ızgarası (birleşik skor yüzdelikleri)
   scenarios:

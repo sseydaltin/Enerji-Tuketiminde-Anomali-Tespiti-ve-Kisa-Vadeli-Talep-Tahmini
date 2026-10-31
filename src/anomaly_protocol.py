@@ -151,18 +151,22 @@ def apply_fixed(outputs, windows, thresholds, split, scenario):
     return pd.DataFrame(rows)
 
 
-def choose_final(per_seed, order):
+def choose_final(per_seed, order, se_multiplier):
     """Final yöntem: val_dev ana senaryo olay F1'i; gürültü düzeyindekiler arasından en basiti.
 
-    Kural: ortalama olay F1'i en yüksek yöntem referanstır; ona karşı eşleştirilmiş
-    seed farkının |ortalaması| ≤ std'si olan yöntemler gürültü düzeyindedir;
-    referans + bunlar arasından `order`'da (basitlik sırası) en önde olan seçilir.
+    Kural (revizyon 2026-10-31): ortalama olay F1'i en yüksek yöntem referanstır;
+    ona karşı eşleştirilmiş seed farkı için |ort| ≤ k · std / √n ise (k = 2, n =
+    seed sayısı; standart hata tabanlı) fark gürültü düzeyindedir. Referans +
+    bunlar arasından `order`'da (basitlik sırası) en önde olan seçilir.
+    Neden: Eski ölçüt |ort| ≤ std seed sayısı arttıkça gevşer (n=10'da t ≲ 3,2).
     Çıktı: (final yöntem, referans yöntem, eşleştirilmiş fark tablosu).
     """
     means = per_seed.groupby("method")["event_f1"].mean().sort_values(ascending=False)
     best = means.index[0]
+    n_seeds = per_seed.loc[per_seed["method"] == best, "seed"].nunique()
     paired = paired_differences(per_seed, best, metrics=("event_f1",), rule=RULE)
-    paired["noise_level"] = paired["event_f1_diff_mean"].abs() <= paired["event_f1_diff_std"]
+    paired["noise_bound"] = se_multiplier * paired["event_f1_diff_std"] / np.sqrt(n_seeds)
+    paired["noise_level"] = paired["event_f1_diff_mean"].abs() <= paired["noise_bound"]
     candidates = [best] + paired.loc[paired["noise_level"], "method"].tolist()
     return min(candidates, key=order.index), best, paired
 
@@ -310,7 +314,8 @@ def main():
     all_windows.to_csv(tables_dir / "anomaly_protocol_dev_windows_per_seed.csv", index=False)
     per_seed = {("val_dev", "main"): all_windows[all_windows["smooth"]
                                                  == all_windows["method"].map(windows)]}
-    final, best, paired_best = choose_final(per_seed[("val_dev", "main")], protocol["simplicity_order"])
+    final, best, paired_best = choose_final(per_seed[("val_dev", "main")], protocol["simplicity_order"],
+                                             protocol["noise_se_multiplier"])
     selection = pd.DataFrame({"method": list(windows), "smooth": list(windows.values()),
                               "threshold": [thresholds[m] for m in windows]})
     selection["final"] = selection["method"] == final

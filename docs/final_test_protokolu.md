@@ -83,7 +83,7 @@ Not: A-1–A-5 config'inde test için tek seed (2) vardı. Test seed listeleri b
   - A5-mean-z: A0 + A3-ens-norm; z ölçeğinin referansı temiz val-dev
 - **Final yöntem kuralı:**
   1. val-dev ana senaryoda ortalama olay F1'i en yüksek yöntem referans alınır.
-  2. Referansa karşı eşleştirilmiş seed farkının |ortalaması| ≤ std'si olan yöntemler gürültü düzeyinde sayılır.
+  2. Referansa karşı eşleştirilmiş seed farkı için |ortalama| ≤ 2·std/√n (n = seed sayısı) ise yöntem gürültü düzeyinde sayılır. *(Revizyon 1; ilk sürümde ölçüt |ortalama| ≤ std idi.)*
   3. Referans ile bu yöntemler arasından en basiti seçilir. Basitlik sırası: A0 < A1 < A2 < A3-s2s-norm < A3-s2s-hmean < A3-ens-norm < A5-mean-z.
 
 ## 5. Seçim sonucu (val-dev, ana senaryo): `results/tables/anomaly_protocol_selection.csv`
@@ -98,9 +98,25 @@ Not: A-1–A-5 config'inde test için tek seed (2) vardı. Test seed listeleri b
 | A2 | 6 | 0,377 | 0,364 ± 0,189 | −0,277 ± 0,165 | hayır |
 | A1 | 1 | 0,607 | 0,318 ± 0,110 | −0,323 ± 0,144 | hayır |
 
-**Kurala göre final yöntem: A0 (hareketli z-skoru, w = 3, eşik 6,581).** A0, referansa karşı gürültü düzeyinde (fark 0,106 < std 0,148) ve basitlik sırasında ilk sırada.
+**İlk kurala göre final yöntem A0 idi (hareketli z-skoru, w = 3, eşik 6,581); kural §5a'da revize edildi.** A0, referansa karşı gürültü düzeyinde (fark 0,106 < std 0,148) ve basitlik sırasında ilk sırada.
 
 Bu karar val-hold sonucundan bağımsız olarak verildi ve val-hold'a göre değiştirilmedi. val-hold sonuçları ve kuralın bu seçimdeki etkisi deney günlüğündedir.
+
+## 5a. Revizyon 1 (2026-10-31): gürültü kuralı düzeltildi
+
+> Gürültü kuralı |ort| ≤ std, seed sayısı arttıkça gevşeyen hatalı bir ölçüttü (n=10'da t ≲ 3,2). Standart hata tabanlı ölçütle (|ort| ≤ 2·std/√n) değiştirildi. Seçim yine yalnız val-dev ana senaryosunda yapıldı. Not: revizyon val-hold sonuçları görüldükten sonra yapıldığı için val-hold, seçim açısından tam bağımsız sayılmaz. Test kümesi bu süreçte hiç kullanılmadı ve bağımsızdır.
+
+| Yöntem | val-dev olay F1 | Referansa (A5-mean-z) fark | 2·std/√10 sınırı | Gürültü düzeyi? |
+|---|---|---|---|---|
+| A5-mean-z | 0,642 ± 0,114 | (referans) | – | – |
+| A3-ens-norm | 0,617 ± 0,196 | −0,024 ± 0,139 | 0,088 | evet |
+| **A3-s2s-norm** | 0,575 ± 0,181 | −0,067 ± 0,126 | 0,080 | **evet** |
+| A3-s2s-hmean | 0,562 ± 0,127 | −0,080 ± 0,089 | 0,056 | hayır |
+| A0 | 0,536 ± 0,206 | −0,106 ± 0,148 | 0,094 | hayır |
+| A2 | 0,364 ± 0,189 | −0,277 ± 0,165 | 0,104 | hayır |
+| A1 | 0,318 ± 0,110 | −0,323 ± 0,144 | 0,091 | hayır |
+
+**Revize kurala göre final anomali yöntemi: A3-s2s-norm** (F10-opt, |h=1 hatası| / OOF std saat×gün, w = 3, olay-F1 eşiği 3,558). Gürültü düzeyindeki adaylar (A5-mean-z, A3-ens-norm, A3-s2s-norm) arasında basitlik sırasında en önde olan. Pencere ve eşikler değişmedi (val-dev seçimi aynı). `configs/config.yaml`: `protocol.noise_se_multiplier: 2`.
 
 ## 6. Tahmin tarafı: üç seviyeli raporlama (`seyda/model-fixes`)
 

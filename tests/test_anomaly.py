@@ -436,5 +436,20 @@ def test_final_choice_prefers_simpler_method_within_noise():
         "method": ["A0"] * 3 + ["B"] * 3 + ["C"] * 3, "seed": [1, 2, 3] * 3, "rule": "evf1max",
         "event_f1": [0.30, 0.31, 0.29, 0.33, 0.28, 0.34, 0.10, 0.12, 0.11],
     })
-    final, best, _ = choose_final(per_seed, ["A0", "B", "C"])
+    final, best, _ = choose_final(per_seed, ["A0", "B", "C"], se_multiplier=2)
     assert best == "B" and final == "A0"               # A0 – B farkı gürültü düzeyinde
+
+
+def test_final_choice_uses_standard_error_not_std():
+    # 10 seed, fark ort −0,10, std 0,15: eski ölçütte (|ort| ≤ std) gürültü sayılırdı;
+    # standart hata ölçütünde (2 · 0,15 / √10 ≈ 0,095) anlamlıdır → A0 seçilmez.
+    rng = np.random.default_rng(0)
+    noise = rng.normal(size=10)
+    diff = -0.10 + 0.15 * (noise - noise.mean()) / noise.std(ddof=1)
+    per_seed = pd.DataFrame({
+        "method": ["B"] * 10 + ["A0"] * 10, "seed": list(range(10)) * 2, "rule": "evf1max",
+        "event_f1": np.concatenate([np.full(10, 0.6), 0.6 + diff]),
+    })
+    final, best, paired = choose_final(per_seed, ["A0", "B"], se_multiplier=2)
+    assert best == "B" and final == "B"
+    assert paired.loc[0, "event_f1_diff_std"] == pytest.approx(0.15)
