@@ -73,6 +73,48 @@ def one_step_predictions(model, checkpoint, frame, device, batch_size=1024):
     return result
 
 
+def multi_step_predictions(model, checkpoint, frame, device, batch_size=1024):
+    """A-5a: her saat t ve ufuk h = 1…24 için ŷ_h[t] (kW) — t−h saatine kadarki geçmişle yapılan tahmin.
+
+    Girdi: seq2seq model + checkpoint, saatlik tablo (geçmiş bağlam dahil).
+    Çıktı: [T, 24] DataFrame (sütunlar 1…24 = ufuk h), frame ile aynı indeksli.
+    Neden: Başlangıcı s olan tahmin (pencere s−lookback … s−1) s, s+1, …, s+23
+    saatlerini verir. t saatinin h ufuklu tahmini, başlangıcı s = t−h+1 olan
+    tahminin h. çıktısıdır; yani son görülen saat t−h. Uzun ufuklu tahmin,
+    anomali başlamadan önceki geçmişe dayanır; seviye kayması girdi penceresine
+    girse bile eski düzeyi "hatırlar". Yeterli geçmişi olmayan hücreler NaN.
+    """
+    if checkpoint["model_name"] != "seq2seq":
+        raise ValueError("Çok ufuklu skor yalnız seq2seq ile hesaplanır.")
+    features = checkpoint["features"]
+    lookback = checkpoint["forecast"]["lookback"]
+    horizon = checkpoint["forecast"]["horizon"]
+    mean = np.asarray(checkpoint["feature_mean"])
+    scale = np.asarray(checkpoint["feature_scale"])
+    values = ((frame[features].to_numpy(dtype=np.float64) - mean) / scale).astype(np.float32)
+    windows = sliding_window_view(values, lookback, axis=0).transpose(0, 2, 1)[:-1]   # [N, lookback, F]
+    # Decoder takvimi (HAM): s … s+23. Sondaki eksik saatler 0 ile doldurulur; decoder
+    # nedensel olduğundan k. çıktı yalnız ilk k+1 saatin takvimine bağlıdır ve
+    # dolgu yalnız tablonun dışına düşen (kullanılmayan) çıktıları etkiler.
+    calendar = frame[features[1:]].to_numpy(dtype=np.float32)
+    padded = np.vstack([calendar, np.zeros((horizon - 1, calendar.shape[1]), dtype=np.float32)])
+    future = sliding_window_view(padded, horizon, axis=0).transpose(0, 2, 1)[lookback:]   # [N, 24, takvim]
+    outputs = []
+    with torch.no_grad():
+        for start in range(0, len(windows), batch_size):
+            X = torch.from_numpy(np.ascontiguousarray(windows[start:start + batch_size])).to(device)
+            F = torch.from_numpy(np.ascontiguousarray(future[start:start + batch_size])).to(device)
+            outputs.append(model(X, F).cpu().numpy())                         # [B, 24]
+    by_start = np.full((len(frame), horizon), np.nan)
+    by_start[lookback:] = (np.concatenate(outputs) * checkpoint["target_scale"][0]
+                           + checkpoint["target_mean"][0])                    # satır = başlangıç s
+    by_target = np.full((len(frame), horizon), np.nan)
+    for h in range(1, horizon + 1):
+        # ŷ_h[t] = başlangıcı t−h+1 olan tahminin h. çıktısı (sütun h−1).
+        by_target[h - 1:, h - 1] = by_start[:len(frame) - h + 1, h - 1]
+    return pd.DataFrame(by_target, index=frame.index, columns=range(1, horizon + 1))
+
+
 def combine_predictions(predictions, weights):
     """Topluluk h=1 tahmini: Σ ağırlık · üye tahmini (F13-ens ağırlıkları)."""
     return sum(weights[name] * predictions[name] for name in weights)

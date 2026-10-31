@@ -279,3 +279,50 @@ def test_severity_change_keeps_event_positions(injection_settings):
     if shift.any():
         ratio = injected["Global_active_power"][shift] / frame["Global_active_power"][shift]
         assert np.allclose(ratio, 3.0)
+
+
+# ---------------------------------------------------------------- A-5
+
+from src.evaluate_anomaly import add_combinations, paired_differences, to_common_scale
+from src.models.residual_detector import multi_step_predictions
+
+
+def test_multi_step_h1_matches_one_step_and_horizon_h_uses_history_up_to_t_minus_h():
+    frame = make_frame(days=5)
+    model, checkpoint = tiny_seq2seq_checkpoint()
+    multi = multi_step_predictions(model, checkpoint, frame, "cpu")
+    one = one_step_predictions(model, checkpoint, frame, "cpu")
+    np.testing.assert_allclose(multi[1].to_numpy(), one.to_numpy(), rtol=1e-5, atol=1e-6)
+    assert multi[24].iloc[:6 + 23].isna().all() and multi[24].iloc[6 + 23:].notna().all()
+
+    t, h = 80, 12
+    changed = frame.copy()
+    changed.iloc[t - h + 1:, 0] += 5.0                     # t−h+1 ve sonrası değişirse
+    after = multi_step_predictions(model, checkpoint, changed, "cpu")
+    assert after.loc[frame.index[t], h] == pytest.approx(multi.loc[frame.index[t], h])
+    assert after.loc[frame.index[t], h - 1] != pytest.approx(multi.loc[frame.index[t], h - 1])
+
+
+def test_combination_scales_are_comparable_and_rank_is_ecdf():
+    reference = np.sort(np.arange(1.0, 101.0))             # 1 … 100
+    values = pd.Series([0.0, 50.0, 100.0, np.nan])
+    ranks = to_common_scale(values, reference, "rank")
+    np.testing.assert_allclose(ranks.iloc[:3], [0.0, 0.5, 1.0])
+    assert np.isnan(ranks.iloc[3])
+
+    scores = pd.DataFrame({"a": [1.0, 100.0], "b": [10.0, 1000.0]})
+    combination = {"components": ["a", "b"],
+                   "references": {"a": reference, "b": reference * 10}}
+    add_combinations(scores, combination)
+    # Aynı göreli konumdaki skorlar ortak ölçekte eşit olur → ortalama = maksimum.
+    np.testing.assert_allclose(scores["A5-mean-z"], scores["A5-max-z"])
+    np.testing.assert_allclose(scores["A5-mean-rank"], [0.01, 1.0])
+
+
+def test_paired_differences_per_seed():
+    per_seed = pd.DataFrame({
+        "method": ["A0"] * 3 + ["X"] * 3, "seed": [1, 2, 3] * 2, "rule": "f1max",
+        "f1": [0.1, 0.2, 0.3, 0.2, 0.2, 0.5], "pr_auc": 0.1, "event_recall": 0.5,
+    })
+    row = paired_differences(per_seed, "A0").iloc[0]
+    assert row["f1_diff_mean"] == pytest.approx(0.1) and row["f1_n_positive"] == 2
