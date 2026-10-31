@@ -57,7 +57,7 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | İP2 – Veri yükleme, temizleme, saatliğe indirgeme, bölme, ölçekleme, pencereleme | **Dilara** | Şeyda (EDA ile çapraz kontrol) |
 | İP2b – Keşifsel veri analizi (EDA) ve figürler | **Şeyda** | Dilara |
 | İP3 – Tahmin: baseline'lar + MLP + LSTM + GRU, eğitim, ayar, ablasyon | **Dilara** | Şeyda (kod incelemesi) |
-| İP4 – Anomali: enjeksiyon, z-skor, Isolation Forest, LSTM-AE, artık tabanlı dedektör, eşik seçimi | **Şeyda** | Dilara (artık dedektörü GRU'yu kullanır) |
+| İP4 – Anomali: enjeksiyon, z-skor, Isolation Forest, LSTM-AE, artık tabanlı dedektör, eşik seçimi | **Şeyda** | Dilara (artık dedektörü final tahmin modelini kullanır: F10-opt / F13-ens) |
 | İP5 – Değerlendirme, hata analizi, karşılaştırma tabloları | İkisi birlikte (kendi hattını) | Çapraz okuma |
 | İP6 – Streamlit demo | **Dilara** | Şeyda (anomali sayfası) |
 | Öneri formu | Şeyda: Özgün Değer + Kaynaklar · Dilara: Yöntem · İkisi: Amaç/Hedefler, Özet (en son) | |
@@ -258,7 +258,7 @@ dosyasındadır; rapor ve sunumdaki sayılar bu dosyadan alınır.
 | A0 | Hareketli z-skoru (168 s pencere, aynı saat-günü bazlı) | \|z\| |
 | A1 | Isolation Forest (pencere istatistikleri + takvim) | anomaly score |
 | A2 | **LSTM-Autoencoder** (encoder LSTM → gizli vektör → decoder LSTM) | Yeniden yapılandırma MSE |
-| A3 | **GRU artık dedektörü** (F6'nın 1-adım tahmin hatası) | \|y − ŷ\| (normalize) |
+| A3 | **Tahmin artığı dedektörü** (2026-10-31 kararı: final tahmin modeli F13-ens; 1 adım ileri tahmin için F10-opt seq2seq, ikinci varyant F13-ens = 0,8·F10-opt + 0,2·F5-opt; ağırlıklar yalnız train ile eğitildi) | \|y − ŷ\| (kW) ve \|y − ŷ\| / std(saat × gün, yalnız train artıkları) |
 | A4 | Eşik duyarlılığı: val'de F1-max vs yüzdelik 95 / 99 / 99.5 | — |
 
 LSTM-AE bilinçli olarak **yalnız eğitim kümesinde** ve "çoğunlukla normal" varsayımıyla eğitilir. Eğitim verisinde gerçek anomaliler olabileceği (kontaminasyon) bir sınırlılıktır.
@@ -292,7 +292,7 @@ Her deney `results/experiments.csv`'ye şu sütunlarla eklenir: `exp_id, date, m
 - Kapsam, README'nin ilk sürümündeki "≤ 12 koşu/model" sınırının ötesine 2026-10-31'de bilinçli olarak genişletildi (deney günlüğü). Yönerge §9 gereği her deney bir soruya cevap verir: öznitelik, hedef dönüşümü, mimari, bağlam uzunluğu, kararlılık.
 
 ### 4.9 Anomali enjeksiyonu (değerlendirme protokolü)
-Hem doğrulama (seed=1) hem test (seed=2) kümesinin **kopyasına**, saatlerin ~%2–3'ünü etkileyecek şekilde:
+Hem doğrulama hem test kümesinin **kopyasına** (seed'ler aşağıda; ilk protokolde val seed=1, test seed=2), saatlerin ~%2–3'ünü etkileyecek şekilde:
 
 | Tip | Uygulama | Gerçek dünya karşılığı |
 |---|---|---|
@@ -303,12 +303,31 @@ Hem doğrulama (seed=1) hem test (seed=2) kümesinin **kopyasına**, saatlerin ~
 
 - Etiketler saat düzeyinde (0/1). Enjeksiyon **ölçeklemeden önce ham kW** üzerinde yapılır; ölçekleyici yine eğitimden gelir.
 - **Eşik doğrulama kümesinde seçilir**, test kümesine aynen uygulanır (sızıntı yok).
+- **Çok seed'li val protokolü (A-1):** val'e 5 ayrı kopyada seed ∈ {1, 11, 21, 31, 41} ile enjeksiyon yapılır; her yöntemin tek eşiği 5 kopyanın birleşiminde F1-max ile seçilir, metrikler kopya başına hesaplanıp ortalama ± std verilir. Test tek kopyadır (seed=2).
+- **Skor yumuşatma (A-3):** her yöntemin skoruna yalnız geçmişe bakan hareketli ortalama (pencere 1/3/6 saat) uygulanır; pencere val'de F1-max eşiğindeki ortalama F1 ile seçilir (eşitlikte küçük pencere), test'e aynen uygulanır.
+- **Şiddet taraması (A-4):** seviye kayması ×{1,5; 2; 3} ve spike ×{2; 4; 6}; en iyi 3 yöntem, val'de seçilmiş eşik ve pencere sabit, olay recall'ü ayrı tabloda (`anomaly_val_severity.csv`); ana sonuçları değiştirmez.
+- **Çok ufuklu artık ve birleşim (A-5):** A-5a — her saat için F10-opt'un h = 1…24 ufuklu tahminlerinin (başlangıç t−h) her biri kendi train std'siyle (saat × gün) normalize edilir; skor h ∈ {1, 6, 12, 24} ortalaması, 24 ufkun ortalaması veya maksimumu. A-5b — A0 ile en iyi A3 varyantı, enjeksiyonsuz val skor dağılımına göre z-skoru veya rank (ampirik dağılım) ölçeğine getirilip ortalaması / maksimumu alınır (`anomaly_val_combination.csv`).
+- **A-5 seçim kuralı (yerini aşağıdaki final protokol aldı):** val F1 (5 seed ortalaması) en yüksek yöntem referanstır; ona karşı eşleştirilmiş seed farkının |ortalaması| ≤ std'si olan yöntemler gürültü düzeyinde sayılır ve aralarından en basit olanı seçilir (basitlik: A0 < A3 tek model h=1 < A3 çok ufuklu < A3 topluluk < birleşim). Seçim: **A3-s2s-norm** (F10-opt, |h=1 hatası| / std saat×gün, w = 3) — gerekçe `docs/deney_gunlugu.md`, A-5.
+- **Final protokol (test öncesi sabitlendi; ayrıntı `docs/final_test_protokolu.md`):** train/OOF → val-dev (2009-10-01 – 2009-12-31; pencere, eşik, yöntem seçimi) → val-hold (2010-01-01 – 2010-03-31; bağımsız ölçüm, hiçbir seçim yok) → test. A3'ün normalize skorunda std, tüm train ile eğitilmiş modelin train artıklarından değil, 3 katlı zamansal CV'nin **OOF (kat dışı) artıklarından** hesaplanır; skor yine tüm train ile eğitilmiş F10-opt / F13-ens ile üretilir.
+- **Anomali tanımı – iki senaryo:** anomali, o saatin **olağan oynaklığının dışında kalan sapma** olarak tanımlanır; bu yüzden ana senaryoda büyüklük, train'den saat × haftanın günü için hesaplanan tüketim std'sine (σ) göre verilir. Literatürde sentetik anomali büyüklüğünü verinin std'si cinsinden vermek yaygın bir pratiktir [KAYNAK YER TUTUCUSU – doğrulanmalı].
+
+| Tip | Ana senaryo (seçim burada) | Zor senaryo (yukarıdaki tablo, aynı eşiklerle ayrıca raporlanır) |
+|---|---|---|
+| Spike | 1–2 saat, değer + U(3, 5)·σ(saat, gün) | 1–2 saat, değer × U(2, 4) |
+| Drop | 2–6 saat, ~0,05 kW; yalnız gerçek değeri > 1,0 kW olan saatte başlar | 2–6 saat, ~0,05 kW |
+| Seviye kayması | 12–48 saat, değer × U(2; 2,5) (olay başına tek çarpan) | 12–48 saat, değer × 1,5 |
+| Desen | aynı | aynı |
+
+- **Seed'ler (yalnız enjeksiyon yerini/büyüklüğünü belirler):** ana — val-dev 1, 11, …, 91; val-hold 3, 13, …, 93; test 2, 12, 22, 32, 42. Zor — val-dev 5, 15, …, 95; val-hold 7, 17, …, 97; test 4, 14, 24, 34, 44. Test bağımsızlığı seed farkıyla değil **zaman ayrımıyla** sağlanır.
+- **Ana metrik: olay F1.** Olay recall'ü = en az bir saati işaretlenen olay oranı; olay precision'ı = gerçek bir anomaliyle örtüşen alarm segmentleri / tüm alarm segmentleri. Eşik, val-dev ana senaryonun 10 kopyasında birleşik olay F1'ini en büyük yapan değerdir (birleşik skor yüzdeliklerinde 300 noktalı ızgara); pencere ∈ {1, 3, 6} ortalama olay F1 ile seçilir. Nokta P/R/F1, PR-AUC ve ROC-AUC tabloda kalır.
+- **Final yöntem kuralı:** val-dev ana senaryoda ortalama olay F1'i en yüksek yöntem referanstır; ona karşı eşleştirilmiş seed farkı |ortalama| ≤ 2·std/√n (standart hata tabanlı; revizyon 1 — ilk sürümdeki |ort| ≤ std seed sayısı arttıkça gevşiyordu) olan yöntemler gürültü düzeyinde sayılır ve aralarından en basiti seçilir (basitlik: A0 < A1 < A2 < A3-s2s-norm < A3-s2s-hmean < A3-ens-norm < A5-mean-z). **Final anomali yöntemi: A3-s2s-norm** (w = 3, olay-F1 eşiği 3,558). Komut: `python -m src.anomaly_protocol` (val), final değerlendirmede `--split test`.
+- **Olay bazlı metrikler:** bir olay (aynı tipten ardışık etiketli saatler) en az bir saati işaretlenince yakalanmış sayılır (olay recall'ü); olay precision'ı = gerçek bir anomaliyle kesişen alarm bloklarının oranı. Bu kural yalnız olay metriklerinde kullanılır; nokta metriklerine *point-adjust* (yakalanan olayın tüm saatlerini doğru saymak) uygulanmaz, çünkü point-adjust rastgele skorlara bile yüksek F1 verebildiği için eleştirilmektedir (Kim vd., AAAI 2022 – kaynak doğrulanmalı).
 - Raporlanan: Precision, Recall, F1, ROC-AUC, PR-AUC (dengesiz sınıf → PR-AUC daha bilgilendirici), karmaşıklık matrisi, **tip bazında recall**.
 - Ek nitel analiz: enjeksiyonsuz test verisinde en yüksek skorlu 10 olay → gerçekte ne olmuş olabilir (tatil, ev boş, mevsim geçişi)?
 
 ### 4.10 Metrikler ve neden
 - **Tahmin:** MAE (kW, yorumlanması kolay), RMSE (büyük hataları cezalandırır, tepe talep için önemli), R², **MAPE** (sıfıra yakın değerlerde patlar → yalnız `y > 0.1 kW` için hesaplanır veya **sMAPE** ile desteklenir; bunu açıklayın). Ufka göre (h=1…24) MAE eğrisi.
-- **Anomali:** Precision (yanlış alarm maliyeti), Recall (kaçırılan anomali maliyeti), F1, ROC-AUC, PR-AUC, karmaşıklık matrisi.
+- **Anomali:** Precision (yanlış alarm maliyeti), Recall (kaçırılan anomali maliyeti), F1, ROC-AUC, PR-AUC, karmaşıklık matrisi. Ek olarak olay bazlı recall/precision (§4.9); val'de 5 enjeksiyon seed'inin ortalaması ± std.
 - Yönerge §11: yalnız tek metrik raporlanmaz; sınıf dengesizliğinin etkisi tartışılır.
 
 ### 4.11 Figür listesi (her figürde eksen adı + birim + model adı + **hangi küme** olduğu yazılı)
@@ -362,7 +381,7 @@ enerji-anomali-tahmin/
 ├── src/
 │   ├── data/   load.py · preprocess.py · split.py · windows.py · inject_anomalies.py
 │   ├── models/ baselines.py · forecast_baselines.py · mlp.py · lstm.py · gru.py · autoencoder.py · anomaly_baselines.py
-│   ├── utils/  seed.py · config.py · metrics.py · plots.py · exp_logger.py
+│   ├── utils/  seed.py · config.py · metrics.py · plots.py · results_io.py (deney kaydı: upsert_csv, resolve_path)
 │   ├── train_forecast.py      # python -m src.train_forecast --model all
 │   ├── train_autoencoder.py
 │   ├── evaluate_forecast.py   # --split val|test
@@ -449,7 +468,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 4. **Araştırma soruları ve hipotezler** (açık yazılacak):
    - **AS1:** Kapı mekanizmalı tekrarlayan ağlar (LSTM, GRU), hane düzeyi saatlik tüketimin 24 saatlik tahmininde mevsimsel naif ve klasik regresyon yöntemlerinden daha düşük hata üretir mi? **H1:** LSTM/GRU, test RMSE'sinde Seasonal Naive (168 s) ve Ridge'den daha düşüktür.
    - **AS2:** LSTM ve GRU arasında doğruluk ve eğitim maliyeti açısından anlamlı fark var mı? **H2:** GRU, benzer doğruluğu daha az parametre ve daha kısa sürede sağlar.
-   - **AS3:** Yeniden yapılandırma tabanlı LSTM-AE, istatistiksel ve klasik ML anomali yöntemlerinden daha yüksek PR-AUC elde eder mi? **H3:** LSTM-AE ve GRU artık dedektörü, özellikle seviye kayması ve desen anomalilerinde z-skoru ve Isolation Forest'tan daha yüksek recall sağlar.
+   - **AS3:** Yeniden yapılandırma tabanlı LSTM-AE, istatistiksel ve klasik ML anomali yöntemlerinden daha yüksek PR-AUC elde eder mi? **H3:** LSTM-AE ve tahmin artığı dedektörü, özellikle seviye kayması ve desen anomalilerinde z-skoru ve Isolation Forest'tan daha yüksek recall sağlar.
 
 **Amaç ve Hedefler** – ≥350 karakter. **Amaç (genel yön)** ve **hedefler (ölçülebilir alt çıktılar)** **ayrı** yazılır; her hedef için *nasıl kontrol edileceği* ve *başarı ölçütü* belirtilir.
 > **Amaç:** Hane düzeyi elektrik tüketim verisinden zamana bağlı örüntüleri öğrenen derin öğrenme modelleriyle hem 24 saatlik talep tahmini yapan hem de olağandışı tüketimi tespit eden, sızıntısız ve tekrarlanabilir bir sistem geliştirmek ve bunu referans yöntemlerle bilimsel olarak karşılaştırmak.
@@ -458,7 +477,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 |---|---|---|---|
 | H1 – Veri hazırlama | Temiz saatlik veri, belgelenmiş eksik veri stratejisi, kronolojik bölme | Birim testleri (küme çakışması = 0, ölçekleyici yalnız eğitimde fit) | Tüm testler geçer, eksik oranı ve örnek sayıları raporlanır |
 | H2 – Talep tahmini | LSTM ve GRU, 24 saat ufuk | Test MAE/RMSE/sMAPE, 3 seed ort. ± std | En iyi modelin test RMSE'si Seasonal Naive (168 s)'e göre ≥ %10 düşük |
-| H3 – Anomali tespiti | LSTM-AE ve GRU artık dedektörü | Enjekte anomalili test kümesinde P/R/F1/PR-AUC | En iyi derin yöntemin PR-AUC'si z-skor ve IF'den yüksek; F1 ≥ 0.70 |
+| H3 – Anomali tespiti | LSTM-AE ve tahmin artığı dedektörü | Enjekte anomalili test kümesinde P/R/F1/PR-AUC | En iyi derin yöntemin PR-AUC'si z-skor ve IF'den yüksek; F1 ≥ 0.70 |
 | H4 – Analiz | Hata analizi, tip bazlı recall, sınırlılıklar | Rapordaki tablo ve figürler | §4.11 figür listesinin tamamı |
 | H5 – Uygulama | Çalışır Streamlit demo | Sunumda canlı gösterim | Kayıtlı modelle örnek girdiden tahmin ve anomali skoru üretimi |
 

@@ -36,7 +36,7 @@ data/raw/               # ham veri (git'e girmez)
 data/processed/         # hourly.parquet
 src/data/               # load, preprocess, split, windows, inject_anomalies
 src/models/             # baselines, mlp, lstm, gru, autoencoder, anomaly_baselines
-src/utils/              # seed, config, metrics, plots, exp_logger (stdlib logging ile çakışmasın diye)
+src/utils/              # seed, config, metrics, plots, results_io (deney kaydı; stdlib logging ile çakışmasın diye bu ad)
 notebooks/              # 01_eda.ipynb, 02_results_analysis.ipynb
 src/train_forecast.py   src/train_autoencoder.py
 src/evaluate_forecast.py src/evaluate_anomaly.py

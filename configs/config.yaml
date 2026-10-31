@@ -43,6 +43,9 @@ split:
   train: {start: "2006-12-16", end: "2009-09-30"}
   val:   {start: "2009-10-01", end: "2010-03-31"}
   test:  {start: "2010-04-01", end: "2010-11-26"}
+  # Final anomali protokolü: val kronolojik ikiye bölünür (docs/final_test_protokolu.md).
+  val_dev:  {start: "2009-10-01", end: "2009-12-31"}   # pencere, eşik ve yöntem seçimi
+  val_hold: {start: "2010-01-01", end: "2010-03-31"}   # bağımsız val ölçümü; hiçbir seçim yapılmaz
 
 # ---------------------------------------------------------------------
 # Öznitelik setleri (README §4.6, F7 ablasyonu)
@@ -159,6 +162,12 @@ ensemble:
 # ---------------------------------------------------------------------
 anomaly:
   zscore_window: 168                   # A0: hareketli z-skoru penceresi (saat)
+  zscore_min_std: 0.05                 # A0: std alt sınırı (kW); sabit gece tüketiminde sıfıra bölmeyi önler
+  isolation_forest:                    # A1: son 24 s istatistikleri + takvim; yalnız train'e fit
+    n_estimators: 200
+    max_samples: 256
+  relative_eps_kw: 0.1                 # A2 göreli skor: |hata| / (pencere ortalaması + eps)
+  contamination_exclude: ["2008-08-20", "2008-08-29"]   # A2 ablasyonu: EDA'daki olağandışı düşük dönem
   ae:                                  # A2: LSTM-Autoencoder
     window: 24
     stride: 1
@@ -174,19 +183,63 @@ anomaly:
     scheduler_patience: 3
     grad_clip: 1.0
   threshold_percentiles: [95, 99, 99.5]  # A4: eşik duyarlılığı (yalnız val)
+  residual:                            # A3: tahmin artığı dedektörü (h=1 mutlak hata)
+    seq2seq: F10-opt                   # models/F10-opt_best.pt (seyda/model-fixes, yalnız train)
+    ensemble:                          # F13-ens ağırlıkları (Aşama 5; XGBoost ağırlığı 0 → yok)
+      F10-opt: 0.8
+      F5-opt: 0.2
+    oof_folds: 3                       # models/{F10-opt,F5-opt}-oof{1..3}_best.pt (model-fixes src/train_oof.py)
+    multi_horizon_subset: [1, 6, 12, 24]   # A-5a: çok ufuklu skor (i) bu ufukların ortalaması
+  smoothing_windows: [1, 3, 6]         # A-3: yalnız geçmişe bakan hareketli ortalama (saat); val'de seçilir
+  severity:                            # A-4: şiddet taraması (ana sonuçları değiştirmez)
+    level_shift_factors: [1.5, 2, 3]
+    spike_factors: [2, 4, 6]
+    top_k: 3                           # ana tablodaki en iyi k yöntem (F1 ortalaması)
+    always_include: [A0, A3-ens-norm, A3-s2s-norm]   # A-4 karşılaştırmasıyla süreklilik için
 
 # ---------------------------------------------------------------------
 # Sentetik anomali enjeksiyonu (README §4.9)
 # Ham kW üzerinde, ayrı kopyada. Orijinal veri asla değiştirilmez.
 # ---------------------------------------------------------------------
 injection:
-  val_seed: 1
+  val_seed: 1                          # tek seed'li eski protokol (geriye dönük kayıt için)
+  val_seeds: [1, 11, 21, 31, 41]       # A-1: val 5 enjeksiyon; metrikler ortalama ± std
   test_seed: 2
-  target_ratio: 0.025                  # saatlerin ~%2-3'ü etkilenir
+  target_ratio: 0.025                  # saatlerin ~%2-3'ü etkilenir (bu orana ulaşınca durulur)
+  max_ratio: 0.03                      # üst sınır; bunu aşacak segment eklenmez
   spike:       {min_len: 1,  max_len: 2,  factor_low: 2.0, factor_high: 4.0}
   drop:        {min_len: 2,  max_len: 6,  value_kw: 0.05}
   level_shift: {min_len: 12, max_len: 48, factor: 1.5}
   pattern:     {night_hours: [0, 1, 2, 3, 4, 5]}   # gece saatleri gündüz seviyesine çekilir
+
+# ---------------------------------------------------------------------
+# Final anomali protokolü (docs/final_test_protokolu.md)
+# İki senaryo; seed'ler yalnız enjeksiyon yerlerini/büyüklüklerini belirler.
+# Seçim (pencere, eşik, yöntem) yalnız ANA senaryonun val_dev'inde.
+# ---------------------------------------------------------------------
+protocol:
+  std_source: oof                      # A3 normalize skorunun std'si: OOF artıkları
+  methods: [A0, A1, A2, A3-s2s-norm, A3-ens-norm, A3-s2s-hmean, A5-mean-z]
+  simplicity_order: [A0, A1, A2, A3-s2s-norm, A3-s2s-hmean, A3-ens-norm, A5-mean-z]
+  noise_se_multiplier: 2              # gürültü: |eşleştirilmiş fark ort| ≤ 2·std/√n (revizyon; eski |ort| ≤ std hatalıydı)
+  combination_components: [A0, A3-ens-norm]   # A5-mean-z; ölçek referansı enjeksiyonsuz val_dev
+  threshold_quantiles: {low: 0.70, high: 0.9995, n: 300}   # olay-F1 eşik ızgarası (birleşik skor yüzdelikleri)
+  scenarios:
+    main:                              # ANA: büyüklük train σ'sına (saat × gün) göre
+      seeds:
+        val_dev:  [1, 11, 21, 31, 41, 51, 61, 71, 81, 91]
+        val_hold: [3, 13, 23, 33, 43, 53, 63, 73, 83, 93]
+        test:     [2, 12, 22, 32, 42]
+      injection:
+        spike:       {min_len: 1,  max_len: 2,  sigma_low: 3.0, sigma_high: 5.0}     # + U(3,5)·σ
+        drop:        {min_len: 2,  max_len: 6,  value_kw: 0.05, min_start_kw: 1.0}   # yalnız > 1 kW'ta başlar
+        level_shift: {min_len: 12, max_len: 48, factor_low: 2.0, factor_high: 2.5}   # × U(2; 2,5)
+    hard:                              # ZOR: yukarıdaki `injection` ayarları aynen (A-1–A-5)
+      seeds:
+        val_dev:  [5, 15, 25, 35, 45, 55, 65, 75, 85, 95]
+        val_hold: [7, 17, 27, 37, 47, 57, 67, 77, 87, 97]
+        test:     [4, 14, 24, 34, 44]
+      injection: {}
 
 # ---------------------------------------------------------------------
 # Değerlendirme (README §4.10)
