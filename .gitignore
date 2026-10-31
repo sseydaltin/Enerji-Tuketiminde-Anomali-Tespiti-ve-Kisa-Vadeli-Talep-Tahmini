@@ -21,6 +21,7 @@ data/processed/*
 
 # --- Model ağırlıkları: eğitim betikleriyle yeniden üretilir ---
 models/*.pt
+models/eld/*.pt
 
 # --- İşletim sistemi ---
 .DS_Store
@@ -40,3 +41,4 @@ Thumbs.db
 
 # Kayıtlı val/test tahminleri (yeniden üretilebilir, büyük)
 results/predictions/
+results/eld/predictions/

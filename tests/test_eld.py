@@ -67,6 +67,9 @@ def test_eld_config_keeps_household_hyperparameters_and_eld_splits():
     assert config["preprocess"]["target"] == "total_load_kw"
     assert config["paths"]["experiments_file"] != load_config()["paths"]["experiments_file"]
     assert deep_merge({"a": {"b": 1, "c": 2}}, {"a": {"b": 3}}) == {"a": {"b": 3, "c": 2}}
+    assert set(config["split"]) == {"train", "val", "test"}            # household val_dev sızmadı
+    assert config["anomaly"]["residual"]["ensemble"] == {"ELD-F10-opt": 0.8, "ELD-F5-opt": 0.2}
+    assert config["protocol"]["scenarios"]["main"]["injection"]["spike"]["sigma_low"] == 3.0
 
 
 def test_eld_splits_are_chronological_and_disjoint():

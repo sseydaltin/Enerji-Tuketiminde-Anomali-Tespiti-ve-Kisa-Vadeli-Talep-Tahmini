@@ -117,7 +117,7 @@ def per_seed_rows(runs, method, threshold, split, scenario, window):
     return rows
 
 
-def select_on_dev(outputs, config):
+def select_on_dev(outputs, config, split="val_dev"):
     """val_dev (ana senaryo): her yöntem × pencere için olay-F1 eşiği; pencere olay F1 ile seçilir.
 
     Çıktı: (tüm pencerelerin kopya başına tablosu, {yöntem: pencere}, {yöntem: eşik}).
@@ -133,7 +133,7 @@ def select_on_dev(outputs, config):
             copies = [(run["labels"]["anomaly_type"].to_numpy(), run["scores"][method].to_numpy(),
                        valid_hours(run, method)) for run in runs]
             threshold, _ = event_f1_max_threshold(copies, quantiles)
-            rows += per_seed_rows(runs, method, threshold, "val_dev", "main", window)
+            rows += per_seed_rows(runs, method, threshold, split, "main", window)
     per_seed = pd.DataFrame(rows)
     means = per_seed.groupby(["method", "smooth"])["event_f1"].mean().reset_index()
     means = means.sort_values(["method", "event_f1", "smooth"], ascending=[True, False, True])

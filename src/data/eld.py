@@ -24,14 +24,18 @@ from src.utils.console import setup_console
 from src.utils.results_io import resolve_path
 
 DST_STAMPS = ("01:00", "01:15", "01:30", "01:45")   # etkilenen çeyreklerin damgaları
+# eld.yaml'da bütünüyle DEĞİŞTİRİLEN (birleştirilmeyen) bölümler: household'un val_dev/val_hold
+# tarihleri ve F10-opt/F5-opt topluluk anahtarları ELD config'ine sızmasın.
+REPLACED_SECTIONS = (("split",), ("anomaly", "residual", "ensemble"))
 
 
-def deep_merge(base, override):
-    """İç içe sözlükleri birleştirir; override'daki değerler kazanır (listeler bütünüyle değişir)."""
+def deep_merge(base, override, replaced=(), path=()):
+    """İç içe sözlükleri birleştirir; override kazanır. `replaced` yollarındaki sözlükler bütünüyle değişir."""
     result = deepcopy(base)
     for key, value in override.items():
-        if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = deep_merge(result[key], value)
+        key_path = path + (key,)
+        if isinstance(value, dict) and isinstance(result.get(key), dict) and key_path not in replaced:
+            result[key] = deep_merge(result[key], value, replaced, key_path)
         else:
             result[key] = deepcopy(value)
     return result
@@ -48,7 +52,7 @@ def eld_config(model_config=None):
     config = load_config()
     if model_config is not None:
         config["forecast"] = load_config(PROJECT_ROOT / model_config)["forecast"]
-    return deep_merge(config, load_config(PROJECT_ROOT / "configs/eld.yaml"))
+    return deep_merge(config, load_config(PROJECT_ROOT / "configs/eld.yaml"), REPLACED_SECTIONS)
 
 
 def read_raw(path):
