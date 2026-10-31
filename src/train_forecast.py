@@ -514,6 +514,24 @@ def fit_forecaster(df, config, model_name, device_preference="auto", label="fit"
     }
 
 
+def checkpoint_payload(model, model_name, prepared, forecast):
+    """Checkpoint sözlüğü: ağırlıklar + öznitelik adları + train-fit ölçek istatistikleri.
+
+    Neden: Modeli başka bir betikte (ör. anomali dalı) yeniden kurup aynı
+    ölçeklemeyle çalıştırmak için gereken her şey tek dosyada durur.
+    """
+    return {
+        "model_name": model_name,
+        "state_dict": {name: tensor.cpu() for name, tensor in model.state_dict().items()},
+        "features": prepared["features"],
+        "feature_mean": prepared["feature_scaler"].mean_.tolist(),
+        "feature_scale": prepared["feature_scaler"].scale_.tolist(),
+        "target_mean": prepared["target_scaler"].mean_.tolist(),
+        "target_scale": prepared["target_scaler"].scale_.tolist(),
+        "forecast": forecast,
+    }
+
+
 def train_model(df, config, model_name, device_preference="auto", exp_id=None):
     """Modeli train'de eğitir, val MAE ile seçer ve tüm sonuçları kaydeder.
 
@@ -539,18 +557,7 @@ def train_model(df, config, model_name, device_preference="auto", exp_id=None):
     models_dir = resolve_path(PROJECT_ROOT, config["paths"]["models_dir"])
     models_dir.mkdir(parents=True, exist_ok=True)
     torch.save(
-        {
-            "model_name": model_name,
-            "state_dict": {
-                name: tensor.cpu() for name, tensor in model.state_dict().items()
-            },
-            "features": prepared["features"],
-            "feature_mean": prepared["feature_scaler"].mean_.tolist(),
-            "feature_scale": prepared["feature_scaler"].scale_.tolist(),
-            "target_mean": target_scaler.mean_.tolist(),
-            "target_scale": target_scaler.scale_.tolist(),
-            "forecast": forecast,
-        },
+        checkpoint_payload(model, model_name, prepared, forecast),
         models_dir / f"{exp_id}_best.pt",
     )
 
