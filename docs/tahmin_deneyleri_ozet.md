@@ -1,9 +1,13 @@
-# Tahmin deneyleri özeti (Aşama 1–5, yalnız doğrulama kümesi)
+# Tahmin deneyleri özeti (Aşama 1–5 ve 3b, yalnız doğrulama kümesi) – SON HÂL
 
 > Bu belgedeki tüm sayılar `results/` dosyalarından üretildi (`forecast_val_results.csv`,
 > `seed_stability_val*.csv`, `optuna_*_best.csv`, `F13-ens_weight_grid_val.csv`).
+> `weather_val_summary.csv` (Aşama 3b).
 > **Test kümesi hiçbir aşamada kullanılmadı.** Final değerlendirme (Aşama 6) henüz yapılmadı.
 > Tarih: 2026-10-31 · Dal: `seyda/model-fixes`.
+
+## 0. Final model kararı (2026-10-31, kesin)
+Tahmin deneyleri kapatıldı. **Final tahmin modeli: F13-ens** — F10-opt (seq2seq LSTM, Optuna) × 0,8 + F5-opt (LSTM, Optuna) × 0,2 (XGBoost ağırlığı 0), öznitelik seti B, lookback 48. Val MAE (3 seed) **0,4625 ± 0,0027 kW**, Seasonal Naive 168'e göre ≈ %25,6 iyi. Bu karardan sonra val üzerinde yeni tahmin deneyi yapılmaz; test kümesi yalnız Aşama 6'da (açık onayla) bir kez kullanılır.
 
 ## 1. Değerlendirme protokolü (tüm modeller için aynı)
 - Val: 2009-10-01 → 2010-03-31, 4.213 pencere (doldurulmuş hedefli 132 pencere çıkarıldı); 168/48/336 → 24 saat.
@@ -77,9 +81,9 @@ Arama uzayı: hidden {32, 64, 128}, katman {1, 2, 3}, lr [1e-4, 3e-3] (log), bat
 XGBoost'un ağırlığı 0 çıktı. Topluluk, seq2seq'e göre ortalamada yaklaşık 0,006 kW iyi ve daha kararlı (std 0,0027 vs 0,0060), ama ağırlıklar val'de seçildiği için bu kazanç iyimserdir.
 
 ## 6. Denenen konfigürasyon sayısı ve hesaplama maliyeti
-- `results/experiments.csv`: **92 satır** = 40 Optuna CV denemesi (gerçek val'i görmez) + 50 val koşusu (8'i seed tekrarı, 3'ü topluluk) + 2 tarihsel satır (ilk F3, sklearn F4).
-- Gerçek val kümesinde değerlendirilen farklı konfigürasyon: **42** (50 − 8 seed tekrarı).
-- GPU (RTX 2050) eğitim süresi: Aşama 1 ≈ 156 s, Aşama 2 ≈ 516 s, Aşama 3 ≈ 561 s, Aşama 4 ≈ 3.069 s (Optuna) + 64 s (val doğrulaması), Aşama 5 ≈ 166 s → toplam ≈ 4.532 s (≈ 76 dk). 3 saatlik kota aşılmadı; deneme sayısı düşürülmedi. XGBoost CPU'da (koşu başına ≈ 17 s).
+- `results/experiments.csv`: **101 satır** = 40 Optuna CV denemesi (gerçek val'i görmez) + 59 val koşusu (14'ü seed tekrarı, 3'ü topluluk) + 2 tarihsel satır (ilk F3, sklearn F4).
+- Gerçek val kümesinde değerlendirilen farklı konfigürasyon: **45** (59 − 14 seed tekrarı); Aşama 3b'nin 3 konfigürasyonu (seq2seq W1, LSTM W1, seq2seq W2-oracle) dahil.
+- GPU (RTX 2050) eğitim süresi: Aşama 1 ≈ 156 s, Aşama 2 ≈ 516 s, Aşama 3 ≈ 561 s, Aşama 4 ≈ 3.069 s (Optuna) + 64 s (val doğrulaması), Aşama 5 ≈ 166 s, Aşama 3b ≈ 260 s → toplam ≈ 4.792 s (≈ 80 dk). 3 saatlik kota aşılmadı; deneme sayısı düşürülmedi. XGBoost CPU'da (koşu başına ≈ 17 s).
 
 ## 7. Aşama bazında ana bulgular
 1. **Aşama 1:** PR #4'teki LSTM/GRU metrikleri z-skoru üzerinden hesaplanıyordu (Olay 1); düzeltildi. PyTorch MLP sklearn MLP'den iyi (0,5684 → 0,5045). Ridge alpha etkisiz.
@@ -87,6 +91,8 @@ XGBoost'un ağırlığı 0 çıktı. Topluluk, seq2seq'e göre ortalamada yakla�
 3. **Aşama 3:** Seq2seq LSTM en iyi mimari (0,4747); kazanç uzun ufuklarda. Lookback etkisi gürültü düzeyinde. XGBoost h=1'de ve tepe tüketimde güçlü.
 4. **Aşama 4:** Optuna seq2seq'i 0,4747 → 0,4627 (L1 kaybı, shuffle açık), LSTM'i 0,4859 → 0,4826 (Huber, shuffle kapalı) getirdi. Shuffle × lr hipotezinin "lr fazla yüksek" kısmı desteklenmedi; shuffle'ın etkisi mimariye bağlı.
 5. **Aşama 5:** 3 seed: seq2seq 0,4688 ± 0,0060, LSTM 0,4810 ± 0,0016, XGBoost 0,4995 ± 0,0002, topluluk 0,4625 ± 0,0027. Seed 42 seq2seq sonucu üç seed'in en iyisiydi.
+6. **Aşama 3b:** Geçmiş hava (W1) B'yi geçmedi (seq2seq 0,4732 ± 0,0068, LSTM 0,4884 ± 0,0025); W2 (oracle / üst sınır) aşırı öğrendi (0,4833 ± 0,0093). Topluluk yeniden kurulmadı.
+7. **Karar:** final model F13-ens (§0).
 
 ## 8. Sınırlılıklar
 - Çok sayıda konfigürasyon aynı val kümesinde karşılaştırıldı; seçilen modelin val skoru iyimserdir. Yansız ölçüm yalnız test'te (Aşama 6) yapılabilir.
