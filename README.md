@@ -215,6 +215,7 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | 3 | Mimariler: LSTM, GRU, seq2seq LSTM, CNN-LSTM, XGBoost; lookback {48, 168, 336} (F8) | — |
 | 4 | Optuna: en iyi 2 model için 20'şer deneme; seçim kriteri train'in son 12 ayında 3 katlı zamansal çapraz doğrulama MAE'si; val yalnız seçilen konfigürasyonu doğrular | — |
 | 5 | En iyi 3 modelin ağırlıklı ortalaması (ağırlıklar val'de ızgarayla); en iyi tekil model ve topluluk için 3 seed (F9) | — |
+| ↳ | Aşama 1–5 özeti ve val sonuçları: `docs/tahmin_deneyleri_ozet.md` (sayılar `results/` dosyalarından) | — |
 | 6 | Final betiği: train+val üzerinde val'de bulunan epoch sayısıyla yeniden eğitim, test'te tek değerlendirme (yalnız açık onayla çalıştırılır) | — |
 
 #### Tahmin deneyleri: yöntem ve güncel val sonuçları
