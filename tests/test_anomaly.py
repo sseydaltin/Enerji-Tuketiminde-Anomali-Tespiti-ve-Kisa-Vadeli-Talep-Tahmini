@@ -193,3 +193,89 @@ def test_event_metrics_count_an_event_if_any_hour_is_flagged():
     # Nokta recall'ü olay recall'ünden düşük: 5 anomali saatinden 1'i işaretli.
     point = evaluate_threshold((types != "none").astype(int), predicted.astype(float), types, 0.5)
     assert point["recall"] == pytest.approx(0.2)
+
+
+# ---------------------------------------------------------------- A-2 / A-3 / A-4
+
+from copy import deepcopy
+
+from src.evaluate_anomaly import choose_smoothing, smooth_scores
+from src.models.residual_detector import normalized_scores, one_step_predictions, residual_std_table
+from src.models.seq2seq import Seq2SeqForecaster
+
+
+def tiny_seq2seq_checkpoint(lookback=6):
+    """Rastgele ağırlıklı küçük seq2seq ve ona uygun sahte checkpoint (ölçek = kimlik)."""
+    torch.manual_seed(0)
+    features = ["Global_active_power", "hour_sin", "hour_cos"]
+    model = Seq2SeqForecaster(len(features), len(features) - 1, 8, 1, 0.0).eval()
+    checkpoint = {
+        "model_name": "seq2seq", "features": features,
+        "feature_mean": [0.0] * 3, "feature_scale": [1.0] * 3,
+        "target_mean": [0.0], "target_scale": [1.0],
+        "forecast": {"lookback": lookback, "horizon": 24},
+    }
+    return model, checkpoint
+
+
+def test_one_step_prediction_uses_only_hours_before_t():
+    frame = make_frame(days=5)
+    model, checkpoint = tiny_seq2seq_checkpoint()
+    base = one_step_predictions(model, checkpoint, frame, "cpu")
+    assert base.iloc[:6].isna().all() and base.iloc[6:].notna().all()
+
+    t = 50
+    changed = frame.copy()
+    changed.iloc[t:, 0] += 5.0                            # t ve sonrası değişirse
+    after = one_step_predictions(model, checkpoint, changed, "cpu")
+    assert after.iloc[t] == pytest.approx(base.iloc[t])   # ŷ[t] değişmez (pencere t−6 … t−1)
+    assert after.iloc[t + 1] != pytest.approx(base.iloc[t + 1])
+
+
+def test_seq2seq_first_output_needs_only_first_decoder_step():
+    # Decoder nedensel LSTM: 24 adımlı girdinin ilk çıktısı = yalnız ilk adımla çıktı.
+    model, _ = tiny_seq2seq_checkpoint()
+    inputs, future = torch.randn(4, 6, 3), torch.randn(4, 24, 2)
+    with torch.no_grad():
+        full = model(inputs, future)[:, 0]
+        single = model(inputs, future[:, :1])[:, 0]
+    torch.testing.assert_close(full, single)
+
+
+def test_residual_std_table_and_normalized_scores():
+    index = pd.date_range("2024-01-01", periods=14 * 24, freq="h")
+    rng = np.random.default_rng(0)
+    train = pd.DataFrame({"y": rng.normal(size=len(index)), "is_imputed": 0}, index=index)
+    # Saat 18'de artıklar 10 kat büyük.
+    train.loc[train.index.hour == 18, "y"] *= 10
+    table = residual_std_table(train, pd.Series(0.0, index=index), "y")
+    assert len(table) == 168
+    errors = pd.Series(1.0, index=index[:48])
+    scores = normalized_scores(errors, table)
+    assert scores[errors.index.hour == 18].mean() < scores[errors.index.hour == 3].mean() / 3
+
+
+def test_smoothing_is_past_only_and_choice_prefers_smaller_window():
+    scores = pd.DataFrame({"m": [0.0, 0.0, 3.0, 0.0, 0.0, 9.0]})
+    smoothed = smooth_scores(scores, 3)["m"]
+    assert np.isnan(smoothed.iloc[1]) and smoothed.iloc[2] == pytest.approx(1.0)
+    assert smoothed.iloc[4] == pytest.approx(1.0)         # 9.0 (t=5) henüz görülmedi
+    assert smooth_scores(scores, 1) is scores
+
+    summary = pd.DataFrame({"method": ["m"] * 3, "rule": ["f1max"] * 3,
+                            "smooth": [1, 3, 6], "f1_mean": [0.2, 0.3, 0.3]})
+    assert choose_smoothing(summary) == {"m": 3}         # eşitlikte küçük pencere
+
+
+def test_severity_change_keeps_event_positions(injection_settings):
+    frame = make_frame(days=200)
+    stronger = deepcopy(injection_settings)
+    stronger["level_shift"]["factor"] = 3.0
+    stronger["spike"]["factor_low"] = stronger["spike"]["factor_high"] = 6.0
+    _, base_labels = inject_anomalies(frame, "Global_active_power", injection_settings, seed=1)
+    injected, labels = inject_anomalies(frame, "Global_active_power", stronger, seed=1)
+    pd.testing.assert_frame_equal(base_labels, labels)   # aynı yer ve tip, yalnız büyüklük farklı
+    shift = labels["anomaly_type"] == "level_shift"
+    if shift.any():
+        ratio = injected["Global_active_power"][shift] / frame["Global_active_power"][shift]
+        assert np.allclose(ratio, 3.0)

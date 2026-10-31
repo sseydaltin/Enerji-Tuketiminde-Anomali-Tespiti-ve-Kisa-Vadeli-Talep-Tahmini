@@ -110,6 +110,16 @@ anomaly:
     scheduler_patience: 3
     grad_clip: 1.0
   threshold_percentiles: [95, 99, 99.5]  # A4: eşik duyarlılığı (yalnız val)
+  residual:                            # A3: tahmin artığı dedektörü (h=1 mutlak hata)
+    seq2seq: F10-opt                   # models/F10-opt_best.pt (seyda/model-fixes, yalnız train)
+    ensemble:                          # F13-ens ağırlıkları (Aşama 5; XGBoost ağırlığı 0 → yok)
+      F10-opt: 0.8
+      F5-opt: 0.2
+  smoothing_windows: [1, 3, 6]         # A-3: yalnız geçmişe bakan hareketli ortalama (saat); val'de seçilir
+  severity:                            # A-4: şiddet taraması (ana sonuçları değiştirmez)
+    level_shift_factors: [1.5, 2, 3]
+    spike_factors: [2, 4, 6]
+    top_k: 3                           # ana tablodaki en iyi k yöntem (F1 ortalaması)
 
 # ---------------------------------------------------------------------
 # Sentetik anomali enjeksiyonu (README §4.9)

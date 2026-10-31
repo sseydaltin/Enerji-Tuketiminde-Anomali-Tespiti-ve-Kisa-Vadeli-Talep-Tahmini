@@ -57,7 +57,7 @@ Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney list
 | İP2 – Veri yükleme, temizleme, saatliğe indirgeme, bölme, ölçekleme, pencereleme | **Dilara** | Şeyda (EDA ile çapraz kontrol) |
 | İP2b – Keşifsel veri analizi (EDA) ve figürler | **Şeyda** | Dilara |
 | İP3 – Tahmin: baseline'lar + MLP + LSTM + GRU, eğitim, ayar, ablasyon | **Dilara** | Şeyda (kod incelemesi) |
-| İP4 – Anomali: enjeksiyon, z-skor, Isolation Forest, LSTM-AE, artık tabanlı dedektör, eşik seçimi | **Şeyda** | Dilara (artık dedektörü GRU'yu kullanır) |
+| İP4 – Anomali: enjeksiyon, z-skor, Isolation Forest, LSTM-AE, artık tabanlı dedektör, eşik seçimi | **Şeyda** | Dilara (artık dedektörü final tahmin modelini kullanır: F10-opt / F13-ens) |
 | İP5 – Değerlendirme, hata analizi, karşılaştırma tabloları | İkisi birlikte (kendi hattını) | Çapraz okuma |
 | İP6 – Streamlit demo | **Dilara** | Şeyda (anomali sayfası) |
 | Öneri formu | Şeyda: Özgün Değer + Kaynaklar · Dilara: Yöntem · İkisi: Amaç/Hedefler, Özet (en son) | |
@@ -281,7 +281,7 @@ başına metrikler karşılaştırmalı tabloya ek olarak ufuk CSV'sinde bulunur
 | A0 | Hareketli z-skoru (168 s pencere, aynı saat-günü bazlı) | \|z\| |
 | A1 | Isolation Forest (pencere istatistikleri + takvim) | anomaly score |
 | A2 | **LSTM-Autoencoder** (encoder LSTM → gizli vektör → decoder LSTM) | Yeniden yapılandırma MSE |
-| A3 | **GRU artık dedektörü** (F6'nın 1-adım tahmin hatası) | \|y − ŷ\| (normalize) |
+| A3 | **Tahmin artığı dedektörü** (2026-10-31 kararı: final tahmin modeli F13-ens; 1 adım ileri tahmin için F10-opt seq2seq, ikinci varyant F13-ens = 0,8·F10-opt + 0,2·F5-opt; ağırlıklar yalnız train ile eğitildi) | \|y − ŷ\| (kW) ve \|y − ŷ\| / std(saat × gün, yalnız train artıkları) |
 | A4 | Eşik duyarlılığı: val'de F1-max vs yüzdelik 95 / 99 / 99.5 | — |
 
 LSTM-AE bilinçli olarak **yalnız eğitim kümesinde** ve "çoğunlukla normal" varsayımıyla eğitilir. Eğitim verisinde gerçek anomaliler olabileceği (kontaminasyon) bir sınırlılıktır.
@@ -324,6 +324,8 @@ Hem doğrulama (seed=1) hem test (seed=2) kümesinin **kopyasına**, saatlerin ~
 - Etiketler saat düzeyinde (0/1). Enjeksiyon **ölçeklemeden önce ham kW** üzerinde yapılır; ölçekleyici yine eğitimden gelir.
 - **Eşik doğrulama kümesinde seçilir**, test kümesine aynen uygulanır (sızıntı yok).
 - **Çok seed'li val protokolü (A-1):** val'e 5 ayrı kopyada seed ∈ {1, 11, 21, 31, 41} ile enjeksiyon yapılır; her yöntemin tek eşiği 5 kopyanın birleşiminde F1-max ile seçilir, metrikler kopya başına hesaplanıp ortalama ± std verilir. Test tek kopyadır (seed=2).
+- **Skor yumuşatma (A-3):** her yöntemin skoruna yalnız geçmişe bakan hareketli ortalama (pencere 1/3/6 saat) uygulanır; pencere val'de F1-max eşiğindeki ortalama F1 ile seçilir (eşitlikte küçük pencere), test'e aynen uygulanır.
+- **Şiddet taraması (A-4):** seviye kayması ×{1,5; 2; 3} ve spike ×{2; 4; 6}; en iyi 3 yöntem, val'de seçilmiş eşik ve pencere sabit, olay recall'ü ayrı tabloda (`anomaly_val_severity.csv`); ana sonuçları değiştirmez.
 - **Olay bazlı metrikler:** bir olay (aynı tipten ardışık etiketli saatler) en az bir saati işaretlenince yakalanmış sayılır (olay recall'ü); olay precision'ı = gerçek bir anomaliyle kesişen alarm bloklarının oranı. Bu kural yalnız olay metriklerinde kullanılır; nokta metriklerine *point-adjust* (yakalanan olayın tüm saatlerini doğru saymak) uygulanmaz, çünkü point-adjust rastgele skorlara bile yüksek F1 verebildiği için eleştirilmektedir (Kim vd., AAAI 2022 – kaynak doğrulanmalı).
 - Raporlanan: Precision, Recall, F1, ROC-AUC, PR-AUC (dengesiz sınıf → PR-AUC daha bilgilendirici), karmaşıklık matrisi, **tip bazında recall**.
 - Ek nitel analiz: enjeksiyonsuz test verisinde en yüksek skorlu 10 olay → gerçekte ne olmuş olabilir (tatil, ev boş, mevsim geçişi)?
@@ -467,7 +469,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 4. **Araştırma soruları ve hipotezler** (açık yazılacak):
    - **AS1:** Kapı mekanizmalı tekrarlayan ağlar (LSTM, GRU), hane düzeyi saatlik tüketimin 24 saatlik tahmininde mevsimsel naif ve klasik regresyon yöntemlerinden daha düşük hata üretir mi? **H1:** LSTM/GRU, test RMSE'sinde Seasonal Naive (168 s) ve Ridge'den daha düşüktür.
    - **AS2:** LSTM ve GRU arasında doğruluk ve eğitim maliyeti açısından anlamlı fark var mı? **H2:** GRU, benzer doğruluğu daha az parametre ve daha kısa sürede sağlar.
-   - **AS3:** Yeniden yapılandırma tabanlı LSTM-AE, istatistiksel ve klasik ML anomali yöntemlerinden daha yüksek PR-AUC elde eder mi? **H3:** LSTM-AE ve GRU artık dedektörü, özellikle seviye kayması ve desen anomalilerinde z-skoru ve Isolation Forest'tan daha yüksek recall sağlar.
+   - **AS3:** Yeniden yapılandırma tabanlı LSTM-AE, istatistiksel ve klasik ML anomali yöntemlerinden daha yüksek PR-AUC elde eder mi? **H3:** LSTM-AE ve tahmin artığı dedektörü, özellikle seviye kayması ve desen anomalilerinde z-skoru ve Isolation Forest'tan daha yüksek recall sağlar.
 
 **Amaç ve Hedefler** – ≥350 karakter. **Amaç (genel yön)** ve **hedefler (ölçülebilir alt çıktılar)** **ayrı** yazılır; her hedef için *nasıl kontrol edileceği* ve *başarı ölçütü* belirtilir.
 > **Amaç:** Hane düzeyi elektrik tüketim verisinden zamana bağlı örüntüleri öğrenen derin öğrenme modelleriyle hem 24 saatlik talep tahmini yapan hem de olağandışı tüketimi tespit eden, sızıntısız ve tekrarlanabilir bir sistem geliştirmek ve bunu referans yöntemlerle bilimsel olarak karşılaştırmak.
@@ -476,7 +478,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 |---|---|---|---|
 | H1 – Veri hazırlama | Temiz saatlik veri, belgelenmiş eksik veri stratejisi, kronolojik bölme | Birim testleri (küme çakışması = 0, ölçekleyici yalnız eğitimde fit) | Tüm testler geçer, eksik oranı ve örnek sayıları raporlanır |
 | H2 – Talep tahmini | LSTM ve GRU, 24 saat ufuk | Test MAE/RMSE/sMAPE, 3 seed ort. ± std | En iyi modelin test RMSE'si Seasonal Naive (168 s)'e göre ≥ %10 düşük |
-| H3 – Anomali tespiti | LSTM-AE ve GRU artık dedektörü | Enjekte anomalili test kümesinde P/R/F1/PR-AUC | En iyi derin yöntemin PR-AUC'si z-skor ve IF'den yüksek; F1 ≥ 0.70 |
+| H3 – Anomali tespiti | LSTM-AE ve tahmin artığı dedektörü | Enjekte anomalili test kümesinde P/R/F1/PR-AUC | En iyi derin yöntemin PR-AUC'si z-skor ve IF'den yüksek; F1 ≥ 0.70 |
 | H4 – Analiz | Hata analizi, tip bazlı recall, sınırlılıklar | Rapordaki tablo ve figürler | §4.11 figür listesinin tamamı |
 | H5 – Uygulama | Çalışır Streamlit demo | Sunumda canlı gösterim | Kayıtlı modelle örnek girdiden tahmin ve anomali skoru üretimi |
 

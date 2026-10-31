@@ -1,11 +1,14 @@
-"""A0–A2 anomali dedektörlerini enjekte edilmiş val (varsayılan) veya test kopyalarında değerlendirir.
+"""A0–A3 anomali dedektörlerini enjekte edilmiş val (varsayılan) veya test kopyalarında değerlendirir.
 
 Protokol (A-1): val'e 5 farklı seed ile enjeksiyon yapılır; eşik her yöntem için
 5 kopyanın BİRLEŞİMİNDE F1-max ile seçilir; metrikler kopya başına hesaplanıp
 ortalama ± std raporlanır. Test tek kopyadır (seed=2) ve val eşiklerini kullanır.
+A-2: A3 tahmin artığı skorları. A-3: yalnız geçmişe bakan skor yumuşatma
+(pencere val'de seçilir). A-4: şiddet taraması (ayrı tablo, yalnız val).
 """
 
 import argparse
+from copy import deepcopy
 from datetime import date
 
 import matplotlib
@@ -26,6 +29,13 @@ from src.models.anomaly_baselines import (
     window_features,
 )
 from src.models.autoencoder import LSTMAutoencoder, make_windows, point_scores, reconstruct
+from src.models.residual_detector import (
+    combine_predictions,
+    load_forecaster,
+    normalized_scores,
+    one_step_predictions,
+    residual_std_table,
+)
 from src.utils.anomaly_metrics import evaluate_threshold, f1_max_threshold
 from src.utils.console import setup_console
 from src.utils.exp_logger import resolve_path, upsert_csv
@@ -40,9 +50,15 @@ METHOD_LABELS = {
     "A2-noAug-rel": "LSTM-AE, Ağu-2008 çıkarılmış (göreli)",
     "A2-lat8": "LSTM-AE, gizil 8 – tanılama (ölçekli)",
     "A2-lat8-rel": "LSTM-AE, gizil 8 – tanılama (göreli)",
+    "A3-s2s": "Tahmin artığı, seq2seq F10-opt (|hata| kW)",
+    "A3-s2s-norm": "Tahmin artığı, seq2seq F10-opt (|hata| / std saat×gün)",
+    "A3-ens": "Tahmin artığı, topluluk F13-ens (|hata| kW)",
+    "A3-ens-norm": "Tahmin artığı, topluluk F13-ens (|hata| / std saat×gün)",
 }
 # Değerlendirilecek AE checkpoint'leri (models/{exp_id}_best.pt; yoksa atlanır).
 AUTOENCODER_EXPERIMENTS = ("A2", "A2-noAug", "A2-lat8")
+# Figürlerde gösterilen ana yöntemler (tanılama koşuları tablolarda kalır).
+FIGURE_METHODS = ("A0", "A1", "A2", "A2-rel", "A3-s2s", "A3-s2s-norm", "A3-ens", "A3-ens-norm")
 # Ortalama ± std'si raporlanan metrikler.
 SUMMARY_METRICS = (
     ["precision", "recall", "f1", "roc_auc", "pr_auc",
@@ -91,19 +107,69 @@ def autoencoder_scores(checkpoint_path, series, window, relative_eps, device):
     )
 
 
-def compute_scores(splits, config, split, seed, forest, device):
-    """Seçilen kümenin bir enjekte kopyası için tüm yöntemlerin skorlarını hesaplar.
+def fit_detectors(splits, config, device):
+    """Train'e bağlı her şeyi bir kez hazırlar: Isolation Forest, tahmin modelleri, artık std'leri.
 
-    Girdi: kronolojik bölmeler, config, küme adı, enjeksiyon seed'i, train'e
-    fit edilmiş Isolation Forest, cihaz.
-    Çıktı: (skor tablosu [saat, yöntem], etiket tablosu, enjekte kopya).
+    Çıktı: {"forest", "forecasters": {exp_id: (model, checkpoint)}, "std_tables": {...}}.
+    Neden: A1 yalnız train'e fit edilir; A3'ün tahmin modelleri train'de eğitilmiş
+    kayıtlı ağırlıklardır; normalize skorun std tablosu yalnız train artıklarından gelir.
+    Hiçbiri val/test enjeksiyonunu görmez.
+    """
+    target = config["preprocess"]["target"]
+    anomaly = config["anomaly"]
+    forest = fit_isolation_forest(
+        window_features(splits["train"], target, config["features"]["calendar"]),
+        anomaly["isolation_forest"], config["seed"],
+    )
+    models_dir = resolve_path(PROJECT_ROOT, config["paths"]["models_dir"])
+    residual = anomaly["residual"]
+    names = {residual["seq2seq"], *residual["ensemble"]}
+    forecasters = {name: load_forecaster(models_dir / f"{name}_best.pt", device) for name in names}
+
+    train = splits["train"]
+    train_predictions = {name: one_step_predictions(model, checkpoint, train, device)
+                         for name, (model, checkpoint) in forecasters.items()}
+    std_tables = {
+        "A3-s2s": residual_std_table(train, train_predictions[residual["seq2seq"]], target),
+        "A3-ens": residual_std_table(
+            train, combine_predictions(train_predictions, residual["ensemble"]), target
+        ),
+    }
+    return {"forest": forest, "forecasters": forecasters, "std_tables": std_tables}
+
+
+def residual_scores(full, config, fitted, device):
+    """A3 skorları: h=1 tahminin mutlak hatası (kW) ve saat×gün std'siyle normalize hâli."""
+    target = config["preprocess"]["target"]
+    residual = config["anomaly"]["residual"]
+    predictions = {name: one_step_predictions(model, checkpoint, full, device)
+                   for name, (model, checkpoint) in fitted["forecasters"].items()}
+    variants = {
+        "A3-s2s": predictions[residual["seq2seq"]],
+        "A3-ens": combine_predictions(predictions, residual["ensemble"]),
+    }
+    scores = {}
+    for name, prediction in variants.items():
+        error = (full[target] - prediction).abs()
+        scores[name] = error
+        scores[f"{name}-norm"] = normalized_scores(error, fitted["std_tables"][name])
+    return scores
+
+
+def compute_scores(splits, config, split, seed, fitted, device, injection_settings=None):
+    """Seçilen kümenin bir enjekte kopyası için tüm yöntemlerin HAM skorlarını hesaplar.
+
+    Girdi: kronolojik bölmeler, config, küme adı, enjeksiyon seed'i, fit_detectors
+    çıktısı, cihaz, isteğe bağlı değiştirilmiş enjeksiyon ayarları (A-4).
+    Çıktı: (skor tablosu [bağlam + küme saatleri, yöntem], etiketler, enjekte kopya).
     Neden: Geçmiş bağlam (son 8 gün) bir önceki kümeden ENJEKSİYONSUZ alınır;
-    yalnız değerlendirilen kümeye anomali eklenir. A1 ve A2 yalnız train'de
-    fit/eğitilmiştir; burada yalnız skor üretilir.
+    yalnız değerlendirilen kümeye anomali eklenir. Bağlam saatleri de döndürülür
+    ki geçmişe bakan yumuşatma küme başında da tam pencereyle hesaplansın.
     """
     anomaly = config["anomaly"]
     target = config["preprocess"]["target"]
-    injected, labels = inject_anomalies(splits[split], target, config["injection"], seed)
+    settings = injection_settings or config["injection"]
+    injected, labels = inject_anomalies(splits[split], target, settings, seed)
     previous = splits["train"] if split == "val" else splits["val"]
     context_hours = anomaly["zscore_window"] + anomaly["ae"]["window"]
     full = pd.concat((previous.tail(context_hours), injected))
@@ -111,9 +177,8 @@ def compute_scores(splits, config, split, seed, forest, device):
     scores = pd.DataFrame(index=full.index)
     scores["A0"] = rolling_zscore(full[target], anomaly["zscore_window"], anomaly["zscore_min_std"])
     scores["A1"] = isolation_forest_scores(
-        forest, window_features(full, target, config["features"]["calendar"])
+        fitted["forest"], window_features(full, target, config["features"]["calendar"])
     )
-
     models_dir = resolve_path(PROJECT_ROOT, config["paths"]["models_dir"])
     for exp_id in AUTOENCODER_EXPERIMENTS:
         path = models_dir / f"{exp_id}_best.pt"
@@ -125,9 +190,38 @@ def compute_scores(splits, config, split, seed, forest, device):
         )
         scores[exp_id] = squared
         scores[f"{exp_id}-rel"] = relative
+    for name, values in residual_scores(full, config, fitted, device).items():
+        scores[name] = values
+    return scores, labels, injected
 
-    # Yalnız değerlendirilen kümenin saatleri.
-    return scores.loc[injected.index], labels, injected
+
+def smooth_scores(scores, window):
+    """Yalnız geçmişe bakan hareketli ortalama: s̃[t] = ort(s[t−w+1], …, s[t]).
+
+    Neden: Uzun anomaliler (seviye kayması) birkaç saat boyunca orta düzey skor
+    verir; ortalama tek saatlik gürültüyü bastırıp süreklilik gösteren sapmayı
+    öne çıkarır. Merkezli pencere kullanılmaz (gelecek bilgisi yok). w=1 ham skordur.
+    """
+    if window == 1:
+        return scores
+    return scores.rolling(window, min_periods=window).mean()
+
+
+def make_runs(outputs, windows):
+    """Kopya çıktılarından değerlendirme girdisi kurar; her yöntem kendi penceresiyle yumuşatılır.
+
+    Girdi: outputs = [(seed, ham skorlar (bağlamlı), etiketler, enjekte kopya)],
+    windows = {yöntem: pencere}. Çıktı: evaluate_split'in beklediği runs listesi.
+    """
+    runs = []
+    for seed, scores, labels, injected in outputs:
+        smoothed = pd.DataFrame({
+            method: smooth_scores(scores[[method]], window)[method]
+            for method, window in windows.items()
+        })
+        runs.append({"seed": seed, "scores": smoothed.loc[injected.index], "labels": labels,
+                     "imputed": injected["is_imputed"].to_numpy(dtype=bool)})
+    return runs
 
 
 def valid_hours(run, method):
@@ -174,17 +268,17 @@ def evaluate_split(runs, split, config, val_thresholds=None):
     return pd.DataFrame(rows)
 
 
-def summarize(per_seed):
-    """Kopya başına sonuçlardan yöntem × kural için ortalama ve std (ddof=1) tablosu.
+def summarize(per_seed, group_columns=("method", "rule")):
+    """Kopya başına sonuçlardan ortalama ve std (ddof=1) tablosu.
 
     Neden: Tek enjeksiyon kopyasında ~100 olay var; olay yerleşimi şansı
     sonuçları oynatır. 5 kopyanın std'si bu belirsizliği gösterir.
     """
     rows = []
-    for (method, rule), group in per_seed.groupby(["method", "rule"], sort=False):
-        row = {"method": method, "label": group["label"].iloc[0], "rule": rule,
-               "threshold": group["threshold"].iloc[0], "n_seeds": len(group),
-               "n_events_mean": group["n_events"].mean()}
+    for keys, group in per_seed.groupby(list(group_columns), sort=False):
+        row = dict(zip(group_columns, keys))
+        row.update({"label": group["label"].iloc[0], "threshold": group["threshold"].iloc[0],
+                    "n_seeds": len(group), "n_events_mean": group["n_events"].mean()})
         for metric in SUMMARY_METRICS:
             row[f"{metric}_mean"] = group[metric].mean()
             row[f"{metric}_std"] = group[metric].std(ddof=1) if len(group) > 1 else 0.0
@@ -192,8 +286,60 @@ def summarize(per_seed):
     return pd.DataFrame(rows)
 
 
-def save_figures(runs, per_seed, summary, figures_dir, split, prefix="A0-A2"):
+def choose_smoothing(smoothing_summary):
+    """Her yöntem için F1-max eşiğindeki ortalama F1'i en yüksek pencereyi seçer.
+
+    Neden: Eşik seçimiyle aynı kriter (F1) kullanılır; eşitlikte küçük pencere
+    (daha az gecikme) tercih edilir. Seçim yalnız val'de yapılır.
+    """
+    best = smoothing_summary[smoothing_summary["rule"] == "f1max"]
+    best = best.sort_values(["method", "f1_mean", "smooth"], ascending=[True, False, True])
+    return best.groupby("method", sort=False)["smooth"].first().astype(int).to_dict()
+
+
+def severity_sweep(splits, config, fitted, device, methods, windows, thresholds):
+    """A-4: seviye kayması ve spike şiddetini değiştirip olay recall'ünü ölçer.
+
+    Girdi: en iyi yöntemler, her birinin seçilmiş penceresi ve val'de seçilmiş
+    F1-max eşiği (yeniden seçilmez). Çıktı: [tip, çarpan, yöntem, seed] tablosu.
+    Neden: Ana enjeksiyonda seviye kayması ×1,5 ve spike U(2, 4); tespit
+    edilebilirliğin şiddete nasıl bağlı olduğunu görmek için yalnız ilgili
+    çarpan değiştirilir. Rastgele sayı tüketimi değişmediğinden olayların
+    yerleri ve tipleri ana enjeksiyonla aynıdır; yalnız büyüklük değişir.
+    """
+    severity = config["anomaly"]["severity"]
+    plans = [("level_shift", factor) for factor in severity["level_shift_factors"]]
+    plans += [("spike", factor) for factor in severity["spike_factors"]]
+    rows = []
+    for kind, factor in plans:
+        settings = deepcopy(config["injection"])
+        if kind == "level_shift":
+            settings["level_shift"]["factor"] = factor
+        else:
+            settings["spike"]["factor_low"] = settings["spike"]["factor_high"] = factor
+        outputs = []
+        for seed in injection_seeds(config, "val"):
+            scores, labels, injected = compute_scores(splits, config, "val", seed, fitted,
+                                                      device, settings)
+            outputs.append((seed, scores, labels, injected))
+        for run in make_runs(outputs, {method: windows[method] for method in methods}):
+            for method in methods:
+                metrics = evaluate_threshold(
+                    run["labels"]["is_anomaly"].to_numpy(), run["scores"][method].to_numpy(),
+                    run["labels"]["anomaly_type"].to_numpy(), thresholds[method],
+                    valid_hours(run, method),
+                )
+                rows.append({"type": kind, "factor": factor, "method": method,
+                             "smooth": windows[method], "seed": run["seed"],
+                             "threshold": thresholds[method],
+                             "event_recall": metrics[f"event_recall_{kind}"],
+                             "point_recall": metrics[f"recall_{kind}"]})
+    return pd.DataFrame(rows)
+
+
+def save_figures(runs, per_seed, summary, figures_dir, split, prefix="A0-A3", notes=None):
     """Figürler: skor serisi (ilk kopya), birleşik karmaşıklık matrisleri, ROC/PR, tip recall."""
+    notes = notes or {}
     tag = split.upper()
     first = runs[0]
     methods = list(first["scores"].columns)
@@ -211,8 +357,8 @@ def save_figures(runs, per_seed, summary, figures_dir, split, prefix="A0-A2"):
         for kind, color in zip(ANOMALY_TYPES, ("red", "blue", "orange", "purple")):
             mask = (labels["anomaly_type"] == kind).to_numpy()
             axis.scatter(scores.index[mask], scores[method][mask], s=6, color=color, label=kind)
-        axis.set_title(f"{label(method)} ({method}) – {tag} enjekte kopya, seed={first['seed']}",
-                       fontsize=9)
+        axis.set_title(f"{label(method)} ({method}{notes.get(method, '')}) – {tag} enjekte kopya, "
+                       f"seed={first['seed']}", fontsize=9)
         axis.set_ylabel("Skor")
     np.atleast_1d(axes)[0].legend(fontsize=7, ncol=6, loc="upper right")
     np.atleast_1d(axes)[-1].set_xlabel("Zaman (saat)")
@@ -232,12 +378,13 @@ def save_figures(runs, per_seed, summary, figures_dir, split, prefix="A0-A2"):
         axis.set_yticks([0, 1], ["Normal", "Anomali"])
         axis.set_xlabel("Tahmin")
         axis.set_ylabel("Gerçek (enjekte)")
-        axis.set_title(f"{method} – {tag}, F1-max\n(seed {seeds_text} toplamı)", fontsize=7)
+        axis.set_title(f"{method}{notes.get(method, '')} – {tag}, F1-max\n(seed {seeds_text} toplamı)",
+                       fontsize=7)
     figure.tight_layout()
     figure.savefig(figures_dir / f"{prefix}_{split}_confusion_matrices.png", dpi=200)
     plt.close(figure)
 
-    figure, (roc_axis, pr_axis) = plt.subplots(1, 2, figsize=(12, 5))
+    figure, (roc_axis, pr_axis) = plt.subplots(1, 2, figsize=(13, 5.5))
     for method in methods:
         y = np.concatenate([run["labels"]["is_anomaly"].to_numpy()[valid_hours(run, method)]
                             for run in runs])
@@ -245,15 +392,16 @@ def save_figures(runs, per_seed, summary, figures_dir, split, prefix="A0-A2"):
                             for run in runs])
         fpr, tpr, _ = roc_curve(y, s)
         precision, recall, _ = precision_recall_curve(y, s)
-        roc_axis.plot(fpr, tpr, label=f"{method} (AUC={best.loc[method, 'roc_auc_mean']:.3f})")
-        pr_axis.plot(recall, precision, label=f"{method} (AP={best.loc[method, 'pr_auc_mean']:.3f})")
+        name = f"{method}{notes.get(method, '')}"
+        roc_axis.plot(fpr, tpr, label=f"{name} (AUC={best.loc[method, 'roc_auc_mean']:.3f})")
+        pr_axis.plot(recall, precision, label=f"{name} (AP={best.loc[method, 'pr_auc_mean']:.3f})")
     roc_axis.plot([0, 1], [0, 1], color="gray", linestyle=":")
     roc_axis.set(xlabel="Yanlış pozitif oranı", ylabel="Doğru pozitif oranı (recall)",
                  title=f"ROC – {tag}, seed {seeds_text} birleşik\n(lejant: kopya ortalaması)")
     pr_axis.axhline(y.mean(), color="gray", linestyle=":", label="Rastgele")
     pr_axis.set(xlabel="Recall", ylabel="Precision", title=f"Precision-Recall – {tag}, birleşik")
-    roc_axis.legend(fontsize=8)
-    pr_axis.legend(fontsize=8)
+    roc_axis.legend(fontsize=7)
+    pr_axis.legend(fontsize=7)
     figure.tight_layout()
     figure.savefig(figures_dir / f"{prefix}_{split}_roc_pr.png", dpi=200)
     plt.close(figure)
@@ -266,7 +414,8 @@ def save_figures(runs, per_seed, summary, figures_dir, split, prefix="A0-A2"):
         for k, method in enumerate(methods):
             means = [best.loc[method, f"{metric}_{kind}_mean"] for kind in ANOMALY_TYPES]
             stds = [best.loc[method, f"{metric}_{kind}_std"] for kind in ANOMALY_TYPES]
-            axis.bar(positions + k * width, means, width, yerr=stds, capsize=2, label=method)
+            axis.bar(positions + k * width, means, width, yerr=stds, capsize=2,
+                     label=f"{method}{notes.get(method, '')}")
         axis.set_xticks(positions + width * (len(methods) - 1) / 2, ANOMALY_TYPES)
         axis.set_ylim(0, 1)
         axis.set_title(f"{name} bazlı tip recall'ü – {tag}, F1-max, ort ± std ({len(runs)} seed)",
@@ -278,12 +427,74 @@ def save_figures(runs, per_seed, summary, figures_dir, split, prefix="A0-A2"):
     plt.close(figure)
 
 
+def save_smoothing_figure(smoothing_summary, figures_dir):
+    """A-3: yöntem başına F1 (F1-max eşiğinde) ve PR-AUC'nin pencereye göre değişimi (VAL)."""
+    table = smoothing_summary[(smoothing_summary["rule"] == "f1max")
+                              & smoothing_summary["method"].isin(FIGURE_METHODS)]
+    figure, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+    for axis, metric, name in ((axes[0], "f1", "F1 (F1-max eşiğinde)"), (axes[1], "pr_auc", "PR-AUC")):
+        for method, group in table.groupby("method", sort=False):
+            axis.errorbar(group["smooth"], group[f"{metric}_mean"], yerr=group[f"{metric}_std"],
+                          marker="o", capsize=3, label=method)
+        axis.set_xticks(sorted(table["smooth"].unique()))
+        axis.set_xlabel("Geçmişe bakan hareketli ortalama penceresi (saat)")
+        axis.set_ylabel(f"{name}, ort ± std (5 seed)")
+        axis.set_title(f"Skor yumuşatma – VAL: {name}")
+    axes[1].legend(fontsize=7)
+    figure.tight_layout()
+    figure.savefig(figures_dir / "A-3_val_smoothing.png", dpi=200)
+    plt.close(figure)
+
+
+def save_severity_figure(severity_summary, figures_dir):
+    """A-4: şiddete göre olay recall'ü (VAL, val'de seçilmiş eşikler sabit)."""
+    figure, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharey=True)
+    for axis, kind, name in ((axes[0], "level_shift", "Seviye kayması çarpanı"),
+                             (axes[1], "spike", "Spike çarpanı")):
+        part = severity_summary[severity_summary["type"] == kind]
+        for method, group in part.groupby("method", sort=False):
+            axis.errorbar(group["factor"], group["event_recall_mean"], yerr=group["event_recall_std"],
+                          marker="o", capsize=3, label=f"{method} (w={int(group['smooth'].iloc[0])})")
+        axis.set_xlabel(f"{name} (× normal değer)")
+        axis.set_xticks(sorted(part["factor"].unique()))
+        axis.set_ylim(0, 1.05)
+        axis.set_title(f"Şiddet taraması – VAL, {kind} olay recall'ü")
+    axes[0].set_ylabel("Olay recall'ü, ort ± std (5 seed)")
+    axes[1].legend(fontsize=8)
+    figure.tight_layout()
+    figure.savefig(figures_dir / "A-4_val_severity.png", dpi=200)
+    plt.close(figure)
+
+
+def experiment_rows(summary, config, suffix_for):
+    """Özet tablosundan experiments.csv satırları (F1-max kuralı)."""
+    rows = []
+    for _, best in summary[summary["rule"] == "f1max"].iterrows():
+        def fmt(metric):
+            return f"{best[metric + '_mean']:.3f}±{best[metric + '_std']:.3f}"
+        window = int(best["smooth"])
+        rows.append({
+            "exp_id": f"{best['method']}{suffix_for(window)}-eval5s",
+            "date": date.today().isoformat(), "model": best["label"], "seed": config["seed"],
+            "lookback": window, "val_mae": "", "val_rmse": "", "test_mae": "", "test_rmse": "",
+            "note": (
+                f"Anomali val, 5 enjeksiyon seed {config['injection']['val_seeds']}; "
+                f"yumuşatma w={window} (geçmişe bakan ort.); birleşik F1-max eşik={best['threshold']:.4g}: "
+                f"P={fmt('precision')} R={fmt('recall')} F1={fmt('f1')}; ROC-AUC={fmt('roc_auc')}; "
+                f"PR-AUC={fmt('pr_auc')}; olay R={fmt('event_recall')} P={fmt('event_precision')}; "
+                f"ayrıntı anomaly_val_results.csv / anomaly_val_smoothing.csv"
+            ),
+        })
+    return rows
+
+
 def main():
     """Varsayılan: yalnız val. --split test yalnız açık final değerlendirmede kullanılır."""
     setup_console()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--split", choices=("val", "test"), default="val")
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--skip_severity", action="store_true", help="A-4 taramasını atla")
     parser.add_argument("--config", default=None)
     args = parser.parse_args()
 
@@ -295,60 +506,104 @@ def main():
     figures_dir = resolve_path(PROJECT_ROOT, config["paths"]["figures_dir"])
     tables_dir.mkdir(parents=True, exist_ok=True)
     figures_dir.mkdir(parents=True, exist_ok=True)
+    experiments_file = resolve_path(PROJECT_ROOT, config["paths"]["experiments_file"])
 
     splits = chronological_split(df, config)
-    target = config["preprocess"]["target"]
-    # A1: yalnız train (enjeksiyonsuz) özniteliklerine bir kez fit.
-    forest = fit_isolation_forest(
-        window_features(splits["train"], target, config["features"]["calendar"]),
-        config["anomaly"]["isolation_forest"], config["seed"],
-    )
-    runs, score_tables, injection_rows = [], [], []
+    fitted = fit_detectors(splits, config, device)
+    for name, table in fitted["std_tables"].items():
+        table.to_csv(tables_dir / f"{name}_train_residual_std.csv", index=False)
+
+    outputs, score_tables, injection_rows = [], [], []
     for seed in injection_seeds(config, args.split):
-        scores, labels, injected = compute_scores(splits, config, args.split, seed, forest, device)
-        runs.append({"seed": seed, "scores": scores, "labels": labels,
-                     "imputed": injected["is_imputed"].to_numpy(dtype=bool)})
-        score_tables.append(labels.assign(seed=seed, **{f"score_{m}": scores[m] for m in scores}))
+        scores, labels, injected = compute_scores(splits, config, args.split, seed, fitted, device)
+        outputs.append((seed, scores, labels, injected))
+        raw = scores.loc[injected.index]
+        score_tables.append(labels.assign(seed=seed, **{f"score_{m}": raw[m] for m in raw}))
         counts = labels[labels["is_anomaly"] == 1]["anomaly_type"].value_counts()
         injection_rows.append({"seed": seed, **counts.to_dict(),
                                "ratio": labels["is_anomaly"].mean()})
+    methods = list(outputs[0][1].columns)
 
-    val_thresholds = None
-    if args.split == "test":
-        # Eşikler yalnız val'de seçilmiş olmalı; test'te yeniden seçilmez.
-        val_thresholds = pd.read_csv(tables_dir / "anomaly_val_results.csv")
-    per_seed = evaluate_split(runs, args.split, config, val_thresholds)
-    summary = summarize(per_seed)
+    if args.split == "val":
+        # A-3: her pencere için tüm yöntemler değerlendirilir; pencere val'de seçilir.
+        smoothing_rows = []
+        for window in config["anomaly"]["smoothing_windows"]:
+            runs = make_runs(outputs, {method: window for method in methods})
+            smoothing_rows.append(evaluate_split(runs, "val", config).assign(smooth=window))
+        smoothing_per_seed = pd.concat(smoothing_rows, ignore_index=True)
+        smoothing_summary = summarize(smoothing_per_seed, ("method", "rule", "smooth"))
+        smoothing_summary.to_csv(tables_dir / "anomaly_val_smoothing.csv", index=False)
+        windows = choose_smoothing(smoothing_summary)
+        per_seed = smoothing_per_seed[
+            smoothing_per_seed["smooth"] == smoothing_per_seed["method"].map(windows)
+        ].reset_index(drop=True)
+        save_smoothing_figure(smoothing_summary, figures_dir)
+        # Ham (w=1) satırlar A-1 ile aynı adlarla, seçilmiş w>1 satırları -sm{w} ekiyle.
+        raw_summary = smoothing_summary[smoothing_summary["smooth"] == 1]
+        upsert_csv(experiments_file, experiment_rows(raw_summary, config, lambda w: ""), ["exp_id"])
+    else:
+        # Test: yumuşatma penceresi ve eşikler val tablosundan; test'te seçim yok.
+        val_table = pd.read_csv(tables_dir / "anomaly_val_results.csv")
+        windows = val_table.groupby("method")["smooth"].first().astype(int).to_dict()
+        runs = make_runs(outputs, windows)
+        per_seed = evaluate_split(runs, "test", config, val_table)
+        per_seed["smooth"] = per_seed["method"].map(windows)
+
+    summary = summarize(per_seed, ("method", "rule", "smooth"))
     per_seed.to_csv(tables_dir / f"anomaly_{args.split}_results_per_seed.csv", index=False)
     summary.to_csv(tables_dir / f"anomaly_{args.split}_results.csv", index=False)
     pd.concat(score_tables).to_csv(tables_dir / f"anomaly_{args.split}_scores.csv", index_label="time")
     injection = pd.DataFrame(injection_rows)
     injection.to_csv(tables_dir / f"anomaly_{args.split}_injection_summary.csv", index=False)
-    save_figures(runs, per_seed, summary, figures_dir, args.split)
+
+    figure_methods = [m for m in FIGURE_METHODS if m in windows]
+    figure_runs = make_runs(outputs, {m: windows[m] for m in figure_methods})
+    notes = {m: f", w={windows[m]}" for m in figure_methods}
+    save_figures(figure_runs, per_seed[per_seed["method"].isin(figure_methods)],
+                 summary[summary["method"].isin(figure_methods)], figures_dir, args.split,
+                 notes=notes)
 
     if args.split == "val":
-        rows = []
-        for _, best in summary[summary["rule"] == "f1max"].iterrows():
-            def fmt(metric):
-                return f"{best[metric + '_mean']:.3f}±{best[metric + '_std']:.3f}"
-            rows.append({
-                "exp_id": f"{best['method']}-eval5s", "date": date.today().isoformat(),
-                "model": best["label"], "seed": config["seed"],
-                "val_mae": "", "val_rmse": "", "test_mae": "", "test_rmse": "",
-                "note": (
-                    f"Anomali val, 5 enjeksiyon seed {config['injection']['val_seeds']}; "
-                    f"birleşik F1-max eşik={best['threshold']:.4g}: P={fmt('precision')} "
-                    f"R={fmt('recall')} F1={fmt('f1')}; ROC-AUC={fmt('roc_auc')}; "
-                    f"PR-AUC={fmt('pr_auc')}; olay R={fmt('event_recall')} "
-                    f"P={fmt('event_precision')}; ayrıntı anomaly_val_results.csv"
-                ),
-            })
-        upsert_csv(resolve_path(PROJECT_ROOT, config["paths"]["experiments_file"]), rows, ["exp_id"])
+        chosen = summary[(summary["rule"] == "f1max") & (summary["smooth"] > 1)]
+        upsert_csv(experiments_file, experiment_rows(chosen, config, lambda w: f"-sm{w}"), ["exp_id"])
+
+        if not args.skip_severity:
+            # A-4: en iyi k yöntem (F1 ortalaması, seçilmiş pencereyle); eşikler sabit.
+            best = summary[summary["rule"] == "f1max"].sort_values("f1_mean", ascending=False)
+            top = best["method"].head(config["anomaly"]["severity"]["top_k"]).tolist()
+            thresholds = best.set_index("method")["threshold"].to_dict()
+            severity = severity_sweep(splits, config, fitted, device, top, windows, thresholds)
+            severity.to_csv(tables_dir / "anomaly_val_severity_per_seed.csv", index=False)
+            severity_summary = (
+                severity.groupby(["type", "factor", "method", "smooth", "threshold"], sort=False)
+                .agg(event_recall_mean=("event_recall", "mean"),
+                     event_recall_std=("event_recall", "std"),
+                     point_recall_mean=("point_recall", "mean"),
+                     point_recall_std=("point_recall", "std"),
+                     n_seeds_with_type=("event_recall", "count"))
+                .reset_index()
+            )
+            severity_summary.to_csv(tables_dir / "anomaly_val_severity.csv", index=False)
+            save_severity_figure(severity_summary, figures_dir)
+            rows = []
+            for method, group in severity_summary.groupby("method", sort=False):
+                parts = [f"{r.type}×{r.factor:g}: {r.event_recall_mean:.2f}±{r.event_recall_std:.2f}"
+                         for r in group.itertuples()]
+                rows.append({
+                    "exp_id": f"A4sev-{method}", "date": date.today().isoformat(),
+                    "model": METHOD_LABELS.get(method, method), "seed": config["seed"],
+                    "lookback": windows[method], "val_mae": "", "val_rmse": "", "test_mae": "",
+                    "test_rmse": "",
+                    "note": ("Şiddet taraması (val, 5 seed; eşik ve w ana val seçiminden sabit); "
+                             "olay recall'ü " + "; ".join(parts) + "; anomaly_val_severity.csv"),
+                })
+            upsert_csv(experiments_file, rows, ["exp_id"])
+            print("\nŞiddet taraması (olay recall'ü):")
+            print(severity_summary.round(3).to_string(index=False))
 
     table = summary[summary["rule"] == "f1max"]
-    columns = ["method", "threshold"] + [f"{m}_{s}" for m in
-               ("precision", "recall", "f1", "roc_auc", "pr_auc", "event_recall", "event_precision")
-               for s in ("mean", "std")]
+    columns = ["method", "smooth", "threshold"] + [f"{m}_{s}" for m in
+               ("f1", "pr_auc", "roc_auc", "event_recall", "event_precision") for s in ("mean", "std")]
     print(table[columns].round(3).to_string(index=False))
     print("\nEnjeksiyon özetleri (saat):\n" + injection.to_string(index=False))
 
