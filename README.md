@@ -392,10 +392,13 @@ Hem doğrulama hem test kümesinin **kopyasına** (seed'ler aşağıda; ilk prot
 - Sonuçlar literatürle nasıl kıyaslanır? (Aynı veri setini kullanan çalışmalarda bölme, çözünürlük ve ufuk farklı olabilir → doğrudan sayı kıyası yapmadan önce koşulları belirtin.)
 
 ### 4.13 Demo uygulaması (Streamlit) – Yönerge §15.3, §16
-- **Sayfa 1 – Talep Tahmini:** test döneminden bir tarih seç → son 168 saat + LSTM/GRU/Seasonal Naive 24 saatlik tahmin vs gerçek, o örnek için MAE.
-- **Sayfa 2 – Anomali Tespiti:** tarih aralığı seç, "sentetik anomali enjekte et" anahtarı, yöntem seçimi (LSTM-AE / GRU artık / IF) → skor grafiği, eşik, işaretlenen saatler tablosu.
-- **Sayfa 3 – Model Bilgisi:** mimari özeti, hiperparametre tablosu, test metrikleri.
-- Kaydedilmiş ağırlıklar (`models/*.pt`) ve `scaler.pkl` yüklenir; eğitim sunumda yapılmaz (Yönerge §16 izin veriyor). Sunumda kodun **nasıl yüklendiği ve tahmin ürettiği** gösterilecek.
+- **Sayfa 1 – Forecast:** Household test döneminde 48 saatlik gerçek geçmişten F13 ensemble (0,8 F10-opt seq2seq + 0,2 F5-opt LSTM) ve Seasonal Naive 168 tahminini, gerçek sonraki 24 saatle karşılaştırır. Yalnız tam ve doldurulmamış test pencereleri seçilebilir; örnek MAE ve MAPE* gösterilir. “Kolay/zor” gün seçimi yalnız görselleştirme örneğidir, model seçimine bağlanmaz.
+- **Sayfa 2 – Anomaly:** Household test aralığında A0 (hareketli z-skoru), F10-opt artık/OOF std tabanlı A3-s2s-norm ve A0 + F13 artığı birleşimi A5-mean-z skorlarını, kayıtlı validation eşikleriyle gösterir. İsteğe bağlı spike/drop/seviye kayması/gece örüntüsü enjeksiyonu yalnız test kopyasına uygulanır; sentetik seri açıkça işaretlenir, doldurulmuş saatler alarm maskesinden çıkarılır. Eşik ve kalibrasyon testten seçilmez. ELD canlı anomali analizi yerel veri dosyası eksik olduğundan kapalıdır.
+- **Sayfa 3 – Results:** Household ve ELD'nin kayıtlı test tahmin/anomali CSV'lerini ayrı seçerek gösterir; 24 saat ufuk MAE, PR-AUC, olay F1 ve tür bazlı event recall grafikleri içerir. F13 için seed ortalaması ± std sunulur. Veri kümeleri arasında mutlak MAE kıyaslanmaz; MAPE*, R² ve her veri kümesinin SN168 baseline'ına göre MAE kazancı kullanılır. Sayfa salt okunurdur; eksik veya uyumsuz CSV için açık hata verir.
+- **Sayfa 4 – Model Info:** kod/config/checkpoint metadata'sından doğrulanmış model mimarileri, veri dönemleri, train/validation/test protokolü, anomali skor/eşik tanımları ve bilinen teknik sınırlılıkları gösterir; eğitim veya inference başlatmaz.
+- Household demo, checkpoint metadata'sındaki özellik/sıkıştırma değerlerini kullanır; eğitim çalıştırılmaz. İlk kurulumda `pip install -r requirements.txt` ile Python ortamı hazırlanır. Offline çalıştırmadan önce ortam ve bağımlılıklar önceden kurulmuş olmalı; `data/processed/hourly.parquet`, `models/F5-opt_best.pt`, `models/F10-opt_best.pt` ile kayıtlı sonuç/eşik/OOF tabloları yerelde bulunmalıdır. Ardından `python -m streamlit run app/streamlit_app.py` komutuyla açılır; uygulama çalışma anında dış servisten veri indirmez. Bu dosyaları veya bağımlılıkları ilk kez edinmek için çevrimiçi erişim gerekebilir.
+- ELD ham ve işlenmiş dosyaları yerelde olmadığından canlı tahmin/anomali analizi kapalıdır; Results sayfası yalnız kayıtlı ELD CSV'lerini okur. XGBoost checkpoint'i bulunmadığından canlı tahmin yapılmaz ve model yeniden eğitilmez; Results sayfasında sadece kayıtlı XGBoost deney sonuçları gösterilir.
+- **A5 normalizasyon referansı — bilinen kaynak/izlenebilirlik farkı:** `src/evaluate_anomaly.py` içindeki genel `fit_combination` varsayılanı tam `val` iken, final test yolu `src/anomaly_protocol.py` içinde `reference_split="val_dev"` değerini açıkça geçirir. Final protokol dokümanı ve deney notu da val-dev'i belirtir; final test CSV'lerinde referans kümesini kaydeden ayrı alan veya bağımsız çalışma zamanı günlüğü yoktur. Bu nedenle sonuç final kod yolu ve deney notlarıyla desteklenir, ancak CSV metadata'sından tek başına doğrulanamaz.
 
 ---
 
@@ -469,7 +472,7 @@ python -m src.models.forecast_baselines # yalnız Ridge, yalnız val
 python -m src.evaluate_forecast --split test
 python -m src.evaluate_anomaly  --split test
 pytest tests/
-streamlit run app/streamlit_app.py
+python -m streamlit run app/streamlit_app.py
 ```
 
 **Git düzeni:** `main` her zaman çalışır; kişisel dallar `dilara/...`, `seyda/...`; commit mesajları Türkçe ve açıklayıcı ("GRU eğitim betiği: early stopping eklendi").

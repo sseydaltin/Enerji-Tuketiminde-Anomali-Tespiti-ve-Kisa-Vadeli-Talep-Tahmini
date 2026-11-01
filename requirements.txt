@@ -21,5 +21,6 @@ holidays
 pyyaml
 # Demo uygulaması
 streamlit
+plotly
 # Birim testleri
 pytest

@@ -36,11 +36,12 @@ def sigma_for(frame, sigma_table):
     return sigma_table.reindex(keys).to_numpy(dtype=np.float64)
 
 
-def inject_anomalies(frame, target, settings, seed, sigma=None):
-    """Bir küme tablosunun KOPYASINA dört tip anomali enjekte eder.
+def inject_anomalies(frame, target, settings, seed, sigma=None, anomaly_types=None):
+    """Bir küme tablosunun KOPYASINA seçilen protokol tiplerinde anomali enjekte eder.
 
     Girdi: saatlik küme tablosu (val veya test), hedef sütunu (kW), enjeksiyon
-    ayarları, seed ve (σ tabanlı ayarlar için) saat başına train σ'sı [N].
+    ayarları, seed, (σ tabanlı ayarlar için) saat başına train σ'sı [N] ve
+    isteğe bağlı izin verilen anomali tipleri.
     İki ayar biçimi: "zor" senaryo (config injection: spike ×U(2,4), seviye ×1,5)
     ve "ana" senaryo (spike +U(3,5)·σ, drop yalnız > 1 kW saatte başlar, seviye
     ×U(2; 2,5)). Ana senaryonun anahtarları yoksa davranış eskisiyle birebir aynıdır.
@@ -51,6 +52,9 @@ def inject_anomalies(frame, target, settings, seed, sigma=None):
     orijinal tablo asla değiştirilmez. Toplam etiketli saat oranı
     target_ratio'ya ulaşınca durulur ve max_ratio aşılmaz.
     """
+    selected_types = ANOMALY_TYPES if anomaly_types is None else tuple(anomaly_types)
+    if not selected_types or not set(selected_types).issubset(ANOMALY_TYPES):
+        raise ValueError(f"anomaly_types şu tiplerin boş olmayan alt kümesi olmalı: {ANOMALY_TYPES}")
     rng = np.random.default_rng(seed)
     injected = frame.copy()
     values = injected[target].to_numpy(dtype=np.float64).copy()
@@ -68,7 +72,7 @@ def inject_anomalies(frame, target, settings, seed, sigma=None):
         attempts += 1
         if attempts > 10_000:
             raise RuntimeError("Enjeksiyon hedef oranına ulaşamadı.")
-        kind = ANOMALY_TYPES[rng.integers(len(ANOMALY_TYPES))]
+        kind = selected_types[rng.integers(len(selected_types))]
         if kind == "pattern":
             # Rastgele bir günün gece saatleri (00–05) o günün gündüz seviyesine.
             night = settings["pattern"]["night_hours"]
