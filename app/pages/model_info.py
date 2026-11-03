@@ -306,8 +306,8 @@ def _split_rows(config):
     return [
         {
             "Küme": SPLIT_LABELS[name],
-            "Başlangıç": settings["start"],
-            "Bitiş": settings["end"],
+            "Başlangıç": pd.Timestamp(settings["start"]).strftime("%d.%m.%Y"),
+            "Bitiş": pd.Timestamp(settings["end"]).strftime("%d.%m.%Y"),
         }
         for name, settings in config["split"].items()
         if name in SPLIT_LABELS
@@ -515,9 +515,9 @@ def _protocol_section(info):
         )
     with st.expander("Teknik sınırlılıklar"):
         eld_state = (
-            "Şebeke verisi bu bilgisayarda var, ancak demo servisleri canlı tahmin ve anomaliyi yalnız hane için çalıştırır; Şebeke yalnız kayıtlı sonuçlarla gösterilir."
-            if availability["eld_raw"] or availability["eld_processed"]
-            else "Şebeke ham ve işlenmiş verisi bu bilgisayarda yok; Şebeke yalnız kayıtlı sonuçlarla gösterilir."
+            "Talep Tahmini sayfası Şebeke için kayıtlı ağırlıklarla canlı tahmin üretir (seed 42). Canlı anomali analizi yalnız hane için yazılmıştır; Şebeke anomali sonuçları Sonuçlar sayfasındadır."
+            if availability["eld_processed"]
+            else "Şebeke işlenmiş verisi bu bilgisayarda yok; Şebeke yalnız kayıtlı sonuçlarla gösterilir."
         )
         st.markdown(
             f"""

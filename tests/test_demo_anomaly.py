@@ -4,18 +4,25 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from app import anomaly_services
 from app.anomaly_services import (
+    CAUGHT,
     METHODS,
+    MISSED,
     _analysis_history,
     _event_table,
     analyze_test_range,
     anomaly_demo_paths,
     checkpoint_signature,
+    complete_test_days,
+    event_outcomes,
     load_anomaly_calibration,
+    scale_injection,
 )
-from app.pages.anomaly import CAUGHT, MISSED, _event_outcomes, _make_figure
+from app.pages.anomaly import _make_figure
 from src.utils.anomaly_metrics import event_metrics
 from app.services import load_f13_models, load_household_data, valid_test_days
+from src.anomaly_protocol import scenario_settings
 from src.data.inject_anomalies import inject_anomalies
 
 
@@ -211,6 +218,12 @@ def _small_result():
             {"A0": [0.0] * 6, "A3-s2s-norm": [0.1, 2.5, 0.1, 0.1, 0.1, 3.0], "A5-mean-z": [0.0] * 6},
             index=index,
         ),
+        # Ham skor saat 3'te eşiği geçer ama eşik yumuşatılmış skora uygulanır.
+        "raw_scores": pd.DataFrame(
+            {"A0": [0.0] * 6, "A3-s2s-norm": [0.1, 4.0, 0.1, 5.9, 0.1, 3.0], "A5-mean-z": [0.0] * 6},
+            index=index,
+        ),
+        "windows": {"A0": 3, "A3-s2s-norm": 3, "A5-mean-z": 3},
         "thresholds": {"A0": 1.0, "A3-s2s-norm": 2.0, "A5-mean-z": 3.0},
         "valid": pd.Series([True] * 6, index=index),
         "labels": pd.DataFrame(
@@ -239,12 +252,102 @@ def test_plot_contains_consumption_score_threshold_bands_and_flagged_hours():
 def test_event_outcomes_match_project_event_metrics():
     """Sayfadaki yakalandı/kaçırıldı ve yanlış alarm sayıları proje metrikleriyle aynı olmalı."""
     result = _small_result()
-    table, false_alarms = _event_outcomes(result, "A3-s2s-norm")
+    table, false_alarms = event_outcomes(result, "A3-s2s-norm")
 
     assert table["Durum"].tolist() == [CAUGHT, MISSED]
+    # Ham skoru 5,9 olan olay kaçırılmış olabilir: eşik yumuşatılmış skora uygulanır.
+    assert table["Ham skor (en yüksek)"].tolist() == [4.0, 5.9]
+    assert table["Yumuşatılmış skor (en yüksek)"].tolist() == [2.5, 0.1]
     assert false_alarms == 1
 
     flagged = (result["valid"] & result["scores"]["A3-s2s-norm"].ge(2.0)).to_numpy()
     metrics = event_metrics(result["labels"]["anomaly_type"].to_numpy(), flagged)
     assert metrics["event_recall"] == pytest.approx((table["Durum"] == CAUGHT).mean())
     assert metrics["event_precision"] == pytest.approx(1 - false_alarms / metrics["n_pred_blocks"])
+
+
+def test_severity_one_keeps_protocol_and_other_values_scale_only_magnitude(anomaly_demo):
+    """Şiddet ×1 protokolü aynen bırakmalı; başka değerler yalnız büyüklüğü değiştirmeli."""
+    config, _, _, _ = anomaly_demo
+    settings = scenario_settings(config, "main")
+    assert scale_injection(settings, 1.0) == settings
+
+    doubled = scale_injection(settings, 2.0)
+    assert doubled["spike"]["sigma_low"] == settings["spike"]["sigma_low"] * 2
+    assert doubled["level_shift"]["factor_low"] == 1 + (settings["level_shift"]["factor_low"] - 1) * 2
+    assert doubled["drop"] == settings["drop"]
+    assert doubled["pattern"] == settings["pattern"]
+    assert doubled["spike"]["max_len"] == settings["spike"]["max_len"]
+
+
+@pytest.mark.parametrize("scenario", ["main", "hard"])
+def test_every_type_and_seed_injects_without_error(anomaly_demo, scenario):
+    """Tüm test kopyasına enjeksiyon, her tip ve seed için hatasız çalışmalı.
+
+    Kısa aralığa enjeksiyon seviye kaymasında 'hedef orana ulaşamadı' hatası veriyordu.
+    """
+    config, frame, calibration, models = anomaly_demo
+    days = complete_test_days(frame, config)
+    start = pd.Timestamp(days[0])
+    end = start + pd.Timedelta(days=30) - pd.Timedelta(hours=1)
+    signature = checkpoint_signature(anomaly_demo_paths()[2])
+    for seed in config["protocol"]["scenarios"][scenario]["seeds"]["test"]:
+        for kind in ("spike", "drop", "level_shift", "pattern"):
+            result = analyze_test_range(
+                frame, config, start, end, True, kind, scenario, seed, calibration, signature, models,
+            )
+            assert result["scores"].index[0] == start and result["scores"].index[-1] == end
+
+
+def test_clean_test_alarms_match_final_doc(anomaly_demo):
+    """Enjeksiyonsuz tüm testte final yöntem belgedeki 8 alarmı ve 6,21 skorunu vermeli."""
+    config, frame, calibration, models = anomaly_demo
+    days = complete_test_days(frame, config)
+    result = analyze_test_range(
+        frame, config, pd.Timestamp(days[0]), pd.Timestamp(days[-1]) + pd.Timedelta(hours=23),
+        False, "spike", "main", 2, calibration, checkpoint_signature(anomaly_demo_paths()[2]), models,
+    )
+    alarms = result["events"].loc[result["events"]["Yöntem"] == "A3-s2s-norm"]
+    saved = pd.read_csv(anomaly_demo_paths()[3] / "anomaly_test_top_events_clean.csv")
+    assert len(alarms) == 8 == len(saved)
+    assert alarms["En yüksek skor"].max() == pytest.approx(saved["max_score"].max(), abs=1e-2)
+    assert alarms["En yüksek skor"].max() == pytest.approx(6.21, abs=5e-3)
+    assert set(alarms["Başlangıç"].astype(str)) == set(saved["start"].astype(str))
+
+
+def test_demo_uses_oof_std_not_stale_in_sample_table(anomaly_demo):
+    """Demo ölçeği eski in-sample tablodan farklı olmalı; eşikler OOF ile seçildi."""
+    _, _, calibration, _ = anomaly_demo
+    stale = pd.read_csv("results/tables/A3-s2s_train_residual_std.csv")["std"].to_numpy()
+    assert not np.allclose(calibration["std_tables"]["A3-s2s"]["std"].to_numpy(), stale)
+
+
+def test_demo_scoring_reproduces_saved_final_seed_results(anomaly_demo, monkeypatch):
+    """Demo puanlaması, protokolün karışık enjeksiyonuyla kayıtlı final olay F1'ini vermeli.
+
+    Demo tek tip enjekte eder; burada tip filtresi kaldırılarak protokolle aynı dört
+    tipli kopya kurulur. Böylece ölçek, referans ve yumuşatmanın final ile aynı olduğu gösterilir.
+    """
+    config, frame, calibration, models = anomaly_demo
+    saved = pd.read_csv("results/tables/anomaly_protocol_test_per_seed.csv")
+    saved = saved[(saved["scenario"] == "main") & saved["method"].isin(METHODS)]
+    signature = checkpoint_signature(anomaly_demo_paths()[2])
+    original = anomaly_services.inject_anomalies
+
+    def inject_all_types(*args, anomaly_types=None, **kwargs):
+        """Tip filtresini yok sayar: dört tip birlikte, protokoldeki gibi."""
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(anomaly_services, "inject_anomalies", inject_all_types)
+    for seed in config["protocol"]["scenarios"]["main"]["seeds"]["test"]:
+        # __wrapped__: önbelleği atla, tek tipli kayıtlarla karışmasın.
+        scored = anomaly_services._score_whole_test.__wrapped__(
+            frame, config, True, "spike", "main", seed, 1.0, calibration, signature, models,
+        )
+        types = scored["labels"]["anomaly_type"].to_numpy()
+        clean = scored["injected"]["is_imputed"].to_numpy() == 0
+        for method in METHODS:
+            smoothed = scored["smoothed"][method]
+            flagged = (smoothed >= calibration["thresholds"][method]).to_numpy() & clean
+            expected = saved[(saved["seed"] == seed) & (saved["method"] == method)]["event_f1"].iloc[0]
+            assert event_metrics(types, flagged)["event_f1"] == pytest.approx(expected, abs=1e-6)
