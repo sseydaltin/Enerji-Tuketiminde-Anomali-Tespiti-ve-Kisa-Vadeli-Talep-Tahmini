@@ -22,6 +22,7 @@ from app.anomaly_services import (
 from app.pages.anomaly import _make_figure
 from src.utils.anomaly_metrics import event_metrics
 from app.services import load_f13_models, load_household_data, valid_test_days
+from app.ui import METHOD_LABELS
 from src.anomaly_protocol import scenario_settings
 from src.data.inject_anomalies import inject_anomalies
 
@@ -362,7 +363,7 @@ def test_experimental_method_runs_only_on_val_hold(anomaly_demo):
         frame, config, pd.Timestamp(days[0]), pd.Timestamp(days[0]) + pd.Timedelta(hours=23),
         False, "spike", "main", 2, calibration, signature, models,
     )
-    assert anomaly_services.EXPERIMENTAL not in on_test["scores"].columns
+    assert not set(anomaly_services.EXPERIMENTAL_METHODS) & set(on_test["scores"].columns)
     assert on_test["experimental"] is None
 
     hold_days = complete_test_days(frame, config, anomaly_services.EXPERIMENT_SPLIT)
@@ -375,7 +376,51 @@ def test_experimental_method_runs_only_on_val_hold(anomaly_demo):
         1.0, anomaly_services.EXPERIMENT_SPLIT,
     )
     assert result["experimental"] is not None
-    table, _ = event_outcomes(result, anomaly_services.EXPERIMENTAL)
+    table, _ = event_outcomes(result, "A6-dual-floor")
     # Enjekte düşüş 0,05 kW, taban ~0,155 kW: kural bu olayları yakalamalı (2 saat ve üstü sürer).
-    if result["experimental"]["k"] is not None:
-        assert (table["Durum"] == CAUGHT).all()
+    assert result["experimental"]["A6-dual-floor"]["k"] is not None
+    assert (table["Durum"] == CAUGHT).all()
+
+
+def test_both_experimental_options_have_requested_labels_and_saved_settings(anomaly_demo):
+    """İki seçenek de etiketlenmeli; ayarlar kayıtlı seçim tablosundan aynen gelmeli."""
+    _, _, calibration, _ = anomaly_demo
+    assert METHOD_LABELS["A6-dual"] == "Geliştirilmiş: kısa sıçramalar (deneysel)"
+    assert METHOD_LABELS["A6-dual-floor"] == "Geliştirilmiş: sıçrama + taban yük (deneysel)"
+    saved = pd.read_csv("results/tables/a6_selection.csv").set_index("method")
+    settings = calibration["experimental"]
+    assert set(settings) == set(anomaly_services.EXPERIMENTAL_METHODS)
+    assert settings["A6-dual"]["t2"] == pytest.approx(saved.loc["A6-dual", "t2"])
+    assert settings["A6-dual"]["k"] is None
+    assert settings["A6-dual-floor"]["t2"] == pytest.approx(saved.loc["A6-dual-floor", "t2"])
+    assert settings["A6-dual-floor"]["k"] == saved.loc["A6-dual-floor", "k"]
+
+
+def test_demo_experimental_rules_reproduce_saved_val_hold_results(anomaly_demo, monkeypatch):
+    """Demo kuralları, karışık enjeksiyonla kayıtlı val-hold olay F1'ini birebir vermeli.
+
+    Yeni ölçüm değildir: hiçbir dosya yazılmaz, hiçbir ayar seçilmez. Yalnız demodaki iki
+    seçeneğin deney kodundaki kuralla aynı olduğu gösterilir.
+    """
+    config, frame, calibration, models = anomaly_demo
+    saved = pd.read_csv("results/tables/a6_val_hold_per_seed.csv")
+    signature = checkpoint_signature(anomaly_demo_paths()[2])
+    target = config["preprocess"]["target"]
+    original = anomaly_services.inject_anomalies
+
+    def inject_all_types(*args, anomaly_types=None, **kwargs):
+        """Tip filtresini yok sayar: dört tip birlikte, protokoldeki gibi."""
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(anomaly_services, "inject_anomalies", inject_all_types)
+    for seed in config["protocol"]["scenarios"]["main"]["seeds"][anomaly_services.EXPERIMENT_SPLIT]:
+        scored = anomaly_services._score_whole_test.__wrapped__(
+            frame, config, True, "spike", "main", seed, 1.0, calibration, signature, models,
+            anomaly_services.EXPERIMENT_SPLIT,
+        )
+        types = scored["labels"]["anomaly_type"].to_numpy()
+        clean = scored["injected"]["is_imputed"].to_numpy() == 0
+        for method, settings in calibration["experimental"].items():
+            flags = anomaly_services.experimental_flags(scored, settings, target).to_numpy() & clean
+            expected = saved[(saved["seed"] == seed) & (saved["method"] == method)]["event_f1"].iloc[0]
+            assert event_metrics(types, flags)["event_f1"] == pytest.approx(expected, abs=1e-6)

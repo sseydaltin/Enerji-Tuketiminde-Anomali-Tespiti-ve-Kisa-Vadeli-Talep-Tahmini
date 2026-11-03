@@ -10,7 +10,7 @@ import streamlit as st
 from app.build_calibration import REFERENCE_FILE, STD_FILE
 from app.services import demo_paths
 from app.ui import ANOMALY_LABELS
-from src.anomaly_dual import DUAL_FLOOR, SELECTION_FILE, dual_alarm, floor_alarm
+from src.anomaly_dual import BASE_METHOD, DUAL, DUAL_FLOOR, SELECTION_FILE, dual_alarm, floor_alarm
 from src.anomaly_protocol import protocol_splits, scenario_settings
 from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for, train_sigma_table
 from src.models.anomaly_baselines import rolling_zscore
@@ -28,7 +28,7 @@ SCENARIO_SEEDS = {"main": "main", "hard": "hard"}
 HISTORY_HOURS = 192
 A5_COMPONENTS = ("A0", "A3-ens-norm")
 SEVERITY_TYPES = ("spike", "level_shift")   # büyüklüğü ayarlanabilen tipler
-EXPERIMENTAL = "A6"                 # "Geliştirilmiş (deneysel)"; final sonuç değildir
+EXPERIMENTAL_METHODS = (DUAL, DUAL_FLOOR)   # "Geliştirilmiş" seçenekleri; final sonuç değildir
 EXPERIMENT_SPLIT = "val_hold"       # deneysel yöntem test kümesinde çalıştırılmaz
 CAUGHT = "Yakalandı"
 MISSED = "Kaçırıldı"
@@ -108,19 +108,26 @@ def load_anomaly_calibration(tables_dir):
 
 
 def _load_experimental(directory, thresholds):
-    """Seçili A6 varyantının ayarlarını okur; deney çalıştırılmadıysa None döndürür."""
+    """İki A6 varyantının kayıtlı ayarlarını okur; deney çalıştırılmadıysa None döndürür.
+
+    Çıktı: {yöntem: {t1, t2, k, floor_kw}}. A6-dual taban kuralı kullanmadığı için
+    k ve floor_kw onda None olur. Burada hiçbir ayar seçilmez; değerler val-dev'de seçilmişti.
+    """
     path = directory / SELECTION_FILE
     if not path.is_file():
         return None
-    row = pd.read_csv(path).set_index("demo").loc[True]
-    uses_floor = row["method"] == DUAL_FLOOR
-    return {
-        "variant": row["method"],
-        "t1": float(thresholds["A3-s2s-norm"]),
-        "t2": float(row["t2"]),
-        "k": int(row["k"]) if uses_floor else None,
-        "floor_kw": float(row["floor_kw"]) if uses_floor else None,
-    }
+    selection = pd.read_csv(path).set_index("method")
+    settings = {}
+    for method in EXPERIMENTAL_METHODS:
+        row = selection.loc[method]
+        uses_floor = method == DUAL_FLOOR
+        settings[method] = {
+            "t1": float(thresholds[BASE_METHOD]),
+            "t2": float(row["t2"]),
+            "k": int(row["k"]) if uses_floor else None,
+            "floor_kw": float(row["floor_kw"]) if uses_floor else None,
+        }
+    return settings
 
 
 @st.cache_data(show_spinner=False)
@@ -264,6 +271,19 @@ def _score_whole_test(
     }
 
 
+def experimental_flags(scored, settings, target):
+    """Bir A6 varyantının alarm saatlerini kümenin tamamında hesaplar.
+
+    Girdi: _score_whole_test çıktısı, varyant ayarları, hedef sütun adı.
+    Çıktı: küme saatleriyle hizalı [N] bool seri. Doldurulmuş saat maskesi burada uygulanmaz.
+    Neden: Taban sayacı görünüm aralığının başında sıfırlanmasın diye tüm kümede hesaplanır.
+    """
+    rule = dual_alarm(scored["smoothed"][BASE_METHOD], scored["raw"][BASE_METHOD], settings["t1"], settings["t2"])
+    if settings["k"] is not None:
+        rule = rule | floor_alarm(scored["injected"][target].to_numpy(), settings["floor_kw"], settings["k"])
+    return pd.Series(rule, index=scored["injected"].index)
+
+
 def analyze_test_range(
     frame, config, start, end, inject, anomaly_type, scenario, seed, calibration,
     model_signature, _models, severity=1.0, split="test",
@@ -311,20 +331,13 @@ def analyze_test_range(
     experimental = None
     if split == EXPERIMENT_SPLIT and calibration.get("experimental"):
         experimental = calibration["experimental"]
-        # Deneysel kural final yöntemin skorları üzerine kuruludur; skor sütunları onundur.
-        selected_scores = selected_scores.assign(**{EXPERIMENTAL: selected_scores["A3-s2s-norm"]})
-        selected_raw = selected_raw.assign(**{EXPERIMENTAL: selected_raw["A3-s2s-norm"]})
-        thresholds[EXPERIMENTAL] = experimental["t1"]
-        windows[EXPERIMENTAL] = windows["A3-s2s-norm"]
-        rule = dual_alarm(selected_scores["A3-s2s-norm"], selected_raw["A3-s2s-norm"], experimental["t1"], experimental["t2"])
-        if experimental["k"] is not None:
-            # Taban sayacı aralık başında sıfırlanmasın diye tüm kümede hesaplanır.
-            floor = pd.Series(
-                floor_alarm(scored["injected"][target].to_numpy(), experimental["floor_kw"], experimental["k"]),
-                index=scored["injected"].index,
-            )
-            rule = rule | floor.loc[requested].to_numpy()
-        flags[EXPERIMENTAL] = rule
+        for method, settings in experimental.items():
+            # Deneysel kurallar final yöntemin skorları üzerine kuruludur; skor sütunları onundur.
+            selected_scores = selected_scores.assign(**{method: selected_scores[BASE_METHOD]})
+            selected_raw = selected_raw.assign(**{method: selected_raw[BASE_METHOD]})
+            thresholds[method] = settings["t1"]
+            windows[method] = windows[BASE_METHOD]
+            flags[method] = experimental_flags(scored, settings, target).loc[requested].to_numpy()
 
     return {
         "real_kw": selected[target].astype(float),

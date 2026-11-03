@@ -12,7 +12,7 @@ import streamlit as st
 
 from app.model_info_services import load_model_info
 from app.results_services import load_results_bundle
-from app.ui import ACTUAL_COLOR, DATASET_LABELS, MODEL_COLOR, SECOND_COLOR, number, show_chart
+from app.ui import ACTUAL_COLOR, DATASET_LABELS, METHOD_LABELS, MODEL_COLOR, SECOND_COLOR, number, show_chart
 
 SPLIT_LABELS = {"train": "Eğitim", "val": "Doğrulama", "test": "Test"}
 # Kırmızı anomalilere ayrıldığı için test kümesi turuncudur.
@@ -495,10 +495,9 @@ def _experiment_section(info):
     if not selection_path.is_file() or not summary_path.is_file():
         return
     with st.expander("Test sonrası geliştirme: Geliştirilmiş (A6-dual, A6-dual-floor), final sonuç değildir"):
-        selection = pd.read_csv(selection_path)
-        demo = selection.loc[selection["demo"], "method"].iloc[0]
         st.write(
-            f"Demodaki \"Geliştirilmiş (deneysel)\" seçeneği {demo} varyantıdır. Ayarlar yalnız val-dev'de seçildi, "
+            f"Demoda iki seçenek vardır: A6-dual \"{METHOD_LABELS['A6-dual']}\", "
+            f"A6-dual-floor \"{METHOD_LABELS['A6-dual-floor']}\". Ayarlar yalnız val-dev'de seçildi, "
             "val-hold'da bir kez ölçüldü; test kümesi kullanılmadı. Ayrıntı: docs/final_sonuclar.md."
         )
         summary = pd.read_csv(summary_path)

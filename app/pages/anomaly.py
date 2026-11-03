@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 from app.anomaly_services import (
     CAUGHT,
     EXPERIMENT_SPLIT,
-    EXPERIMENTAL,
+    EXPERIMENTAL_METHODS,
     METHODS,
     MISSED,
     SEVERITY_TYPES,
@@ -97,8 +97,11 @@ def _make_figure(result, anomaly_type, method):
         annotation_text=f"Eşik {number(threshold)}",
         annotation_position="top right",
     )
-    experimental = result.get("experimental") if method == EXPERIMENTAL else None
+    experimental = result["experimental"][method] if method in EXPERIMENTAL_METHODS else None
+    marker_scores = scores
     if experimental:
+        # Yumuşatılmış skorla tetiklenmeyen alarm, eşiğin altında görünmesin diye ham skorda çizilir.
+        marker_scores = scores.where(scores >= experimental["t1"], result["raw_scores"][method])
         figure.add_hline(
             y=experimental["t2"], line_dash="dot", line_color=BASELINE_COLOR, line_width=1.5, row=2, col=1,
             annotation_text=f"Ham skor eşiği {number(experimental['t2'])}", annotation_position="top right",
@@ -110,7 +113,7 @@ def _make_figure(result, anomaly_type, method):
             )
     flagged = flagged_hours(result, method)
     figure.add_trace(go.Scatter(
-        x=index[flagged], y=scores.to_numpy()[flagged], mode="markers", name="İşaretlenen saat",
+        x=index[flagged], y=marker_scores.to_numpy()[flagged], mode="markers", name="İşaretlenen saat",
         marker={"color": ANOMALY_COLOR, "size": 7, "line": {"color": "white", "width": 1}},
     ), row=2, col=1)
 
@@ -195,10 +198,15 @@ def _alarm_table(result, method):
         "Sentetik olayla örtüşüyor": "Enjekte olayla örtüşüyor",
         "En yüksek skor": "Yumuşatılmış skor (en yüksek)",
     }).copy()
+    raw = result["raw_scores"][method]
+    alarms.insert(2, "Ham skor (en yüksek)", [
+        raw.loc[start:end].max() for start, end in zip(alarms["Başlangıç"], alarms["Bitiş"])
+    ])
     alarms["Enjekte olayla örtüşüyor"] = alarms["Enjekte olayla örtüşüyor"].map({True: "Evet", False: "Hayır"})
     styled = alarms.style.format({
         "Başlangıç": "{:%d.%m.%Y %H:%M}",
         "Bitiş": "{:%d.%m.%Y %H:%M}",
+        "Ham skor (en yüksek)": lambda value: number(value),
         "Yumuşatılmış skor (en yüksek)": lambda value: number(value),
         "Eşik": lambda value: number(value),
     }).hide(axis="index")
@@ -213,13 +221,13 @@ def _controls(frame, config, calibration):
     bir kesit değil, kopyanın bütün olaylarını gösterir. Deneysel yöntem test kümesinde
     çalıştırılmadığı için seçilince dönem val-hold olur; bu yüzden tarih anahtarları kümeye bağlıdır.
     """
-    method_col, type_col, scenario_col, severity_col, start_col, end_col = st.columns([3, 2, 2, 2, 2, 2])
-    options = list(METHODS) + ([EXPERIMENTAL] if calibration.get("experimental") else [])
+    method_col, type_col, scenario_col, severity_col, start_col, end_col = st.columns([4, 2, 2, 2, 2, 2])
+    options = list(METHODS) + (list(EXPERIMENTAL_METHODS) if calibration.get("experimental") else [])
     method = method_col.selectbox(
         "Yöntem", options=options, index=options.index(FINAL_METHOD),
         format_func=METHOD_LABELS.get, key="anomaly-method",
     )
-    split = EXPERIMENT_SPLIT if method == EXPERIMENTAL else "test"
+    split = EXPERIMENT_SPLIT if method in EXPERIMENTAL_METHODS else "test"
     days = complete_test_days(frame, config, split)
     anomaly_type = type_col.selectbox(
         "Enjeksiyon tipi", options=list(INJECTION_LABELS),
@@ -271,27 +279,40 @@ def _capture_table(tables_dir):
     )
 
 
-def _experimental_note(experimental):
-    """"Geliştirilmiş (deneysel)" etiketini Detaylar için açıklar."""
-    floor = ""
-    if experimental["k"] is not None:
-        floor = (
-            f" Ayrıca tüketim {number(experimental['floor_kw'])} kW tabanının (eğitimin 0,5. yüzdeliği) altında "
-            f"en az {experimental['k']} saat kalırsa alarm verir."
+def _experimental_note(method, settings):
+    """Seçili "Geliştirilmiş" varyantını ve ödünleşimini Detaylar için açıklar."""
+    if settings["k"] is None:
+        behaviour = (
+            "Kısa sıçramaları final yöntemden daha çok yakalar, karşılığında yanlış alarm artar. "
+            "Ani düşüşleri görmez; taban kuralı yalnız diğer seçenektedir."
+        )
+    else:
+        behaviour = (
+            f"Ayrıca tüketim {number(settings['floor_kw'])} kW tabanının (eğitimin 0,5. yüzdeliği) altında "
+            f"en az {settings['k']} saat kalırsa alarm verir; bu alarmlar skordan gelmez. Ham skor eşiği yüksek seçildiği için "
+            "kısa sıçramalarda final yöntemden belirgin farkı yoktur. Enjekte düşüş hep 0,05 kW olduğundan taban kuralı "
+            "o olayları neredeyse tanım gereği yakalar; gerçek düşüşlerde bu kadar iyi olacağı gösterilmemiştir."
         )
     return (
-        "- **Geliştirilmiş (deneysel):** Final sonuç değildir. Test sonrası denenen bir kuraldır: yumuşatılmış skor "
-        f"{number(experimental['t1'])} eşiğini veya ham skor {number(experimental['t2'])} eşiğini geçerse alarm verir.{floor} "
+        f"- **{METHOD_LABELS[method]}:** Final sonuç değildir. Test sonrası denenen bir kuraldır: yumuşatılmış skor "
+        f"{number(settings['t1'])} eşiğini veya ham skor {number(settings['t2'])} eşiğini geçerse alarm verir. {behaviour} "
         "Ayarları yalnız val-dev'de seçildi, val-hold'da bir kez ölçüldü. Test kümesinde çalıştırılmaz; bu yüzden bu seçenekte "
-        "val-hold dönemi gösterilir ve testte daha iyi olduğu iddia edilemez. Enjekte düşüş hep 0,05 kW olduğundan taban kuralı "
-        "o olayları neredeyse tanım gereği yakalar; gerçek düşüşlerde bu kadar iyi olacağı gösterilmemiştir.\n"
+        "val-hold dönemi gösterilir ve testte daha iyi olduğu iddia edilemez. Karşılaştırma tablosu Model Bilgisi sayfasındadır.\n"
     )
 
 
 def _details(result, method, inject, scenario, seed, severity):
     """Tanımları ve yumuşatma ödünleşimini açılır bölümde anlatır."""
     window = result["windows"][method]
-    experimental = _experimental_note(result["experimental"]) if method == EXPERIMENTAL else ""
+    is_experimental = method in EXPERIMENTAL_METHODS
+    experimental = _experimental_note(method, result["experimental"][method]) if is_experimental else ""
+    threshold_rule = (
+        "Bu kuralda ham skorun da ayrı, daha yüksek bir eşiği vardır; bu yüzden tek saatlik sıçrama doğrudan alarm verebilir."
+        if is_experimental else
+        "Bu yüzden ham skoru eşiği geçen bir olay kaçırılmış görünebilir."
+    )
+    caught_rule = "bu kural alarm verdiyse" if is_experimental else "yumuşatılmış skor eşiği geçtiyse"
+    split_label = SPLIT_LABELS[result["split"]]
     injection_note = ""
     if inject:
         injection_note = (
@@ -302,15 +323,15 @@ def _details(result, method, inject, scenario, seed, severity):
             injection_note += " Şiddet ×1 dışında sonuçlar protokol dışıdır, raporla karşılaştırılmaz."
     st.markdown(
         f"""
-{experimental}- **Ham ve yumuşatılmış skor:** Ham skor her saatin kendi hatasıdır. Eşik, ham skora değil, yalnız geçmişe bakan {window} saatlik ortalamaya uygulanır. Bu yüzden ham skoru eşiği geçen bir olay kaçırılmış görünebilir.
+{experimental}- **Ham ve yumuşatılmış skor:** Ham skor her saatin kendi hatasıdır. Ana eşik, yalnız geçmişe bakan {window} saatlik ortalamaya uygulanır. {threshold_rule}
 - **Yumuşatma ödünleşimi:** Ortalama, tek saatlik gürültüyü ve kısa sıçramaları bastırır. Seviye kayması gibi uzun olaylarda işe yarar, 1–2 saatlik ani yükselmelerde ise skoru geciktirip zayıflatır. Bu bilinen bir ödünleşimdir.
 - **Olay bitince alarm:** Skor geçmişe baktığı için alarm olay bittikten sonra gelebilir. Bu durumda olay kaçırılmış, alarm yanlış sayılır. Bu katı tanım raporlanan olay metrikleriyle aynıdır.
 - **Eşik:** {number(result['thresholds'][method])}. Doğrulama kümesinde seçilmiştir; test verisine göre değiştirilmez.
-- **Yakalanan olay:** Enjekte olayın en az bir saatinde yumuşatılmış skor eşiği geçtiyse olay yakalanmış sayılır.
-- **Yanlış alarm:** Hiçbir enjekte saatle kesişmeyen alarm. Enjeksiyonsuz testte de bu yöntem 8 alarm verir; bunlar gerçek ölçümdeki olağandışı saatler olabilir. Bu yüzden sayı üst sınır gibi okunmalıdır.
+- **Yakalanan olay:** Enjekte olayın en az bir saatinde {caught_rule} olay yakalanmış sayılır.
+- **Yanlış alarm:** Hiçbir enjekte saatle kesişmeyen alarm. Final yöntem (Seq2Seq artık skoru) enjeksiyonsuz testte de 8 alarm verir; bunlar gerçek ölçümdeki olağandışı saatler olabilir. Bu yüzden sayı üst sınır gibi okunmalıdır.
 - **Skorlanan saat:** {int(result['valid'].sum())} / {len(result['valid'])}. Doldurulmuş saatler alarm dışı bırakılır.
 - **Senaryolar:** Ana senaryoda ani yükselme +3–5 eğitim σ, seviye kayması ×2–2,5, düşüş yalnız 1 kW üstünde başlar. Zor senaryoda ani yükselme ×2–4, seviye kayması ×1,5.
-- **Enjeksiyon kapsamı:** Protokoldeki gibi tüm test kopyasına yapılır; tarih aralığı yalnız görünümü seçer. Tek koşudur, raporlanan genel başarı Sonuçlar sayfasındadır.{injection_note}
+- **Enjeksiyon kapsamı:** Protokoldeki gibi {split_label} kopyasının tamamına yapılır; tarih aralığı yalnız görünümü seçer. Tek koşudur, raporlanan genel başarı Sonuçlar sayfasındadır.{injection_note}
 """
     )
 
@@ -334,9 +355,9 @@ def render(dataset="household"):
         return
 
     method, anomaly_type, scenario, severity, start_day, end_day, split, days = _controls(frame, config, calibration)
-    if method == EXPERIMENTAL:
+    if method in EXPERIMENTAL_METHODS:
         st.info(
-            "Geliştirilmiş (deneysel) final sonuç değildir ve test kümesinde çalıştırılmaz. "
+            f"{METHOD_LABELS[method]} final sonuç değildir ve test kümesinde çalıştırılmaz. "
             "Bu yüzden burada doğrulama (val-hold) dönemi gösterilir; açıklama Detaylar'dadır."
         )
     if start_day not in days or end_day not in days or end_day < start_day:
