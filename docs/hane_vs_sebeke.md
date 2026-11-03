@@ -62,9 +62,9 @@ Pencere ve olay-F1 eşiği her veri setinin kendi val'inde seçildi: hane'de w =
    - Drop tanımı mutlak (0,05 kW) olduğu için şebekede tam kesinti anlamına geliyor ve hep yakalanıyor; bu, şebeke skorunu bir miktar şişirir.
    - Tahmin artığı yaklaşımı (A3) şebekede A0'dan açıkça iyi. Hanede iyi tahmin zaten zor olduğu için artığın sinyal/gürültü oranı düşük.
 5. **Şebeke testinde val'e göre bozulma var ve nedeni büyük ölçüde tatiller.**
-   - F13-ens 24 saatlik MAPE*'si val'de 2,18 %, testte 3,24 %. Bozulmanın büyük kısmı Aralık'tan geliyor: Aralık'ta 5,3 %; Temmuz–Kasım'da 2,5–2,7 %.
-   - 25 Aralık 2014'te toplam yük ~47 MW (komşu günler ~95 MW; 2012 ve 2013'te de aynı düşüş var). Bu güne denk gelen pencerelerde MAPE %50–75.
-   - Tatil gününe değen pencereler (testin %3,2'si) ortalama %13 MAPE veriyor; diğerleri %2,7.
+   - F13-ens 24 saatlik MAPE*'si val'de 2,18 %, testte 3,24 %. Bozulmanın büyük kısmı Aralık'tan geliyor (3 seed ortalaması): Aralık'ta 6,0 %; Temmuz–Ekim'de 2,5–2,6 %, Kasım'da 3,2 %. Seed 42'de Aralık 5,3 %, Temmuz–Kasım 2,5–2,7 %.
+   - 25 Aralık 2014'te toplam yük ~47 MW (komşu günler ~95 MW; 2012 ve 2013'te de aynı düşüş var). Bu güne değen 47 pencerede MAPE (seed 42) 5,6–74,9 aralığında, medyan 24; %50–75 aralığına yalnız 8 pencere giriyor. Gece yarısı başlayan, tamamı 25 Aralık olan pencerede 37.
+   - Tatil gününe değen pencereler (testin %3,2'si) ortalama %13,8 MAPE veriyor; diğerleri %2,9 (3 seed ortalaması; seed 42'de %13 ve %2,7).
    - Train'de yalnız iki Noel var ve `is_holiday` bayrağı tatilin büyüklüğünü (Noel ile sıradan bir tatil arasındaki farkı) taşımıyor. Hanede bu etki görünmüyordu, çünkü household test dönemi Noel'i içermiyor.
 
 ## 4. Sınırlar

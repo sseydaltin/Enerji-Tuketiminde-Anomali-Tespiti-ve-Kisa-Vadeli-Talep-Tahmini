@@ -185,3 +185,23 @@ def test_results_anomaly_table_matches_comparison_doc(dataset, column):
         shown = table.loc[METHOD_LABELS[method]]
         _assert_matches(_table_number(shown["Olay F1"]), cells[column])
         _assert_matches(_table_number(shown["PR-AUC"]), cells[column + 2])
+
+
+def test_christmas_and_december_statements_match_comparison_doc(eld_live):
+    """Belgedeki Noel dağılımı (seed 42) ve Aralık ortalaması (3 seed) hesapla aynı olmalı."""
+    _, _, results = eld_live
+    text = COMPARISON_DOC.read_text(encoding="utf-8")
+    christmas = pd.Timestamp(HARD_DAY)
+    december = []
+    for seed in SEEDS:
+        y_true, y_pred, times = results[f"ELD-F13-ens{seed}"]
+        times = pd.DatetimeIndex(times)
+        mape = np.mean(np.abs((y_true - y_pred) / y_true), axis=1) * 100
+        december.append(mape[times.month == 12].mean())
+        if seed == "":
+            touches = (times + pd.Timedelta(hours=23) >= christmas) & (times <= christmas + pd.Timedelta(hours=23))
+            assert touches.sum() == 47 and "47 pencerede" in text
+            assert mape[touches].min() == pytest.approx(5.6, abs=0.05) and "5,6–74,9" in text
+            assert mape[touches].max() == pytest.approx(74.9, abs=0.06)
+            assert np.median(mape[touches]) == pytest.approx(24, abs=0.5) and "medyan 24" in text
+    assert np.mean(december) == pytest.approx(6.0, abs=0.05) and "Aralık'ta 6,0 %" in text
