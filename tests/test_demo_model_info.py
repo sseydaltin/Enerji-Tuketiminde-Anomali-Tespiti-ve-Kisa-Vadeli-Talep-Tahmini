@@ -160,7 +160,7 @@ def test_model_info_page_renders_without_errors():
     assert not app.exception
     assert [element.value for element in app.title] == ["Model Bilgisi"]
     assert len(app.get("plotly_chart")) == 3
-    assert len(app.table) == 1
+    assert len(app.table) == 2
     assert len(app.dataframe) == 3
     warning_text = " ".join(element.value for element in app.warning).lower()
     assert "kaynak notu" in warning_text

@@ -10,9 +10,9 @@ import streamlit as st
 from app.build_calibration import REFERENCE_FILE, STD_FILE
 from app.services import demo_paths
 from app.ui import ANOMALY_LABELS
-from src.anomaly_protocol import scenario_settings
+from src.anomaly_dual import DUAL_FLOOR, SELECTION_FILE, dual_alarm, floor_alarm
+from src.anomaly_protocol import protocol_splits, scenario_settings
 from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for, train_sigma_table
-from src.data.split import chronological_split
 from src.models.anomaly_baselines import rolling_zscore
 from src.models.residual_detector import (
     combine_predictions,
@@ -28,6 +28,8 @@ SCENARIO_SEEDS = {"main": "main", "hard": "hard"}
 HISTORY_HOURS = 192
 A5_COMPONENTS = ("A0", "A3-ens-norm")
 SEVERITY_TYPES = ("spike", "level_shift")   # büyüklüğü ayarlanabilen tipler
+EXPERIMENTAL = "A6"                 # "Geliştirilmiş (deneysel)"; final sonuç değildir
+EXPERIMENT_SPLIT = "val_hold"       # deneysel yöntem test kümesinde çalıştırılmaz
 CAUGHT = "Yakalandı"
 MISSED = "Kaçırıldı"
 
@@ -101,20 +103,37 @@ def load_anomaly_calibration(tables_dir):
         "windows": windows,
         "std_tables": std_tables,
         "references": references,
+        "experimental": _load_experimental(directory, thresholds),
+    }
+
+
+def _load_experimental(directory, thresholds):
+    """Seçili A6 varyantının ayarlarını okur; deney çalıştırılmadıysa None döndürür."""
+    path = directory / SELECTION_FILE
+    if not path.is_file():
+        return None
+    row = pd.read_csv(path).set_index("demo").loc[True]
+    uses_floor = row["method"] == DUAL_FLOOR
+    return {
+        "variant": row["method"],
+        "t1": float(thresholds["A3-s2s-norm"]),
+        "t2": float(row["t2"]),
+        "k": int(row["k"]) if uses_floor else None,
+        "floor_kw": float(row["floor_kw"]) if uses_floor else None,
     }
 
 
 @st.cache_data(show_spinner=False)
-def complete_test_days(frame, config):
-    """Test kümesinde tam 24 satırlı günleri döndürür; imputasyon dışlama sonradır."""
-    test = chronological_split(frame, config)["test"]
+def complete_test_days(frame, config, split="test"):
+    """Seçili kümede tam 24 satırlı günleri döndürür; imputasyon dışlama sonradır."""
+    test = protocol_splits(frame, config)[split]
     days = []
     for day in pd.date_range(test.index.min().normalize(), test.index.max().normalize(), freq="D"):
         hours = pd.date_range(day, periods=24, freq="h")
         if hours.isin(test.index).all():
             days.append(day.date())
     if not days:
-        raise ValueError("Test döneminde tam saatlik gün bulunamadı.")
+        raise ValueError("Seçili dönemde tam saatlik gün bulunamadı.")
     return days
 
 
@@ -130,11 +149,18 @@ def _analysis_history(frame, start):
     return history
 
 
-def _event_table(scores, thresholds, valid, labels):
-    """Eşik üstü ardışık alarm bloklarını başlangıç/bitiş ve skorla özetler."""
+def _event_table(scores, thresholds, valid, labels, flags=None):
+    """Eşik üstü ardışık alarm bloklarını başlangıç/bitiş ve skorla özetler.
+
+    flags: {yöntem: [N] bool}; kuralı eşikten ibaret olmayan yöntemin alarmları.
+    """
+    flags = flags or {}
     rows = []
-    for method in METHODS:
-        detected = (scores[method] >= thresholds[method]).fillna(False).to_numpy() & valid
+    for method in scores.columns:
+        if method in flags:
+            detected = flags[method] & valid
+        else:
+            detected = (scores[method] >= thresholds[method]).fillna(False).to_numpy() & valid
         values = scores[method].to_numpy(dtype=np.float64)
         for start, end in runs(detected):
             event_scores = values[start:end]
@@ -176,16 +202,17 @@ def scale_injection(settings, severity):
 @st.cache_data(show_spinner="Anomali skorları hesaplanıyor...")
 def _score_whole_test(
     frame, config, inject, anomaly_type, scenario, seed, severity, calibration, model_signature, _models,
+    split="test",
 ):
-    """Tüm test kümesini (isteğe bağlı enjeksiyonlu kopyasıyla) bir kez puanlar.
+    """Tüm kümeyi (isteğe bağlı enjeksiyonlu kopyasıyla) bir kez puanlar.
 
     Çıktı: enjekte kopya, etiketler, ham ve yumuşatılmış skorlar (tüm test saatleri).
     Neden: Protokolde enjeksiyon kümenin tamamına yapılır. Kısa aralığa yapılırsa
     oran sınırı (max_ratio) 12–48 saatlik seviye kaymasına yer bırakmaz ve olaylar
     tarih değiştikçe yer değiştirir. Tarih aralığı burada yalnız görünümü seçer.
     """
-    splits = chronological_split(frame, config)
-    test = splits["test"]
+    splits = protocol_splits(frame, config)
+    test = splits[split]
     target = config["preprocess"]["target"]
     history = _analysis_history(frame, test.index[0])
     if inject:
@@ -239,24 +266,24 @@ def _score_whole_test(
 
 def analyze_test_range(
     frame, config, start, end, inject, anomaly_type, scenario, seed, calibration,
-    model_signature, _models, severity=1.0,
+    model_signature, _models, severity=1.0, split="test",
 ):
-    """Tüm testin skorlarından seçili aralığı dilimler; olay tablosunu kurar.
+    """Kümenin skorlarından seçili aralığı dilimler; olay tablosunu kurar.
 
     Girdi: tam saatlik seri, config, görünüm başlangıç/bitişi, enjeksiyon seçimi,
-    senaryo, seed, kayıtlı doğrulama kalibrasyonu, ağırlıklar, şiddet çarpanı.
+    senaryo, seed, kayıtlı doğrulama kalibrasyonu, ağırlıklar, şiddet çarpanı, küme.
     Çıktı: aralıkla hizalı gerçek/enjekte seri, ham ve yumuşatılmış skorlar (eşik
     yumuşatılmış skora uygulanır), sabit eşikler, geçerli saat maskesi, etiketler, alarmlar.
     Neden: Enjeksiyon yalnız kopyaya yapılır; eşik ve artık ölçekleri değişmez.
     """
-    test = chronological_split(frame, config)["test"]
+    test = protocol_splits(frame, config)[split]
     start_time = pd.Timestamp(start)
     end_time = pd.Timestamp(end)
     if start_time not in test.index or end_time not in test.index or end_time < start_time:
-        raise ValueError("Seçilen aralık kronolojik test saatleri içinde olmalı.")
+        raise ValueError("Seçilen aralık kronolojik küme saatleri içinde olmalı.")
     requested = pd.date_range(start_time, end_time, freq="h").as_unit(test.index.unit)
     if not requested.isin(test.index).all():
-        raise ValueError("Seçilen test aralığında eksik saat var; eksiksiz aralık seçin.")
+        raise ValueError("Seçilen aralıkta eksik saat var; eksiksiz aralık seçin.")
     target = config["preprocess"]["target"]
     selected = test.loc[requested]
     if not np.isfinite(selected[target].to_numpy(dtype=np.float64)).all():
@@ -264,9 +291,10 @@ def analyze_test_range(
 
     scored = _score_whole_test(
         frame, config, inject, anomaly_type, scenario, seed, severity, calibration,
-        model_signature, _models,
+        model_signature, _models, split,
     )
     selected_scores = scored["smoothed"].loc[requested]
+    selected_raw = scored["raw"].loc[requested]
     selected_injected = scored["injected"].loc[requested]
     labels = scored["labels"].loc[requested]
     valid = (
@@ -275,25 +303,52 @@ def analyze_test_range(
         & np.isfinite(selected_injected[target].to_numpy(dtype=np.float64))
     )
     if not valid.any():
-        raise ValueError("Seçili aralıkta skorlanabilir imputasyonsuz test saati yok.")
+        raise ValueError("Seçili aralıkta skorlanabilir imputasyonsuz saat yok.")
+
+    thresholds = dict(calibration["thresholds"])
+    windows = dict(calibration["windows"])
+    flags = {}
+    experimental = None
+    if split == EXPERIMENT_SPLIT and calibration.get("experimental"):
+        experimental = calibration["experimental"]
+        # Deneysel kural final yöntemin skorları üzerine kuruludur; skor sütunları onundur.
+        selected_scores = selected_scores.assign(**{EXPERIMENTAL: selected_scores["A3-s2s-norm"]})
+        selected_raw = selected_raw.assign(**{EXPERIMENTAL: selected_raw["A3-s2s-norm"]})
+        thresholds[EXPERIMENTAL] = experimental["t1"]
+        windows[EXPERIMENTAL] = windows["A3-s2s-norm"]
+        rule = dual_alarm(selected_scores["A3-s2s-norm"], selected_raw["A3-s2s-norm"], experimental["t1"], experimental["t2"])
+        if experimental["k"] is not None:
+            # Taban sayacı aralık başında sıfırlanmasın diye tüm kümede hesaplanır.
+            floor = pd.Series(
+                floor_alarm(scored["injected"][target].to_numpy(), experimental["floor_kw"], experimental["k"]),
+                index=scored["injected"].index,
+            )
+            rule = rule | floor.loc[requested].to_numpy()
+        flags[EXPERIMENTAL] = rule
+
     return {
         "real_kw": selected[target].astype(float),
         "imputed": selected["is_imputed"].astype(bool),
         "injected_kw": selected_injected[target].astype(float),
         "scores": selected_scores,
-        "raw_scores": scored["raw"].loc[requested],
-        "thresholds": calibration["thresholds"],
-        "windows": calibration["windows"],
+        "raw_scores": selected_raw,
+        "thresholds": thresholds,
+        "windows": windows,
         "valid": pd.Series(valid, index=requested),
         "labels": labels,
-        "events": _event_table(selected_scores, calibration["thresholds"], valid, labels),
+        "events": _event_table(selected_scores, thresholds, valid, labels, flags),
         "seed": seed if inject else None,
         "scenario": scenario if inject else None,
+        "split": split,
+        "experimental": experimental,
+        "flags": flags,
     }
 
 
 def flagged_hours(result, method):
     """Eşiği aşan geçerli saatleri [N] bool dizisi verir (kural: yumuşatılmış skor >= eşik)."""
+    if method in result.get("flags", {}):
+        return result["flags"][method] & result["valid"].to_numpy()
     scores = result["scores"][method]
     return (result["valid"] & scores.ge(result["thresholds"][method])).to_numpy()
 

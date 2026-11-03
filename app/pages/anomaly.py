@@ -7,6 +7,8 @@ from plotly.subplots import make_subplots
 
 from app.anomaly_services import (
     CAUGHT,
+    EXPERIMENT_SPLIT,
+    EXPERIMENTAL,
     METHODS,
     MISSED,
     SEVERITY_TYPES,
@@ -41,6 +43,7 @@ DEFAULT_TYPE = "level_shift"
 INJECTION_LABELS = {**ANOMALY_LABELS, NO_INJECTION: "Yok (gerçek ölçüm)"}
 SCENARIO_LABELS = {"main": "Ana (σ tabanlı)", "hard": "Zor (katsayı tabanlı)"}
 SEVERITY_STEPS = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
+SPLIT_LABELS = {"test": "test kümesi", EXPERIMENT_SPLIT: "doğrulama kümesi (val-hold)"}
 EVENT_COLORS = {
     CAUGHT: "background-color: #DDF3E4; color: #14532D",
     MISSED: "background-color: #FBE0E0; color: #7F1D1D",
@@ -94,6 +97,17 @@ def _make_figure(result, anomaly_type, method):
         annotation_text=f"Eşik {number(threshold)}",
         annotation_position="top right",
     )
+    experimental = result.get("experimental") if method == EXPERIMENTAL else None
+    if experimental:
+        figure.add_hline(
+            y=experimental["t2"], line_dash="dot", line_color=BASELINE_COLOR, line_width=1.5, row=2, col=1,
+            annotation_text=f"Ham skor eşiği {number(experimental['t2'])}", annotation_position="top right",
+        )
+        if experimental["k"] is not None:
+            figure.add_hline(
+                y=experimental["floor_kw"], line_dash="dot", line_color=ACTUAL_COLOR, line_width=1, row=1, col=1,
+                annotation_text=f"Taban {number(experimental['floor_kw'])} kW", annotation_position="top right",
+            )
     flagged = flagged_hours(result, method)
     figure.add_trace(go.Scatter(
         x=index[flagged], y=scores.to_numpy()[flagged], mode="markers", name="İşaretlenen saat",
@@ -120,7 +134,7 @@ def _make_figure(result, anomaly_type, method):
     figure.update_xaxes(tickformat="%d.%m", hoverformat="%d.%m.%Y %H:%M")
     figure.update_xaxes(title_text="Zaman (gün.ay)", row=2, col=1)
     figure.update_layout(
-        title=f"{DATASET_LABELS['household']}, test kümesi: {METHOD_LABELS[method]} ve eşik",
+        title=f"{DATASET_LABELS['household']}, {SPLIT_LABELS[result.get('split', 'test')]}: {METHOD_LABELS[method]} ve eşik",
         height=560,
         margin={"t": 95},
     )
@@ -191,17 +205,22 @@ def _alarm_table(result, method):
     st.dataframe(styled, width="stretch", hide_index=True)
 
 
-def _controls(days):
+def _controls(frame, config, calibration):
     """Yöntem, enjeksiyon, senaryo, şiddet ve tarih kontrollerini tek satırda gösterir.
 
-    Tarih aralığı varsayılan olarak tüm test dönemidir: yakalanan/toplam kartı ve
-    tablo, seçilmiş bir kesit değil, kopyanın bütün olaylarını gösterir.
+    Çıktı: yöntem, tip, senaryo, şiddet, başlangıç, bitiş, küme, o kümenin günleri.
+    Tarih aralığı varsayılan olarak tüm dönemdir: yakalanan/toplam kartı ve tablo, seçilmiş
+    bir kesit değil, kopyanın bütün olaylarını gösterir. Deneysel yöntem test kümesinde
+    çalıştırılmadığı için seçilince dönem val-hold olur; bu yüzden tarih anahtarları kümeye bağlıdır.
     """
     method_col, type_col, scenario_col, severity_col, start_col, end_col = st.columns([3, 2, 2, 2, 2, 2])
+    options = list(METHODS) + ([EXPERIMENTAL] if calibration.get("experimental") else [])
     method = method_col.selectbox(
-        "Yöntem", options=list(METHODS), index=list(METHODS).index(FINAL_METHOD),
+        "Yöntem", options=options, index=options.index(FINAL_METHOD),
         format_func=METHOD_LABELS.get, key="anomaly-method",
     )
+    split = EXPERIMENT_SPLIT if method == EXPERIMENTAL else "test"
+    days = complete_test_days(frame, config, split)
     anomaly_type = type_col.selectbox(
         "Enjeksiyon tipi", options=list(INJECTION_LABELS),
         index=list(INJECTION_LABELS).index(DEFAULT_TYPE),
@@ -220,14 +239,14 @@ def _controls(days):
     )
     start_day = start_col.date_input(
         "Başlangıç", value=days[0], min_value=days[0], max_value=days[-1],
-        format="DD.MM.YYYY", key="anomaly-start",
+        format="DD.MM.YYYY", key=f"anomaly-start-{split}",
     )
     end_day = end_col.date_input(
         "Bitiş", value=days[-1], min_value=days[0], max_value=days[-1],
-        format="DD.MM.YYYY", key="anomaly-end",
+        format="DD.MM.YYYY", key=f"anomaly-end-{split}",
     )
     # Kaydırıcı kapalıysa önceki değeri hesaba taşınmaz.
-    return method, anomaly_type, scenario, severity if severity_active else 1.0, start_day, end_day
+    return method, anomaly_type, scenario, severity if severity_active else 1.0, start_day, end_day, split, days
 
 
 def _capture_table(tables_dir):
@@ -252,9 +271,27 @@ def _capture_table(tables_dir):
     )
 
 
+def _experimental_note(experimental):
+    """"Geliştirilmiş (deneysel)" etiketini Detaylar için açıklar."""
+    floor = ""
+    if experimental["k"] is not None:
+        floor = (
+            f" Ayrıca tüketim {number(experimental['floor_kw'])} kW tabanının (eğitimin 0,5. yüzdeliği) altında "
+            f"en az {experimental['k']} saat kalırsa alarm verir."
+        )
+    return (
+        "- **Geliştirilmiş (deneysel):** Final sonuç değildir. Test sonrası denenen bir kuraldır: yumuşatılmış skor "
+        f"{number(experimental['t1'])} eşiğini veya ham skor {number(experimental['t2'])} eşiğini geçerse alarm verir.{floor} "
+        "Ayarları yalnız val-dev'de seçildi, val-hold'da bir kez ölçüldü. Test kümesinde çalıştırılmaz; bu yüzden bu seçenekte "
+        "val-hold dönemi gösterilir ve testte daha iyi olduğu iddia edilemez. Enjekte düşüş hep 0,05 kW olduğundan taban kuralı "
+        "o olayları neredeyse tanım gereği yakalar; gerçek düşüşlerde bu kadar iyi olacağı gösterilmemiştir.\n"
+    )
+
+
 def _details(result, method, inject, scenario, seed, severity):
     """Tanımları ve yumuşatma ödünleşimini açılır bölümde anlatır."""
     window = result["windows"][method]
+    experimental = _experimental_note(result["experimental"]) if method == EXPERIMENTAL else ""
     injection_note = ""
     if inject:
         injection_note = (
@@ -265,7 +302,7 @@ def _details(result, method, inject, scenario, seed, severity):
             injection_note += " Şiddet ×1 dışında sonuçlar protokol dışıdır, raporla karşılaştırılmaz."
     st.markdown(
         f"""
-- **Ham ve yumuşatılmış skor:** Ham skor her saatin kendi hatasıdır. Eşik, ham skora değil, yalnız geçmişe bakan {window} saatlik ortalamaya uygulanır. Bu yüzden ham skoru eşiği geçen bir olay kaçırılmış görünebilir.
+{experimental}- **Ham ve yumuşatılmış skor:** Ham skor her saatin kendi hatasıdır. Eşik, ham skora değil, yalnız geçmişe bakan {window} saatlik ortalamaya uygulanır. Bu yüzden ham skoru eşiği geçen bir olay kaçırılmış görünebilir.
 - **Yumuşatma ödünleşimi:** Ortalama, tek saatlik gürültüyü ve kısa sıçramaları bastırır. Seviye kayması gibi uzun olaylarda işe yarar, 1–2 saatlik ani yükselmelerde ise skoru geciktirip zayıflatır. Bu bilinen bir ödünleşimdir.
 - **Olay bitince alarm:** Skor geçmişe baktığı için alarm olay bittikten sonra gelebilir. Bu durumda olay kaçırılmış, alarm yanlış sayılır. Bu katı tanım raporlanan olay metrikleriyle aynıdır.
 - **Eşik:** {number(result['thresholds'][method])}. Doğrulama kümesinde seçilmiştir; test verisine göre değiştirilmez.
@@ -290,22 +327,26 @@ def render(dataset="household"):
     try:
         config, data_path, models_dir, tables_dir, features = anomaly_demo_paths()
         frame = load_household_data(str(data_path))
-        days = complete_test_days(frame, config)
         calibration = load_anomaly_calibration(str(tables_dir))
         models = load_f13_models(str(models_dir), features)
     except (FileNotFoundError, OSError, TypeError, ValueError, KeyError) as error:
         st.error(f"Anomali demosu gerekli veri, model veya eşik dosyalarını yükleyemedi: {error}")
         return
 
-    method, anomaly_type, scenario, severity, start_day, end_day = _controls(days)
+    method, anomaly_type, scenario, severity, start_day, end_day, split, days = _controls(frame, config, calibration)
+    if method == EXPERIMENTAL:
+        st.info(
+            "Geliştirilmiş (deneysel) final sonuç değildir ve test kümesinde çalıştırılmaz. "
+            "Bu yüzden burada doğrulama (val-hold) dönemi gösterilir; açıklama Detaylar'dadır."
+        )
     if start_day not in days or end_day not in days or end_day < start_day:
-        st.error("Başlangıç ve bitiş, bitiş sonra gelecek şekilde tam 24 saatlik test günleri olmalı.")
+        st.error("Başlangıç ve bitiş, bitiş sonra gelecek şekilde dönem içinde tam 24 saatlik günler olmalı.")
         return
 
     inject = anomaly_type != NO_INJECTION
     start = pd.Timestamp(start_day)
     end = pd.Timestamp(end_day) + pd.Timedelta(hours=23)
-    seed = int(config["protocol"]["scenarios"][scenario]["seeds"]["test"][0])
+    seed = int(config["protocol"]["scenarios"][scenario]["seeds"][split][0])
     if inject:
         st.warning("Kırmızı bantlar sentetiktir, gerçek ölçüm değildir. Orijinal veri değişmez; enjeksiyon kopya üzerinde yapılır.")
 
@@ -313,7 +354,7 @@ def render(dataset="household"):
         result = analyze_test_range(
             frame, config, start, end, inject,
             anomaly_type if inject else ANOMALY_TYPES[0],
-            scenario, seed, calibration, checkpoint_signature(models_dir), models, severity,
+            scenario, seed, calibration, checkpoint_signature(models_dir), models, severity, split,
         )
     except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError, KeyError) as error:
         st.error(f"Anomali analizi tamamlanamadı: {error}")

@@ -18,6 +18,7 @@ from app.results_services import load_results_bundle
 from app.services import (
     best_decile_days,
     comparison_table,
+    daily_total_error_pct,
     median_day,
     valid_test_days,
     worst_decile_days,
@@ -205,3 +206,22 @@ def test_christmas_and_december_statements_match_comparison_doc(eld_live):
             assert mape[touches].max() == pytest.approx(74.9, abs=0.06)
             assert np.median(mape[touches]) == pytest.approx(24, abs=0.5) and "medyan 24" in text
     assert np.mean(december) == pytest.approx(6.0, abs=0.05) and "Aralık'ta 6,0 %" in text
+
+
+def test_daily_total_error_formula():
+    """Formül elle doğrulanır; saatlik hatalar toplamda birbirini götürebilir."""
+    assert daily_total_error_pct(np.array([1.0, 1.0]), np.array([1.5, 0.5])) == 0.0
+    assert daily_total_error_pct(np.array([1.0, 1.0]), np.array([1.5, 1.5])) == pytest.approx(50.0)
+    assert np.isnan(daily_total_error_pct(np.array([0.0, 0.0]), np.array([1.0, 1.0])))
+
+
+def test_daily_total_error_matches_comparison_doc(eld_live):
+    """Gün kartındaki ölçü, belgedeki günlük toplam MAPE'nin (Şebeke, 3 seed) günlük karşılığıdır."""
+    _, config, results = eld_live
+    means = []
+    for seed in SEEDS:
+        y_true, y_pred, times = results[f"ELD-F13-ens{seed}"]
+        midnight = pd.DatetimeIndex(times).hour == 0
+        means.append(np.mean([daily_total_error_pct(a, p) for a, p in zip(y_true[midnight], y_pred[midnight])]))
+    row = _doc_rows(COMPARISON_DOC, "(c) günlük toplam, F13-ens")[0]
+    _assert_matches(float(np.mean(means)), row[1])

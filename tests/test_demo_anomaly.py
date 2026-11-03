@@ -351,3 +351,31 @@ def test_demo_scoring_reproduces_saved_final_seed_results(anomaly_demo, monkeypa
             flagged = (smoothed >= calibration["thresholds"][method]).to_numpy() & clean
             expected = saved[(saved["seed"] == seed) & (saved["method"] == method)]["event_f1"].iloc[0]
             assert event_metrics(types, flagged)["event_f1"] == pytest.approx(expected, abs=1e-6)
+
+
+def test_experimental_method_runs_only_on_val_hold(anomaly_demo):
+    """Deneysel yöntem test sonuçlarında bulunmamalı; val-hold'da kayıtlı kuralı uygulamalı."""
+    config, frame, calibration, models = anomaly_demo
+    signature = checkpoint_signature(anomaly_demo_paths()[2])
+    days = complete_test_days(frame, config)
+    on_test = analyze_test_range(
+        frame, config, pd.Timestamp(days[0]), pd.Timestamp(days[0]) + pd.Timedelta(hours=23),
+        False, "spike", "main", 2, calibration, signature, models,
+    )
+    assert anomaly_services.EXPERIMENTAL not in on_test["scores"].columns
+    assert on_test["experimental"] is None
+
+    hold_days = complete_test_days(frame, config, anomaly_services.EXPERIMENT_SPLIT)
+    assert pd.Timestamp(hold_days[-1]) < pd.Timestamp(config["split"]["test"]["start"])
+    start = pd.Timestamp(hold_days[0])
+    end = pd.Timestamp(hold_days[-1]) + pd.Timedelta(hours=23)
+    seed = config["protocol"]["scenarios"]["main"]["seeds"]["val_hold"][0]
+    result = analyze_test_range(
+        frame, config, start, end, True, "drop", "main", seed, calibration, signature, models,
+        1.0, anomaly_services.EXPERIMENT_SPLIT,
+    )
+    assert result["experimental"] is not None
+    table, _ = event_outcomes(result, anomaly_services.EXPERIMENTAL)
+    # Enjekte düşüş 0,05 kW, taban ~0,155 kW: kural bu olayları yakalamalı (2 saat ve üstü sürer).
+    if result["experimental"]["k"] is not None:
+        assert (table["Durum"] == CAUGHT).all()

@@ -247,6 +247,19 @@ def predict_test_day(frame, day, models, mape_min_y=0.1):
     }
 
 
+def daily_total_error_pct(actual, predicted):
+    """Günlük toplam tüketim hatası (%): 100 × |Σtahmin − Σgerçek| / Σgerçek.
+
+    Girdi: actual, predicted [24] kW. Saatlik kW × 1 saat = kWh olduğundan toplam kWh'tir.
+    Neden: Saatlik MAPE düşük tüketimli saatlerde şişer; günlük toplam ise enerji
+    planlamasının sorduğu soruyu yanıtlar. Toplam sıfırsa tanımsızdır.
+    """
+    total = float(np.sum(actual))
+    if total <= 0:
+        return float("nan")
+    return 100.0 * abs(float(np.sum(predicted)) - total) / total
+
+
 def comparison_table(days, predict, mape_min_y):
     """Her gün için model ve SN168 MAE'sini ve iyileşmeyi tablolaştırır.
 

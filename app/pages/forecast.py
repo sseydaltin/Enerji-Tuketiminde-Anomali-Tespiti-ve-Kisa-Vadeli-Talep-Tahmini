@@ -9,6 +9,7 @@ from app.eld_services import HARD_DAY, load_eld_forecasts, predict_eld_day
 from app.results_services import load_results_bundle
 from app.services import (
     best_decile_days,
+    daily_total_error_pct,
     demo_paths,
     household_comparison,
     load_f13_models,
@@ -117,12 +118,12 @@ def _metric_cards(result, baseline_mae, digits):
     İyileşme = 100 × (SN168 MAE − Topluluk MAE) / SN168 MAE; pozitifse model daha iyidir.
     """
     model_mae = result["metrics"]["MAE"]
-    mape = result["metrics"]["MAPE*"]
+    total_error = daily_total_error_pct(result["actual_kw"], result["f13_kw"])
     columns = st.columns(4)
     columns[0].metric("Seçili gün: Topluluk MAE", f"{number(model_mae, digits)} kW", border=True, height=CARD_HEIGHT)
     columns[1].metric(
-        "Seçili gün: MAPE",
-        "Tanımsız" if not np.isfinite(mape) else f"%{number(mape, 1)}",
+        "Seçili gün: Günlük toplam tüketim hatası",
+        "Tanımsız" if not np.isfinite(total_error) else f"%{number(total_error, 1)}",
         border=True,
         height=CARD_HEIGHT,
     )
@@ -250,12 +251,15 @@ def _distribution_section(table, day, dataset_label):
     )
 
 
-def _details(dataset, config, days):
+def _details(dataset, config, days, result):
     """Teknik açıklamaları ana görünümü kalabalıklaştırmadan açılır bölümde verir."""
+    mape = result["metrics"]["MAPE*"]
+    mape_value = "tanımsız" if not np.isfinite(mape) else f"%{number(mape, 1)}"
     if dataset == "household":
         mape_note = (
-            f"Yalnız gerçek tüketimin {config['evaluation']['mape_min_y']} kW üstünde olduğu saatlerde "
-            "hesaplanır; hanede değer yüksek çıkabilir çünkü düşük tüketimde küçük hatalar büyük yüzdelere dönüşür."
+            f"Seçili günde {mape_value}. Yalnız gerçek tüketimin {config['evaluation']['mape_min_y']} kW üstünde "
+            "olduğu saatlerde hesaplanır; düşük tüketimli saatlerde payda çok küçük olduğundan küçük bir kW hatası "
+            "bile çok büyük yüzdeye dönüşür, bu yüzden kartlarda gösterilmez."
         )
         days_note = (
             f"Seçilebilir {len(days)} gün, önceki 48 saati ve hedef 24 saati doldurulmamış, tam ölçüm içeren "
@@ -263,7 +267,10 @@ def _details(dataset, config, days):
         )
         hard_note = "**Kolay/zor örnek:** Topluluk MAE'sinin en iyi/en kötü %10'luk diliminden rastgele seçilir."
     else:
-        mape_note = "Şebeke yükü her zaman 0,1 kW'ın çok üstünde olduğu için bütün saatlerde hesaplanır."
+        mape_note = (
+            f"Seçili günde {mape_value}. Şebeke yükü hep yüksek olduğu için yanıltıcı değildir; "
+            "iki veri setinde aynı kart kullanılsın diye burada verilir."
+        )
         days_note = (
             f"Seçilebilir {len(days)} gün, önceki 48 saati ve hedef 24 saati doldurulmamış, tam ölçüm içeren "
             "günlerdir. Yaz saati geçişinden etkilenen günler dışarıda kalır."
@@ -281,6 +288,7 @@ def _details(dataset, config, days):
 - **Topluluk modeli:** 0,8 × Seq2Seq + 0,2 × LSTM. Girdi 48 saat, çıktı 24 saat. Ağırlıklar kayıtlıdır; demoda eğitim yapılmaz.
 - **SN168 (mevsimsel naif):** Bir önceki haftanın aynı saatlerini tahmin olarak kopyalar.
 - **MAE:** Seçili günün 24 saati üzerinden ortalama mutlak hata (kW).
+- **Günlük toplam tüketim hatası:** 100 × |Σtahmin − Σgerçek| / Σgerçek. Saatlik hatalar toplamda birbirini götürebilir; bu yüzden MAE ile birlikte okunmalıdır.
 - **MAPE:** {mape_note}
 - **İyileşme:** 100 × (SN168 MAE − Topluluk MAE) / SN168 MAE.
 - {hard_note} Bu seçim yalnız görsel örnek içindir; model veya eşik seçimi test kümesinden yapılmaz.
@@ -354,4 +362,4 @@ def render(dataset="household"):
         alt=f"{_display_day(day)} test günü için gerçek tüketim, Topluluk modeli ve SN168 tahmini",
     )
     _distribution_section(table, day, dataset_label)
-    _details(dataset, config, days)
+    _details(dataset, config, days, result)

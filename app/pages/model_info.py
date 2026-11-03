@@ -3,6 +3,8 @@
 İç deney kodları (F13, A3 ...) yalnız bu sayfada, parantez içinde görünür.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -485,6 +487,32 @@ A3-ens-norm, `0,8 × F10-opt + 0,2 × F5-opt` tahmin artığını kullanır. Ref
         )
 
 
+def _experiment_section(info):
+    """Test sonrası A6 denemesini kayıtlı tablolardan gösterir (final sonuç değildir)."""
+    tables_dir = Path(info["root"]) / "results/tables"
+    selection_path = tables_dir / "a6_selection.csv"
+    summary_path = tables_dir / "a6_val_summary.csv"
+    if not selection_path.is_file() or not summary_path.is_file():
+        return
+    with st.expander("Test sonrası geliştirme: Geliştirilmiş (A6-dual, A6-dual-floor), final sonuç değildir"):
+        selection = pd.read_csv(selection_path)
+        demo = selection.loc[selection["demo"], "method"].iloc[0]
+        st.write(
+            f"Demodaki \"Geliştirilmiş (deneysel)\" seçeneği {demo} varyantıdır. Ayarlar yalnız val-dev'de seçildi, "
+            "val-hold'da bir kez ölçüldü; test kümesi kullanılmadı. Ayrıntı: docs/final_sonuclar.md."
+        )
+        summary = pd.read_csv(summary_path)
+        table = pd.DataFrame({
+            "Küme": summary["split"],
+            "Yöntem (kod)": summary["method"],
+            "Olay F1": [f"{number(m)} ± {number(d)}" for m, d in zip(summary["event_f1_mean"], summary["event_f1_std"])],
+            "Olay recall": summary["event_recall_mean"].map(number),
+            "Olay precision": summary["event_precision_mean"].map(number),
+            "Yanlış alarm (kopya başına)": summary["false_alarms_mean"].map(lambda value: number(value, 1)),
+        })
+        st.table(table.style.hide(axis="index"))
+
+
 def _protocol_section(info):
     """Deney protokolünü, sınırlılıkları ve belge alıntılarını açılır bölümlerde gösterir."""
     household = info["household"]
@@ -557,4 +585,5 @@ def render(dataset="household"):
     st.caption("Bölme tarihlere göre kronolojiktir; rastgele bölme yapılmaz. Veri setlerinin dönemleri farklıdır.")
     _dataset_section(info, dataset)
     _anomaly_section(info, dataset)
+    _experiment_section(info)
     _protocol_section(info)
