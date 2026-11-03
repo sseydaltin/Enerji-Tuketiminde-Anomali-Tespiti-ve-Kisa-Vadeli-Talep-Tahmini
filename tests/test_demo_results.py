@@ -1,5 +1,7 @@
 """Kayıtlı Results sayfası kaynak, veri kümesi ve seed eşleşme testleri."""
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -29,16 +31,16 @@ def eld_results():
 def test_household_results_use_household_files_and_three_f13_seeds(household_results):
     """Household tablo kaynaklarının yolunu, test split'ini ve F13 seed sayısını denetler."""
     assert household_results["dataset"] == "household"
-    assert household_results["sources"]["forecast"].endswith(
+    assert Path(household_results["sources"]["forecast"]).as_posix().endswith(
         "results/tables/forecast_test_results.csv"
     )
-    assert household_results["sources"]["horizon"].endswith(
+    assert Path(household_results["sources"]["horizon"]).as_posix().endswith(
         "results/tables/forecast_test_horizon.csv"
     )
-    assert household_results["sources"]["anomaly"].endswith(
+    assert Path(household_results["sources"]["anomaly"]).as_posix().endswith(
         "results/tables/anomaly_protocol_test.csv"
     )
-    assert household_results["sources"]["cross_dataset"].endswith(
+    assert Path(household_results["sources"]["cross_dataset"]).as_posix().endswith(
         "results/eld/tables/hane_vs_sebeke_forecast.csv"
     )
     forecast = household_results["forecast"].set_index("model_key")
@@ -53,7 +55,7 @@ def test_household_results_use_household_files_and_three_f13_seeds(household_res
 def test_eld_results_use_eld_files_and_dataset_prefixed_experiments(eld_results):
     """ELD sonuçlarının ELD tablolarından ve ELD deney kimliklerinden geldiğini doğrular."""
     assert eld_results["dataset"] == "eld"
-    assert "/results/eld/tables/" in eld_results["sources"]["forecast"]
+    assert "/results/eld/tables/" in Path(eld_results["sources"]["forecast"]).as_posix()
     forecast = eld_results["forecast"].set_index("model_key")
     assert set(forecast.loc["F13-ens", "source_exp_ids"]) == set(
         FORECAST_IDS["eld"]["F13-ens"]
@@ -75,10 +77,10 @@ def test_horizon_results_have_24_steps_and_only_recorded_target_models(household
         assert sorted(model_rows["horizon"]) == list(range(1, 25))
     f13 = horizon.loc[horizon["model_key"] == "F13-ens"]
     assert (f13["n_seeds"] == 3).all()
-    figure = _horizon_figure(horizon, "Household (tek hane)", "kW")
+    figure = _horizon_figure(horizon, "Hane (tek ev)", "kW")
     assert len(figure.data) == 3
     assert figure.layout.yaxis.title.text == "MAE (kW)"
-    assert "Household" in figure.layout.title.text
+    assert "Hane" in figure.layout.title.text
 
 
 @pytest.mark.parametrize("fixture_name", ["household_results", "eld_results"])
@@ -111,11 +113,11 @@ def test_cross_dataset_display_never_exposes_direct_mae_comparison(household_res
     comparison = _cross_dataset_table(household_results["cross_dataset"])
     assert "MAE" not in comparison.columns
     assert "MAE (kW)" not in comparison.columns
-    assert set(comparison["Veri kümesi"]) == {
-        "Household (tek hane)",
-        "ELD (160 müşteri toplamı)",
+    assert set(comparison["Veri seti"]) == {
+        "Hane (tek ev)",
+        "Şebeke (160 müşteri)",
     }
-    assert {"MAPE* (%)", "R²", "SN168'e göre MAE kazancı"}.issubset(comparison.columns)
+    assert {"MAPE (%)", "R²", "SN168'e göre MAE kazancı (%)"}.issubset(comparison.columns)
 
 
 def test_cross_dataset_values_come_from_saved_comparison_csv(household_results):
@@ -143,9 +145,18 @@ def test_missing_result_csv_fails_loudly(tmp_path):
 def test_forecast_metric_display_preserves_seed_uncertainty(household_results):
     """Çok-seed F13 metriklerinde std, tek-seed modellerde ise uydurma std üretilmez."""
     display = _forecast_table(household_results["forecast"]).set_index("Model")
-    f13 = display.loc["F13 ensemble (0,8 F10-opt + 0,2 F5-opt)"]
-    xgb = display.loc["F12-L336 XGBoost"]
+    f13 = display.loc["Topluluk modeli (Seq2Seq + LSTM)"]
+    xgb = display.loc["XGBoost"]
     assert "±" in f13["MAE"]
     assert "±" not in xgb["MAE"]
     assert f13["Seed sayısı"] == 3
     assert xgb["Seed sayısı"] == 1
+
+
+def test_public_results_labels_hide_internal_codes(household_results):
+    """Sonuçlar tablolarında iç deney kodları görünmemeli; kodlar Model Bilgisi'ne aittir."""
+    forecast = _forecast_table(household_results["forecast"])
+    comparison = _cross_dataset_table(household_results["cross_dataset"])
+    visible = " ".join(forecast["Model"]) + " ".join(comparison["Model"])
+    for code in ("F13", "F12", "F10", "F5", "ELD", "Household"):
+        assert code not in visible

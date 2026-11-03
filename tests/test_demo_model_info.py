@@ -51,7 +51,7 @@ def test_model_info_reads_metadata_safely_without_running_models(monkeypatch):
     assert f5["forecast"]["horizon"] == f10["forecast"]["horizon"] == 24
     assert np.isfinite(f5["feature_mean"]).all()
     assert np.isfinite(f10["feature_scale"]).all()
-    assert _model_rows(info)[0]["Model"] == "F5-opt LSTM"
+    assert _model_rows(info)[0]["Model"] == "LSTM (F5-opt)"
 
 
 def test_model_info_reports_dataset_and_model_artifact_availability():
@@ -65,8 +65,11 @@ def test_model_info_reports_dataset_and_model_artifact_availability():
     assert info["availability"]["household_processed"] == (
         root / "data/processed/hourly.parquet"
     ).is_file()
-    assert not info["availability"]["eld_raw"]
-    assert not info["availability"]["eld_processed"]
+    # Şebeke verisi repoya girmez; bazı bilgisayarlarda var, bazılarında yoktur.
+    assert info["availability"]["eld_raw"] == (root / info["eld"]["eld"]["raw_file"]).is_file()
+    assert info["availability"]["eld_processed"] == (
+        root / info["eld"]["paths"]["processed_file"]
+    ).is_file()
     assert info["checkpoints"]["ELD-F5-opt"]["available"] == (
         root / "models/eld/ELD-F5-opt_best.pt"
     ).is_file()
@@ -106,9 +109,9 @@ def test_model_info_flow_diagram_has_readable_non_overlapping_nodes_and_true_edg
         label.split("</b>")[0].removeprefix("<b>") for label in labels
         if "</b>" in label
     }
-    assert any("Yalnız train" in label for label in labels)
+    assert any("Yalnız eğitim" in label for label in labels)
     assert any("OOF artıklar" in label for label in labels)
-    assert any("Validation seçimi" in label for label in labels)
+    assert any("Doğrulama seçimi" in label for label in labels)
     assert any("Final metrikler" in label for label in labels)
     assert {
         ("train_scaler", "scaler_fit"),
@@ -155,9 +158,10 @@ def test_model_info_page_renders_without_errors():
     app = AppTest.from_function(_render_model_info_page).run()
 
     assert not app.exception
-    assert [element.value for element in app.title] == ["Model Info"]
-    assert len(app.get("plotly_chart")) == 1
-    assert len(app.dataframe) == 5
+    assert [element.value for element in app.title] == ["Model Bilgisi"]
+    assert len(app.get("plotly_chart")) == 3
+    assert len(app.table) == 1
+    assert len(app.dataframe) == 3
     warning_text = " ".join(element.value for element in app.warning).lower()
     assert "kaynak notu" in warning_text
     assert "reference_split='val_dev'" in warning_text

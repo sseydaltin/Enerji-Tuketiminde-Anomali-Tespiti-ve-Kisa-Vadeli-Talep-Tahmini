@@ -1,4 +1,4 @@
-"""Kayıtlı test sonuçlarını salt okunur karşılaştırma sayfası."""
+"""Sonuçlar sayfası: kayıtlı final test CSV'lerinin salt okunur karşılaştırması."""
 
 from pathlib import Path
 
@@ -12,14 +12,43 @@ from app.results_services import (
     load_results_bundle,
     metric_text,
 )
+from app.ui import (
+    ANOMALY_LABELS,
+    DATASET_LABELS,
+    FINAL_METHOD,
+    FINAL_MODEL,
+    FORECAST_COLORS,
+    FORECAST_LABELS,
+    METHOD_COLORS,
+    METHOD_LABELS,
+    decimal_comma,
+    highlighted_table,
+    number,
+    show_chart,
+)
 
-DATASET_LABELS = {"household": "Household (tek hane)", "eld": "ELD (160 müşteri toplamı)"}
 FORECAST_METRICS = (
     ("MAE", "MAE", "kW"),
     ("RMSE", "RMSE", "kW"),
-    ("MAPE*", "MAPE*", "%"),
+    ("MAPE (%)", "MAPE*", "%"),
     ("R²", "R2", ""),
 )
+GAIN_COLUMN = "SN168'e göre MAE kazancı (%)"
+LEVEL_LABELS = {
+    "a_h1": "1 saat sonrası (kW)",
+    "b_24h": "24 saatlik ufuk (kW)",
+    "c_daily": "Günlük toplam (kWh)",
+}
+LEVEL_GROUPS = {
+    "F13-ens (final)": "F13-ens",
+    "F12-L336 XGBoost": "XGBoost",
+    "F2 Seasonal Naive 168": "SN168",
+}
+
+
+def _text(mean, std):
+    """Ortalama ± std metnini Türkçe ondalık virgülüyle üretir."""
+    return decimal_comma(metric_text(mean, std))
 
 
 def _forecast_table(frame):
@@ -28,33 +57,51 @@ def _forecast_table(frame):
     for model in FORECAST_MODELS:
         source = frame.loc[frame["model_key"] == model].iloc[0]
         rows.append({
-            "Model": source["model_label"],
+            "Model": FORECAST_LABELS[model],
             "Seed sayısı": int(source["n_seeds"]),
             **{
-                label: metric_text(source[column], source[f"{column}_std"])
+                label: _text(source[column], source[f"{column}_std"])
                 for label, column, _ in FORECAST_METRICS
             },
-            "SN168'e göre MAE kazancı": metric_text(
-                source["gain_vs_sn168_pct"], source["gain_vs_sn168_pct_std"], suffix="%"
-            ),
+            GAIN_COLUMN: _text(source["gain_vs_sn168_pct"], source["gain_vs_sn168_pct_std"]),
         })
     return pd.DataFrame(rows)
 
 
+def _anomaly_table(anomaly):
+    """Anomali seed ortalamalarını ve std değerlerini Türkçe sütunlarla tablolaştırır."""
+    rows = []
+    for _, source in anomaly.iterrows():
+        row = {
+            "Yöntem": METHOD_LABELS[source["method"]],
+            "Seed sayısı": int(source["n_seeds"]),
+            "PR-AUC": _text(source["pr_auc_mean"], source["pr_auc_std"]),
+            "Olay F1": _text(source["event_f1_mean"], source["event_f1_std"]),
+        }
+        for kind, label in ANOMALY_LABELS.items():
+            row[f"{label} recall"] = _text(
+                source[f"event_recall_{kind}_mean"], source[f"event_recall_{kind}_std"]
+            )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def _horizon_figure(horizon, dataset, unit):
-    """Kayıtlı horizon MAE ortalamasını, mevcutsa seed std hata çubuklarıyla çizer."""
+    """Kayıtlı ufuk MAE ortalamasını, mevcutsa seed std hata çubuklarıyla çizer."""
     figure = go.Figure()
-    colors = {"F13-ens": "#2364aa", "XGBoost": "#d1495b", "SN168": "#2a9d8f"}
     for model in FORECAST_MODELS:
         data = horizon.loc[horizon["model_key"] == model].sort_values("horizon")
         if data.empty:
             continue
+        line = {"color": FORECAST_COLORS[model], "width": 2.5 if model == FINAL_MODEL else 2}
+        if model == "SN168":
+            line["dash"] = "dash"
         figure.add_trace(go.Scatter(
             x=data["horizon"],
             y=data["MAE_mean"],
-            mode="lines+markers",
-            name=data["model_label"].iloc[0],
-            line={"color": colors[model], "width": 2},
+            mode="lines+markers" if model != "SN168" else "lines",
+            name=FORECAST_LABELS[model],
+            line=line,
             error_y={
                 "type": "data",
                 "array": data["MAE_std"].fillna(0).to_numpy(),
@@ -62,84 +109,43 @@ def _horizon_figure(horizon, dataset, unit):
                 "thickness": 1,
                 "width": 2,
             },
-            hovertemplate="Ufuk: %{x}. saat<br>MAE: %{y:.3f} " + unit + "<extra>%{fullData.name}</extra>",
         ))
-    figure.update_layout(
-        title=f"{dataset} test kümesi — tahmin ufkuna göre MAE",
-        xaxis_title="Tahmin ufku (saat)",
-        yaxis_title=f"MAE ({unit})",
-        hovermode="x unified",
-        legend_title="Model",
-    )
+    figure.update_xaxes(title_text="Tahmin ufku (saat)", tick0=1, dtick=1, range=[0.5, 24.5])
+    figure.update_yaxes(title_text=f"MAE ({unit})", hoverformat=".3f")
+    figure.update_layout(title=f"{dataset}, test kümesi: tahmin ufkuna göre MAE", height=430)
     return figure
 
 
-def _anomaly_performance_figure(anomaly, dataset):
-    """Yöntemlerin PR-AUC ve olay F1 ortalamalarını/std'lerini birlikte gösterir."""
+def _method_bars(anomaly, metrics, title, y_title):
+    """Yöntemleri ortak renklerle gruplu çubukta karşılaştırır.
+
+    Girdi: anomali özeti; metrics = (x etiketi, ortalama sütunu, std sütunu) listesi.
+    Çıktı: Plotly figürü. Tam değerler üstteki tablodadır; hata çubuklarıyla çakışmasın
+    diye çubuk üstüne sayı yazılmaz. Seed std'si 1'i aşabildiği için eksen 1,15'e kadar açıktır.
+    """
     figure = go.Figure()
-    for column, std_column, label, color in (
-        ("pr_auc_mean", "pr_auc_std", "PR-AUC", "#2364aa"),
-        ("event_f1_mean", "event_f1_std", "Olay F1", "#e07a5f"),
-    ):
+    for method in ANOMALY_METHODS:
+        row = anomaly.loc[anomaly["method"] == method].iloc[0]
         figure.add_trace(go.Bar(
-            x=anomaly["method_label"],
-            y=anomaly[column],
-            name=label,
+            x=[label for label, _, _ in metrics],
+            y=[row[mean] for _, mean, _ in metrics],
+            name=METHOD_LABELS[method],
+            marker_color=METHOD_COLORS[method],
             error_y={
                 "type": "data",
-                "array": anomaly[std_column].fillna(0).to_numpy(),
-                "visible": bool(anomaly["n_seeds"].max() > 1),
+                "array": [0 if pd.isna(row[std]) else row[std] for _, _, std in metrics],
+                "visible": bool(row["n_seeds"] > 1),
+                "thickness": 1,
             },
-            marker_color=color,
-            hovertemplate="%{x}<br>" + label + ": %{y:.3f}<extra></extra>",
+            hovertemplate="%{y:.3f}",
         ))
-    figure.update_layout(
-        barmode="group",
-        title=f"{dataset} test kümesi — ana senaryo, seed ortalaması ± std",
-        xaxis_title="Yöntem",
-        yaxis_title="Skor (0–1)",
-        yaxis={"range": [0, 1]},
-        legend_title="Metrik",
-    )
-    return figure
-
-
-def _type_recall_figure(anomaly, dataset):
-    """Kayıtlı anomali olaylarının tür bazlı event recall değerlerini çizer."""
-    figure = go.Figure()
-    anomaly_types = (
-        ("spike", "Ani yükselme"),
-        ("drop", "Ani düşüş"),
-        ("level_shift", "Seviye kayması"),
-        ("pattern", "Gece örüntüsü"),
-    )
-    for kind, label in anomaly_types:
-        column = f"event_recall_{kind}_mean"
-        std_column = f"event_recall_{kind}_std"
-        figure.add_trace(go.Bar(
-            x=anomaly["method_label"],
-            y=anomaly[column],
-            name=label,
-            error_y={
-                "type": "data",
-                "array": anomaly[std_column].fillna(0).to_numpy(),
-                "visible": bool(anomaly["n_seeds"].max() > 1),
-            },
-            hovertemplate="%{x}<br>" + label + " event recall: %{y:.3f}<extra></extra>",
-        ))
-    figure.update_layout(
-        barmode="group",
-        title=f"{dataset} test kümesi — anomali türüne göre olay recall",
-        xaxis_title="Yöntem",
-        yaxis_title="Olay recall (0–1)",
-        yaxis={"range": [0, 1]},
-        legend_title="Sentetik anomali türü",
-    )
+    figure.update_yaxes(title_text=y_title, range=[0, 1.15], hoverformat=".3f")
+    figure.update_layout(barmode="group", bargap=0.3, bargroupgap=0.05, title=title, height=400)
     return figure
 
 
 def _cross_dataset_table(cross):
-    """Veri kümeleri arasında ölçekten bağımsız, SN168'e göreli metrikleri gösterir."""
+    """Veri setleri arasında ölçekten bağımsız, SN168'e göreli metrikleri gösterir."""
     rows = []
     for dataset in ("household", "eld"):
         for model in FORECAST_MODELS:
@@ -147,121 +153,166 @@ def _cross_dataset_table(cross):
                 (cross["dataset"] == dataset) & (cross["model_key"] == model)
             ].iloc[0]
             rows.append({
-                "Veri kümesi": DATASET_LABELS[dataset],
-                "Model": entry["model_label"],
-                "MAPE* (%)": metric_text(entry["MAPE*"], entry["MAPE*_std"], suffix="%"),
-                "R²": metric_text(entry["R2"], entry["R2_std"]),
-                "SN168'e göre MAE kazancı": metric_text(
-                    entry["gain_vs_sn168_pct"],
-                    entry["gain_vs_sn168_pct_std"],
-                    suffix="%",
-                ),
+                "Veri seti": DATASET_LABELS[dataset],
+                "Model": FORECAST_LABELS[model],
+                "MAPE (%)": _text(entry["MAPE*"], entry["MAPE*_std"]),
+                "R²": _text(entry["R2"], entry["R2_std"]),
+                GAIN_COLUMN: _text(entry["gain_vs_sn168_pct"], entry["gain_vs_sn168_pct_std"]),
             })
     return pd.DataFrame(rows)
 
 
-def render():
-    """Kayıtlı Household/ELD final test sonuçlarını model eğitimi olmadan karşılaştırır."""
-    st.title("Sonuçlar")
-    st.caption(
-        "Salt okunur görünüm: tüm metrikler kayıtlı final test CSV'lerinden alınır. "
-        "Model, yöntem ve eşik seçimi validation üzerinden yapılmıştır; test sonuçları "
-        "seçim veya yeniden ayarlama için kullanılmamıştır."
+def _level_table(forecast_path):
+    """Kayıtlı seviye tablosundan hatanın kapsama göre nasıl değiştiğini okur.
+
+    Girdi: forecast_test_results.csv yolu; seviye tablosu aynı klasördedir.
+    Çıktı: Seviye/Model sütunlu DataFrame veya dosya yoksa None.
+    Neden: 1 saat, 24 saat ve günlük toplam farklı soruları yanıtlar; en iyi model
+    metriğe göre değişebilir. Değerler CSV'den aynen okunur, yeniden hesaplanmaz.
+    """
+    path = Path(forecast_path).parent / "forecast_levels_test.csv"
+    if not path.is_file():
+        return None
+    levels = pd.read_csv(path)
+    rows = []
+    for level, level_label in LEVEL_LABELS.items():
+        for group, model in LEVEL_GROUPS.items():
+            entry = levels.loc[(levels["level"] == level) & (levels["group"] == group)]
+            if entry.empty:
+                continue
+            entry = entry.iloc[0]
+            rows.append({
+                "Seviye": level_label,
+                "Model": FORECAST_LABELS[model],
+                "MAE": _text(entry["MAE_mean"], entry["MAE_std"]),
+                "MAPE (%)": _text(entry["MAPE*_mean"], entry["MAPE*_std"]),
+                "R²": _text(entry["R2_mean"], entry["R2_std"]),
+            })
+    return pd.DataFrame(rows)
+
+
+def _comparison_cards(household, eld):
+    """Hane ve Şebeke'yi MAPE, R² ve olay F1 için yan yana kartlarla karşılaştırır.
+
+    Kaynak: tahminde kayıtlı karşılaştırma CSV'sinin final model satırı, anomalide her
+    veri setinin kendi final test CSV'sindeki birincil yöntem satırı.
+    """
+    cross = household["cross_dataset"]
+
+    def forecast_row(dataset):
+        """Bir veri setinin final tahmin modeli satırını döndürür."""
+        return cross.loc[(cross["dataset"] == dataset) & (cross["model_key"] == FINAL_MODEL)].iloc[0]
+
+    def anomaly_row(bundle):
+        """Bir veri setinin birincil anomali yöntemi satırını döndürür."""
+        return bundle["anomaly"].loc[bundle["anomaly"]["method"] == FINAL_METHOD].iloc[0]
+
+    cards = (
+        ("MAPE", "Tahmin, küçük olan iyi", "%", 2, lambda dataset, _: forecast_row(dataset)["MAPE*"]),
+        ("R²", "Tahmin, 1'e yakın olan iyi", "", 3, lambda dataset, _: forecast_row(dataset)["R2"]),
+        ("Olay F1", "Anomali, 1'e yakın olan iyi", "", 3, lambda _, bundle: anomaly_row(bundle)["event_f1_mean"]),
     )
-    dataset = st.selectbox(
-        "Tahmin ve anomali sonuçlarını göster",
-        options=list(DATASET_LABELS),
-        format_func=DATASET_LABELS.get,
-        key="results-dataset",
+    for column, (title, hint, prefix, digits, read_value) in zip(st.columns(3), cards):
+        with column.container(border=True):
+            st.markdown(f"**{title}**")
+            st.caption(hint)
+            left, right = st.columns(2)
+            left.metric(DATASET_LABELS["household"], f"{prefix}{number(read_value('household', household), digits)}")
+            right.metric(DATASET_LABELS["eld"], f"{prefix}{number(read_value('eld', eld), digits)}")
+
+
+def _forecast_tab(bundle, label):
+    """Tahmin sekmesi: seçili veri setinin model tablosu ve iki veri setinin kıyası."""
+    st.subheader(f"{label}: model karşılaştırması")
+    st.table(highlighted_table(
+        _forecast_table(bundle["forecast"]), "Model", FORECAST_LABELS[FINAL_MODEL],
+    ))
+    st.caption(
+        "Değerler seed ortalaması ± standart sapmadır; tek koşulu modellerde std yoktur. "
+        "MAPE yalnız gerçek tüketimi 0,1 kW üstündeki saatlerde hesaplanır. Final model vurguludur."
+    )
+    st.subheader("Hane ve Şebeke: tüm modeller")
+    st.table(_cross_dataset_table(bundle["cross_dataset"]).style.hide(axis="index"))
+
+
+def _anomaly_tab(bundle, label):
+    """Anomali sekmesi: yöntem tablosu, PR-AUC/F1 ve türe göre olay recall grafikleri."""
+    anomaly = bundle["anomaly"]
+    st.table(highlighted_table(_anomaly_table(anomaly), "Yöntem", METHOD_LABELS[FINAL_METHOD]))
+    st.caption(
+        "Ana senaryoda seed ortalaması ± standart sapma. Eşik ve yumuşatma doğrulama kümesinde "
+        "seçilmiştir. Birincil yöntem doğrulama kümesinde belirlenmiştir ve vurguludur; testte "
+        "başka bir yöntem daha yüksek çıksa da sonradan değiştirilmez."
+    )
+    left, right = st.columns(2)
+    with left:
+        show_chart(
+            _method_bars(
+                anomaly,
+                (("PR-AUC", "pr_auc_mean", "pr_auc_std"), ("Olay F1", "event_f1_mean", "event_f1_std")),
+                f"{label}, test kümesi: genel başarı",
+                "Skor (0–1)",
+            ),
+            alt=f"{label} için yöntemlerin PR-AUC ve olay F1 değerleri",
+        )
+    with right:
+        show_chart(
+            _method_bars(
+                anomaly,
+                tuple(
+                    (name, f"event_recall_{kind}_mean", f"event_recall_{kind}_std")
+                    for kind, name in ANOMALY_LABELS.items()
+                ),
+                f"{label}, test kümesi: türe göre olay recall",
+                "Olay recall (0–1)",
+            ),
+            alt=f"{label} için yöntemlerin anomali türüne göre olay recall değerleri",
+        )
+
+
+def _error_tab(bundle, label):
+    """Hata analizi sekmesi: hatanın ufka ve toplama seviyesine göre değişimi."""
+    show_chart(
+        _horizon_figure(bundle["horizon"], label, bundle["unit"]),
+        alt=f"{label} test kümesinde modellerin tahmin ufkuna göre MAE değerleri",
+    )
+    levels = _level_table(bundle["sources"]["forecast"])
+    if levels is None:
+        st.info("Seviye tablosu bulunamadı; yalnız ufuk grafiği gösteriliyor.")
+        return
+    st.subheader("Toplama seviyesine göre hata")
+    st.table(highlighted_table(levels, "Model", FORECAST_LABELS[FINAL_MODEL]))
+    st.caption(
+        "En iyi model metriğe ve seviyeye göre değişebilir. Her satır kayıtlı "
+        "test tablosundan alınmıştır."
     )
 
+
+def render(dataset="household"):
+    """Kayıtlı final test sonuçlarını üstte karşılaştırır, altta sekmelerde ayrıntılandırır."""
+    st.title("Sonuçlar")
     try:
-        bundle = load_results_bundle(dataset)
+        household = load_results_bundle("household")
+        eld = load_results_bundle("eld")
     except (FileNotFoundError, OSError, ValueError, KeyError) as error:
         st.error(f"Kayıtlı sonuçlar yüklenemedi: {error}")
         return
+    bundle = household if dataset == "household" else eld
+    label = DATASET_LABELS[dataset]
 
-    dataset_label = DATASET_LABELS[dataset]
-    st.subheader(f"{dataset_label} — tahmin")
+    st.subheader("Hane ve Şebeke")
+    _comparison_cards(household, eld)
     st.caption(
-        f"Test sonuçları, 24 saatlik tahmin. MAE/RMSE birimi: {bundle['unit']}. "
-        "MAPE* hane için yalnız y > 0,1 kW saatlerde hesaplanır; ELD'de bu eşik etkisizdir. "
-        "Seed sütunu, kayıtlı koşu sayısını belirtir."
-    )
-    st.dataframe(
-        _forecast_table(bundle["forecast"]),
-        width="stretch",
-        hide_index=True,
-        alt=f"{dataset_label} test kümesi F13 ensemble, XGBoost ve SN168 metrik tablosu",
-    )
-    st.caption(
-        "Tahmin kaynakları: "
-        + ", ".join(Path(path).name for path in (
-            bundle["sources"]["forecast"], bundle["sources"]["horizon"]
-        ))
-    )
-    st.plotly_chart(
-        _horizon_figure(bundle["horizon"], dataset_label, bundle["unit"]),
-        width="stretch",
-        alt=f"{dataset_label} test kümesinde F13 ensemble, XGBoost ve SN168 MAE değerleri tahmin ufkuna göre",
+        "Salt okunur görünüm: tüm sayılar kayıtlı final test dosyalarından gelir. Kartlar "
+        "Topluluk modelini ve Seq2Seq artık skorunu gösterir. Mutlak MAE karşılaştırılmaz: hane "
+        "yaklaşık 1 kW, şebeke yaklaşık 106 MW ölçeğindedir ve dönemleri farklıdır."
     )
 
-    st.subheader(f"{dataset_label} — anomali tespiti")
-    st.caption(
-        "Test / ana senaryo / evf1max: PR-AUC eşikten bağımsız sıralama ölçütüdür; "
-        "olay F1 ve tür bazlı event recall kayıtlı validation eşiği ve smoothing "
-        "ile değerlendirilmiştir. Değerler mevcut seed'lerin ortalaması ± standart sapmasıdır."
-    )
-    st.plotly_chart(
-        _anomaly_performance_figure(bundle["anomaly"], dataset_label),
-        width="stretch",
-        alt=f"{dataset_label} test kümesinde A0, A3-s2s-norm ve A5-mean-z PR-AUC ve olay F1 sonuçları",
-    )
-    st.plotly_chart(
-        _type_recall_figure(bundle["anomaly"], dataset_label),
-        width="stretch",
-        alt=f"{dataset_label} test kümesinde yöntemlerin spike, drop, seviye kayması ve gece örüntüsü olay recall sonuçları",
-    )
-    st.dataframe(
-        bundle["anomaly_display"],
-        width="stretch",
-        hide_index=True,
-        alt=f"{dataset_label} test anomali yöntemleri, seed sayısı, PR-AUC, olay F1 ve tür bazlı event recall tablosu",
-    )
-    st.caption(
-        "Anomali kaynakları: "
-        + ", ".join(Path(path).name for path in (
-            bundle["sources"]["anomaly"], bundle["sources"]["anomaly_per_seed"]
-        ))
-    )
-
-    st.subheader("Hane ve şebeke: ölçeği gözeten karşılaştırma")
-    st.warning(
-        "Household ile ELD arasında mutlak MAE karşılaştırması yapılmamalıdır: "
-        "hane yaklaşık 1 kW, ELD 160 müşterinin toplam yüküyle yaklaşık 106 MW ölçeğindedir. "
-        "Aşağıda yalnız MAPE*, R² ve her veri kümesindeki kendi SN168 baseline'ına göre "
-        "MAE kazancı gösterilir. Kazanç, kayıtlı b_24h karşılaştırma tablosundaki "
-        "değerdir; seed std'si final forecast test koşularından gelir."
-    )
-    st.dataframe(
-        _cross_dataset_table(bundle["cross_dataset"]),
-        width="stretch",
-        hide_index=True,
-        alt="Household ve ELD için MAPE, R² ve veri kümesine özgü SN168'e göre MAE kazancı",
-    )
-    st.caption(
-        "Karşılaştırma kaynağı: "
-        + Path(bundle["sources"]["cross_dataset"]).name
-        + ". Household ve ELD ölçümlerinin dönemleri/ölçekleri farklıdır."
-    )
-    with st.expander("Protokol ve rapor kaynakları"):
-        st.markdown(bundle["final_doc_excerpt"])
-        st.markdown(bundle["comparison_doc_excerpt"])
-        st.caption(
-            "Yorum kaynakları: "
-            + ", ".join(
-                Path(path).name
-                for path in bundle["documentation_sources"].values()
-            )
-            + ". Sayısal sonuçların kaynağı, yukarıda belirtilen final CSV dosyalarıdır."
-        )
+    st.caption(f"Sekmelerde gösterilen veri seti: **{label}** (kenar çubuğundan değiştirilebilir).")
+    forecast_tab, anomaly_tab, error_tab = st.tabs(["Tahmin", "Anomali", "Hata analizi"])
+    with forecast_tab:
+        _forecast_tab(bundle, label)
+    with anomaly_tab:
+        _anomaly_tab(bundle, label)
+    with error_tab:
+        _error_tab(bundle, label)

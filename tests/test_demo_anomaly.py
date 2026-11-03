@@ -13,7 +13,8 @@ from app.anomaly_services import (
     checkpoint_signature,
     load_anomaly_calibration,
 )
-from app.pages.anomaly import _make_figure
+from app.pages.anomaly import CAUGHT, MISSED, _event_outcomes, _make_figure
+from src.utils.anomaly_metrics import event_metrics
 from app.services import load_f13_models, load_household_data, valid_test_days
 from src.data.inject_anomalies import inject_anomalies
 
@@ -198,30 +199,52 @@ def test_real_test_scoring_injects_only_selected_type_on_a_copy(anomaly_demo):
     assert result["labels"]["is_anomaly"].astype(bool).to_numpy()[changed].all()
 
 
-def test_plot_contains_consumption_scores_and_validation_thresholds():
-    """Grafiğin tüketim, üç skor serisi ve eşik çizgilerini içerdiğini doğrular."""
-    index = pd.date_range("2024-01-01", periods=3, freq="h")
-    values = pd.Series([1.0, 2.0, 3.0], index=index)
-    result = {
-        "real_kw": values,
-        "imputed": pd.Series([False, False, False], index=index),
-        "injected_kw": pd.Series([1.0, 4.0, 3.0], index=index),
+def _small_result():
+    """Grafik ve olay sınıflaması testleri için küçük, elle kurulmuş analiz çıktısı."""
+    index = pd.date_range("2024-01-01", periods=6, freq="h")
+    return {
+        "real_kw": pd.Series([1.0, 2.0, 3.0, 1.0, 2.0, 3.0], index=index),
+        "imputed": pd.Series([False] * 6, index=index),
+        "injected_kw": pd.Series([1.0, 4.0, 3.0, 1.0, 2.0, 3.0], index=index),
+        # Eşik 2: saat 1 enjekte olayı yakalar, saat 5 yanlış alarmdır, saat 3 olayı kaçar.
         "scores": pd.DataFrame(
-            {"A0": [0.1, 0.2, 0.3], "A3-s2s-norm": [0.2, 0.3, 0.4],
-             "A5-mean-z": [0.3, 0.4, 0.5]},
+            {"A0": [0.0] * 6, "A3-s2s-norm": [0.1, 2.5, 0.1, 0.1, 0.1, 3.0], "A5-mean-z": [0.0] * 6},
             index=index,
         ),
         "thresholds": {"A0": 1.0, "A3-s2s-norm": 2.0, "A5-mean-z": 3.0},
-        "valid": pd.Series([True, True, True], index=index),
+        "valid": pd.Series([True] * 6, index=index),
         "labels": pd.DataFrame(
-            {"is_anomaly": [0, 1, 0], "anomaly_type": ["none", "spike", "none"]},
+            {
+                "is_anomaly": [0, 1, 0, 1, 0, 0],
+                "anomaly_type": ["none", "spike", "none", "spike", "none", "none"],
+            },
             index=index,
         ),
         "seed": 2,
     }
 
-    figure = _make_figure(result, "spike")
 
-    assert any(trace.name == "Gerçek ölçüm" for trace in figure.data)
-    assert any(trace.name == "Sentetik Ani yükselme (spike)" for trace in figure.data)
-    assert len(figure.layout.shapes) == 3
+def test_plot_contains_consumption_score_threshold_bands_and_flagged_hours():
+    """Grafik tüketimi, seçili skoru, eşiği, kırmızı bantları ve alarm noktalarını içerir."""
+    figure = _make_figure(_small_result(), "spike", "A3-s2s-norm")
+
+    names = {trace.name for trace in figure.data}
+    assert {"Gerçek ölçüm", "Sentetik Ani yükselme", "Enjekte edilen anomali", "İşaretlenen saat"} <= names
+    # 2 olay × 2 satır bant + 1 eşik çizgisi.
+    assert len(figure.layout.shapes) == 5
+    flagged = next(trace for trace in figure.data if trace.name == "İşaretlenen saat")
+    assert len(flagged.x) == 2
+
+
+def test_event_outcomes_match_project_event_metrics():
+    """Sayfadaki yakalandı/kaçırıldı ve yanlış alarm sayıları proje metrikleriyle aynı olmalı."""
+    result = _small_result()
+    table, false_alarms = _event_outcomes(result, "A3-s2s-norm")
+
+    assert table["Durum"].tolist() == [CAUGHT, MISSED]
+    assert false_alarms == 1
+
+    flagged = (result["valid"] & result["scores"]["A3-s2s-norm"].ge(2.0)).to_numpy()
+    metrics = event_metrics(result["labels"]["anomaly_type"].to_numpy(), flagged)
+    assert metrics["event_recall"] == pytest.approx((table["Durum"] == CAUGHT).mean())
+    assert metrics["event_precision"] == pytest.approx(1 - false_alarms / metrics["n_pred_blocks"])

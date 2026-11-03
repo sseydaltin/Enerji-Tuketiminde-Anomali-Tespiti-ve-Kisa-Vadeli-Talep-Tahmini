@@ -38,7 +38,7 @@ def load_household_data(parquet_path):
     return frame
 
 
-@st.cache_resource(show_spinner="F13 modelleri yükleniyor...")
+@st.cache_resource(show_spinner="Modeller yükleniyor...")
 def load_f13_models(models_dir, expected_features):
     """F13'ün iki train checkpoint'ini güvenli biçimde yükler.
 
