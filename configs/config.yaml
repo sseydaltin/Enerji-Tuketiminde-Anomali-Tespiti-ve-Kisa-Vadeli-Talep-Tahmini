@@ -224,6 +224,7 @@ protocol:
   noise_se_multiplier: 2              # gürültü: |eşleştirilmiş fark ort| ≤ 2·std/√n (revizyon; eski |ort| ≤ std hatalıydı)
   combination_components: [A0, A3-ens-norm]   # A5-mean-z; ölçek referansı enjeksiyonsuz val_dev
   threshold_quantiles: {low: 0.70, high: 0.9995, n: 300}   # olay-F1 eşik ızgarası (birleşik skor yüzdelikleri)
+  a6: {floor_percentile: 0.5, k_values: [1, 2, 3, 4]}   # test sonrası deneme (final değil): src/anomaly_dual.py
   scenarios:
     main:                              # ANA: büyüklük train σ'sına (saat × gün) göre
       seeds:

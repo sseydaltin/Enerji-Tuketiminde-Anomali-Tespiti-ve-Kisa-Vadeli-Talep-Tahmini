@@ -38,7 +38,7 @@ def load_household_data(parquet_path):
     return frame
 
 
-@st.cache_resource(show_spinner="F13 modelleri yükleniyor...")
+@st.cache_resource(show_spinner="Modeller yükleniyor...")
 def load_f13_models(models_dir, expected_features):
     """F13'ün iki train checkpoint'ini güvenli biçimde yükler.
 
@@ -247,19 +247,59 @@ def predict_test_day(frame, day, models, mape_min_y=0.1):
     }
 
 
-@st.cache_data(show_spinner="Görselleştirme örnekleri hesaplanıyor...")
-def daily_test_mae(frame, days, _models, mape_min_y=0.1):
-    """Kolay/zor görsel örneği için test günlerini F13 MAE'ye göre sıralar.
+def daily_total_error_pct(actual, predicted):
+    """Günlük toplam tüketim hatası (%): 100 × |Σtahmin − Σgerçek| / Σgerçek.
 
-    Girdi: geçerli test günleri ve modeller.
-    Çıktı: her gün için F13 örnek MAE'si.
-    Neden: Yalnız görselleştirme örneği seçilir; bu değerler model veya eşik
-    seçimi için kullanılmamalıdır.
+    Girdi: actual, predicted [24] kW. Saatlik kW × 1 saat = kWh olduğundan toplam kWh'tir.
+    Neden: Saatlik MAPE düşük tüketimli saatlerde şişer; günlük toplam ise enerji
+    planlamasının sorduğu soruyu yanıtlar. Toplam sıfırsa tanımsızdır.
     """
-    return {
-        day: predict_test_day(frame, day, _models, mape_min_y)["metrics"]["MAE"]
-        for day in days
-    }
+    total = float(np.sum(actual))
+    if total <= 0:
+        return float("nan")
+    return 100.0 * abs(float(np.sum(predicted)) - total) / total
+
+
+def comparison_table(days, predict, mape_min_y):
+    """Her gün için model ve SN168 MAE'sini ve iyileşmeyi tablolaştırır.
+
+    Girdi: YYYY-MM-DD günleri, gün → tahmin sözlüğü fonksiyonu, MAPE alt sınırı.
+    Çıktı: day, model_mae, baseline_mae, gain_pct sütunlu DataFrame (MAE: kW).
+    Neden: Hem hane hem şebeke için aynı hesap kullanılır; değerler yalnız seçili
+    pencerelere aittir ve görsel örnek seçimi içindir, model seçimine bağlanmaz.
+    """
+    rows = []
+    for day in days:
+        result = predict(day)
+        model_mae = result["metrics"]["MAE"]
+        baseline_mae = calculate_metrics(
+            result["actual_kw"], result["sn168_kw"], mape_min_y=mape_min_y
+        )["MAE"]
+        gain = 100.0 * (baseline_mae - model_mae) / baseline_mae if baseline_mae > 0 else np.nan
+        rows.append({"day": day, "model_mae": model_mae, "baseline_mae": baseline_mae, "gain_pct": gain})
+    return pd.DataFrame(rows)
+
+
+@st.cache_data(show_spinner="Test günleri karşılaştırılıyor...")
+def household_comparison(frame, days, _models, mape_min_y=0.1):
+    """Hane test günlerinin karşılaştırma tablosunu bir kez hesaplar ve önbellekte tutar."""
+    return comparison_table(days, lambda day: predict_test_day(frame, day, _models, mape_min_y), mape_min_y)
+
+
+def median_day(table):
+    """İyileşmesi medyana en yakın günü döndürür: en iyi/en kötü gün seçilmesin diye."""
+    gains = table["gain_pct"]
+    return table.loc[(gains - gains.median()).abs().idxmin(), "day"]
+
+
+def best_decile_days(table):
+    """Topluluk MAE'si en düşük %10'luk dilimdeki günler."""
+    return table.loc[table["model_mae"] <= table["model_mae"].quantile(0.10), "day"].tolist()
+
+
+def worst_decile_days(table):
+    """Topluluk MAE'si en yüksek %10'luk dilimdeki günler."""
+    return table.loc[table["model_mae"] >= table["model_mae"].quantile(0.90), "day"].tolist()
 
 
 def demo_paths():

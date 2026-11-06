@@ -112,7 +112,8 @@ def _forecast_summary(dataset, forecast, path):
     for model_key in FORECAST_MODELS:
         exp_ids = FORECAST_IDS[dataset][model_key]
         selected_ids.update(exp_ids)
-        runs = test.loc[test["exp_id"].isin(exp_ids)]
+        # .copy(): aşağıda sütun yazıldığı için dilimin görünümü değil kopyası gerekir.
+        runs = test.loc[test["exp_id"].isin(exp_ids)].copy()
         if set(runs["exp_id"]) != set(exp_ids):
             missing = sorted(set(exp_ids) - set(runs["exp_id"]))
             raise ValueError(f"{path} içinde {dataset}/{model_key} için koşu eksik: {missing}")

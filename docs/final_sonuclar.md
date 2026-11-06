@@ -168,3 +168,59 @@ Bu 8 bloğun hiçbiri doldurulmuş (`is_imputed`) saat değil; hiçbiri resmî t
   - val-hold, revizyon 1'den sonra seçim açısından tam bağımsız değil.
   - Test tek seferlik ve bağımsız.
   - Anomali sonuçları sentetik enjeksiyona dayanıyor.
+
+---
+
+## Test sonrası geliştirme (final sonuç değildir; test kümesi kullanılmadı)
+
+Bu bölüm yukarıdaki final sonuçları değiştirmez. Final yöntem A3-s2s-norm olarak kalır ve **hiçbir A6 varyantı test kümesinde çalıştırılmadı**. Kod: `src/anomaly_dual.py`. Tablolar: `results/tables/a6_*.csv`. Tarih: 2026-11-03.
+
+**Neden denendi:** Test sonuçları ve demo denetimi, 3 saatlik yumuşatmanın 1–2 saatlik sıçramaları bastırdığını ve artık skorunun ani düşüşleri neredeyse hiç görmediğini gösterdi. Fikir test sonucu görüldükten sonra doğduğu için bu çalışma test kümesiyle değerlendirilirse test bağımsızlığını yitirir.
+
+**Yöntemler:**
+- **A6-dual:** yumuşatılmış A3-s2s-norm ≥ T1 veya ham A3-s2s-norm ≥ T2. T1 mevcut eşik (3,558).
+- **A6-dual+taban:** A6-dual veya tüketim, taban eşiğinin altında en az k saat. Taban, train'in doldurulmamış saatlerinin 0,5. yüzdeliği (0,155 kW). Kural yalnız geçmişe bakar.
+
+**Seçim (yalnız val-dev, ana senaryo, birleşik olay F1; eşitlikte daha az alarm):** A6-dual için T2 = 5,342; A6-dual+taban için T2 = 8,475, k = 2. T2 ızgarası ham skorun 0,70–0,9995 yüzdelikleri, k ∈ {1, 2, 3, 4}. Seçim sonrası val-hold bir kez ölçüldü; kod ikinci ölçümü reddeder. A3-s2s-norm ve A5-mean-z satırları kayıtlı protokol sonuçlarıyla karşılaştırıldı ve aynı çıktı.
+
+**val-dev (10 seed, kopya başına ortalama 7,5 olay; seçim burada yapıldı, iyimser okunmalı):**
+
+| Yöntem | Olay F1 | Olay R | Olay P | Spike R | Drop R | Seviye R | Desen R |
+|---|---|---|---|---|---|---|---|
+| A3-s2s-norm (final) | 0,575 ± 0,181 | 0,63 | 0,57 | 0,35 | 0,00 | 0,90 | 0,90 |
+| A5-mean-z | 0,642 ± 0,114 | 0,67 | 0,64 | 0,40 | 0,00 | 1,00 | 0,91 |
+| A6-dual | 0,567 ± 0,144 | 0,72 | 0,48 | 0,73 | 0,04 | 0,90 | 0,90 |
+| A6-dual+taban | 0,701 ± 0,117 | 0,81 | 0,64 | 0,35 | 1,00 | 0,90 | 0,90 |
+
+**val-hold (10 seed, kopya başına ortalama 8,7 olay; tek ölçüm):**
+
+| Yöntem | Olay F1 | Olay R | Olay P | Spike R | Drop R | Seviye R | Desen R |
+|---|---|---|---|---|---|---|---|
+| A3-s2s-norm (final) | 0,494 ± 0,151 | 0,47 | 0,54 | 0,29 | 0,06 | 0,81 | 0,68 |
+| A5-mean-z | 0,462 ± 0,109 | 0,47 | 0,47 | 0,37 | 0,04 | 0,88 | 0,67 |
+| A6-dual | 0,565 ± 0,129 | 0,61 | 0,53 | 0,85 | 0,06 | 0,81 | 0,68 |
+| A6-dual+taban | 0,635 ± 0,111 | 0,66 | 0,63 | 0,32 | 1,00 | 0,81 | 0,68 |
+
+**Alarm ve yanlış alarm (kopya başına ortalama; yanlış alarm = hiçbir enjekte saatle kesişmeyen blok):**
+
+| Yöntem | val-dev: alarm | val-dev: yanlış | val-dev: A3'e göre | val-hold: alarm | val-hold: yanlış | val-hold: A3'e göre |
+|---|---|---|---|---|---|---|
+| A3-s2s-norm (final) | 8,3 | 3,5 | +0,0 | 7,8 | 3,3 | +0,0 |
+| A5-mean-z | 9,1 | 3,2 | −0,3 | 9,7 | 5,1 | +1,8 |
+| A6-dual | 12,9 | 6,4 | +2,9 | 11,4 | 5,1 | +1,8 |
+| A6-dual+taban | 9,9 | 3,5 | +0,0 | 9,5 | 3,3 | +0,0 |
+
+**A3-s2s-norm'a göre eşleştirilmiş olay F1 farkı** (parantez içi, 10 seed'den kaçında daha iyi):
+
+| Yöntem | val-dev | val-hold |
+|---|---|---|
+| A6-dual | −0,008 ± 0,122 (4/10) | +0,071 ± 0,088 (8/10) |
+| A6-dual+taban | +0,126 ± 0,124 (6/10) | +0,141 ± 0,078 (9/10) |
+| A5-mean-z | +0,067 ± 0,126 (6/10) | −0,032 ± 0,128 (4/10) |
+
+**Okuma:**
+1. **İki hedef iki ayrı varyantla çözülüyor, tek varyantla değil.** A6-dual spike recall'ünü val-hold'da 0,29'dan 0,85'e çıkarıyor, karşılığında kopya başına 1,8 yanlış alarm ekliyor. A6-dual+taban ise olay F1'de en iyi, ama seçilen T2 (8,47) çok yüksek olduğu için spike recall'ü neredeyse değişmiyor (0,29 → 0,32). Kazancının neredeyse tamamı ani düşüşlerden geliyor.
+2. **Taban kuralının drop recall'ü (1,00) büyük ölçüde tanım gereği.** Enjekte düşüş sabit 0,05 kW, taban 0,155 kW. En az 2 saat süren her enjekte düşüş kuralı tetikler. Bu sonuç, gerçek düşüşlerin böyle yakalanacağını göstermez. Yanlış alarmın artmaması da yalnız bu iki kış ağırlıklı dönem için geçerlidir; yaz tatilinde evin boş kaldığı uzun dönemlerde tüketim tabana inebilir.
+3. **Belirsizlik büyük.** A6-dual val-dev'de A3'ten ayırt edilemiyor; val-hold'daki farkı seed oynaklığıyla aynı büyüklükte. val-hold da tam bağımsız sayılmaz: protokol revizyonu sırasında bu dönemin sonuçları görülmüştü (§2.2, madde 7).
+4. **Dönem farkı.** val-dev ve val-hold kış ağırlıklıdır, test ağırlıklı yazdır. §2.2'deki mevsim etkisi nedeniyle bu kazançların yaza taşınacağı varsayılamaz.
+5. **Sonuç:** Bu deneme bir sonraki çalışma için aday üretir; "final yöntemden daha iyi" iddiası taşımaz. Doğru sınama, test kümesi kullanılmadan seçilmiş bu ayarları **yeni ve görülmemiş** bir veriyle ölçmektir.
