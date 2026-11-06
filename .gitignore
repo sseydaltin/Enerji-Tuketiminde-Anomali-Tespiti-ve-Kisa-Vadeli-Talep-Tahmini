@@ -19,6 +19,9 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 
+# Local backup copy; keep out of PRs.
+src/data/preprocess.py.bak
+
 # --- Model ağırlıkları: eğitim betikleriyle yeniden üretilir ---
 models/*.pt
 models/eld/*.pt

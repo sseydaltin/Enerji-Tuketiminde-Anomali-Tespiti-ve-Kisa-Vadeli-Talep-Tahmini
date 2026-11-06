@@ -1,0 +1,1 @@
+"""Enerji tüketimi Streamlit demosu."""
