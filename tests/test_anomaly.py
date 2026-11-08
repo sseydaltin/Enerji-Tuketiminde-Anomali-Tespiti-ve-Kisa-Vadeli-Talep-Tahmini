@@ -476,3 +476,59 @@ def test_alarm_diagnostics_without_detections_returns_nan_delay():
     result = alarm_diagnostics(types, np.zeros(10, dtype=bool), n_valid_hours=48)
     assert result["false_alarms"] == 0 and result["delays"] == []
     assert np.isnan(result["detection_delay_mean"])
+
+
+def _dev_settings(**overrides):
+    """Geliştirme senaryosu testleri için ana senaryo biçiminde ayarlar."""
+    settings = {
+        "target_ratio": 0.025, "max_ratio": 0.03,
+        "spike": {"min_len": 1, "max_len": 2, "sigma_low": 5.0, "sigma_high": 7.0},
+        "drop": {"min_len": 2, "max_len": 6, "value_kw": 0.05, "min_start_kw": 1.0},
+        "level_shift": {"min_len": 12, "max_len": 48, "factor_low": 2.0, "factor_high": 2.5},
+        "pattern": {"night_hours": [0, 1, 2, 3, 4, 5]},
+    }
+    for kind, spec in overrides.items():
+        settings[kind] = spec
+    return settings
+
+
+def test_spike_cap_limits_injected_value_but_never_lowers_original():
+    frame = make_frame()
+    sigma = np.full(len(frame), 0.5)
+    settings = _dev_settings(spike={"min_len": 1, "max_len": 2, "sigma_low": 5.0, "sigma_high": 7.0,
+                                    "max_kw": 2.0})
+    injected, labels = inject_anomalies(frame, "Global_active_power", settings, seed=3, sigma=sigma,
+                                        anomaly_types=["spike"])
+    spike = labels["anomaly_type"].to_numpy() == "spike"
+    new, old = injected["Global_active_power"].to_numpy()[spike], frame["Global_active_power"].to_numpy()[spike]
+    assert spike.any()
+    assert np.all(new <= np.maximum(old, 2.0) + 1e-12)   # sınır aşılmaz
+    assert np.all(new >= old)                            # spike değeri asla düşürmez
+
+
+def test_pattern_offset_starts_previous_evening_and_alpha_moves_partway():
+    frame = make_frame()
+    settings = _dev_settings(pattern={"night_hours": [22, 23, 0, 1, 2, 3, 4, 5], "start_offset": -2,
+                                      "alpha": 0.5})
+    injected, labels = inject_anomalies(frame, "Global_active_power", settings, seed=4,
+                                        anomaly_types=["pattern"])
+    mask = labels["anomaly_type"].to_numpy() == "pattern"
+    first = [start for start, _ in runs(mask)]
+    assert first and all(frame.index[i].hour == 22 for i in first)
+    for start, end in runs(mask):
+        midnight = start + 2
+        day_mean = frame["Global_active_power"].to_numpy()[midnight + 8:midnight + 21].mean()
+        old = frame["Global_active_power"].to_numpy()[start:end]
+        assert np.allclose(injected["Global_active_power"].to_numpy()[start:end], old + 0.5 * (day_mean - old))
+
+
+def test_dev_scenario_injection_is_deterministic_and_leaves_original_unchanged():
+    frame = make_frame()
+    before = frame.copy()
+    settings = _dev_settings(pattern={"night_hours": [0, 1, 2, 3, 4, 5], "alpha": 0.5})
+    sigma = np.full(len(frame), 0.4)
+    a = inject_anomalies(frame, "Global_active_power", settings, seed=7, sigma=sigma)
+    b = inject_anomalies(frame, "Global_active_power", settings, seed=7, sigma=sigma)
+    pd.testing.assert_frame_equal(a[1], b[1])
+    pd.testing.assert_frame_equal(a[0], b[0])
+    pd.testing.assert_frame_equal(frame, before)

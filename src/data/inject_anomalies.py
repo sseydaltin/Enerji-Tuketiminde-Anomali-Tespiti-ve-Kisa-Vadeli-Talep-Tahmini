@@ -45,6 +45,9 @@ def inject_anomalies(frame, target, settings, seed, sigma=None, anomaly_types=No
     İki ayar biçimi: "zor" senaryo (config injection: spike ×U(2,4), seviye ×1,5)
     ve "ana" senaryo (spike +U(3,5)·σ, drop yalnız > 1 kW saatte başlar, seviye
     ×U(2; 2,5)). Ana senaryonun anahtarları yoksa davranış eskisiyle birebir aynıdır.
+    Geliştirme senaryoları (docs/gelistirme_protokolu.md) için isteğe bağlı anahtarlar:
+    spike.max_kw (fiziksel üst sınır), pattern.start_offset (gecenin başlangıcı,
+    gece yarısına göre saat) ve pattern.alpha (gündüze doğru kayma oranı, 1 = tam).
     Çıktı: (enjekte edilmiş kopya, etiket tablosu). Etiket tablosu aynı
     indeksle `is_anomaly` (0/1) ve `anomaly_type` (yoksa "none") içerir.
     Neden: Gerçek etiket olmadığından bilinen etiketli kontrollü anomaliler
@@ -74,12 +77,15 @@ def inject_anomalies(frame, target, settings, seed, sigma=None, anomaly_types=No
             raise RuntimeError("Enjeksiyon hedef oranına ulaşamadı.")
         kind = selected_types[rng.integers(len(selected_types))]
         if kind == "pattern":
-            # Rastgele bir günün gece saatleri (00–05) o günün gündüz seviyesine.
+            # Rastgele bir günün gece saatleri (varsayılan 00–05) o günün gündüz seviyesine.
+            # start_offset < 0 ise gece bir önceki akşamdan başlar (ör. −2 → 22:00–05:00).
             night = settings["pattern"]["night_hours"]
+            offset = settings["pattern"].get("start_offset", 0)
             midnights = np.flatnonzero(hours == 0)
-            start = int(rng.choice(midnights))
+            midnight = int(rng.choice(midnights))
+            start = midnight + offset
             end = start + len(night)
-            day = slice(start + 8, start + 21)  # aynı günün 08:00–20:00 saatleri
+            day = slice(midnight + 8, midnight + 21)  # aynı günün 08:00–20:00 saatleri
             if day.stop > n_hours:
                 continue
         else:
@@ -103,6 +109,11 @@ def inject_anomalies(frame, target, settings, seed, sigma=None, anomaly_types=No
                 # Ana senaryo: +U(3, 5) · σ(saat, gün) — olağan oynaklığın dışında.
                 added = rng.uniform(spec["sigma_low"], spec["sigma_high"], end - start)
                 values[segment] = original[segment] + added * sigma[segment]
+                if "max_kw" in spec:
+                    # Fiziksel üst sınır (train'deki en yüksek saatlik tüketim); gerçek değer
+                    # sınırın üstündeyse değer düşürülmez.
+                    values[segment] = np.maximum(original[segment],
+                                                 np.minimum(values[segment], spec["max_kw"]))
             else:
                 factors = rng.uniform(spec["factor_low"], spec["factor_high"], end - start)
                 values[segment] = original[segment] * factors
@@ -117,7 +128,12 @@ def inject_anomalies(frame, target, settings, seed, sigma=None, anomaly_types=No
                 factor = spec["factor"]
             values[segment] = original[segment] * factor
         else:
-            values[segment] = original[day].mean()
+            alpha = settings["pattern"].get("alpha", 1.0)
+            if alpha == 1.0:
+                values[segment] = original[day].mean()      # eski davranış, birebir
+            else:
+                # Kısmi desen değişimi: gece değeri gündüz ortalamasına doğru farkın alpha'sı kadar.
+                values[segment] = original[segment] + alpha * (original[day].mean() - original[segment])
         labels[segment] = True
         types[segment] = kind
 

@@ -221,7 +221,8 @@ def multi_horizon_scores(full, config, fitted, device):
 
 
 # Her değerlendirme kümesinin geçmiş bağlamını veren (ENJEKSİYONSUZ) önceki küme.
-PREVIOUS_SPLIT = {"val": "train", "val_dev": "train", "val_hold": "val_dev", "test": "val"}
+PREVIOUS_SPLIT = {"val": "train", "val_dev": "train", "val_hold": "val_dev", "test": "val",
+                  "summer_dev": "train"}   # yaz-dev: bağlam, 2009-05-31'de biten train kesiminden
 
 
 def with_context(splits, split, frame, config):
@@ -263,8 +264,11 @@ def score_frame(full, config, fitted, device):
         fitted["forest"], window_features(full, target, config["features"]["calendar"])
     )
     models_dir = resolve_path(PROJECT_ROOT, config["paths"]["models_dir"])
-    for exp_id in AUTOENCODER_EXPERIMENTS:
-        path = models_dir / f"{exp_id}_best.pt"
+    # İsteğe bağlı checkpoint eşlemesi (yaz-dev: "A2" skoru S-A2 ağırlıklarıyla); yoksa ad = dosya.
+    # ae_experiments: puanlanacak AE'ler (yaz-dev'de yalnız A2; diğerleri yazı görmüş ağırlıklar).
+    checkpoints = anomaly.get("ae_checkpoints", {})
+    for exp_id in anomaly.get("ae_experiments", AUTOENCODER_EXPERIMENTS):
+        path = models_dir / f"{checkpoints.get(exp_id, exp_id)}_best.pt"
         if not path.exists():
             print(f"UYARI: {path} yok; {exp_id} atlandı.")
             continue
