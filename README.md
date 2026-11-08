@@ -47,6 +47,8 @@ F13-ens MAE'de birinci; RMSE, R² ve günlük toplamda XGBoost daha iyi. Proje h
 
 Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomali tespitini kolaylaştırıyor. Şebeke testindeki bozulmanın çoğu Aralık'tan (Noel) geliyor. Protokol: `docs/eld_protokol.md`.
 
+**Test sonrası geliştirme, son durum (2026-11-09; final değil, bağımsız doğrulama yok):** Denenip **kabul edilmeyenler**: Aşama 3 S1–S5, E1, C1/C2, kanal başına OR. **Kabul edilen tek deneysel ek**: S0 + fiziksel taban kanalı (`docs/anomaly_floor_channel.md`, `configs/experimental_s0_floor.yaml`). Kış-dev / yaz-dev block_f1 0,551 / 0,535 → 0,644 / 0,604. Kazancın tamamı, train minimumunun altındaki enjekte tam kesintilerden (0,05 kW) geliyor; drop değeri tabanın üstünde olunca kazanç sıfır. Final anomali yöntemi A3-s2s-norm ve demo değişmedi.
+
 **Test sonrası geliştirme (final sonuç değildir; yalnız kış-dev + yaz-dev):** Aşama 3 kısa olay sinyalleri (`docs/anomaly_short_event_experiments.md`): hiçbir aday kabul edilmedi, A3-s2s-hmean referansı korundu. Değerlendirme denetimi (`python -m src.anomaly_eval_audit`, `docs/inceleme_ve_iyilestirme_plani_2026-11-08.md`): "olay F1" alarm **bloklarını** sayan precision kullanır (`block_f1`); her olayı bir kez sayan olay sayımlı tanım (`count_f1`) ayrıca raporlanır ve değerler daha düşüktür. Enjeksiyonsuz veride de alarm veren bloklar "etiketsiz arka plan alarmı" olarak ayrıca sayılır.
 
 ---
@@ -475,6 +477,7 @@ python -m src.models.forecast_baselines # yalnız Ridge, yalnız val
 python -m src.evaluate_forecast --split test
 python -m src.evaluate_anomaly  --split test
 python -m src.anomaly_eval_audit        # iki olay metriği + arka plan alarmları + repro manifestosu (yalnız dev)
+python -m src.anomaly_floor_channel      # DENEYSEL S0 + taban kanalı (yalnız dev; final değil)
 pytest tests/
 python -m streamlit run app/streamlit_app.py
 ```

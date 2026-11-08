@@ -86,3 +86,21 @@ Referans **S0-yerel** bir yerel geliştirme referansıdır; Şeyda'nın ağırl�
 5. Yeniden üretim manifestosu (`repro_manifest.csv`).
 6. ELD'ye bağlı demo testi düzeltildi.
 7. README ve CLAUDE.md yöntem adları kodla uyumlu hâle getirildi.
+
+## 5. Son güncelleme (2026-11-09) — dal `dilara/anomali-adaylar`
+
+- **Final sonuçlar değişmedi:** F13-ens test MAE 0,406; A3-s2s-norm test olay F1 0,384; H3 karşılanmadı.
+- **Geliştirme denemeleri** (kış-dev / yaz-dev block_f1; referans S0-yerel 0,551 / 0,535):
+
+| Yöntem | block_f1 kış / yaz | Karar |
+|---|---|---|
+| C1-L2 | 0,475 / 0,513 | kabul edilmedi |
+| C2-L2 | 0,478 / 0,546 | kabul edilmedi |
+| OR-A | 0,490 / 0,605 | kabul edilmedi |
+| OR-B | 0,510 / 0,614 | kabul edilmedi (seçim yanlılıklı) |
+| **S0 + taban** | **0,644 / 0,604** | **deneysel kabul** |
+
+- S0 + taban kazancı yalnız train minimumunun altındaki enjekte tam kesintilerden geliyor; duyarlılık senaryosunda kazanç sıfır (`docs/anomaly_floor_channel.md`).
+- Testler: 217 geçti, 7 atlandı (ELD). XGBoost'un 2 testi bu Mac'te çöküyor (kök neden doğrulanmadı).
+- Streamlit: AppTest'te dört sayfa (Hane / Şebeke) hatasız; sunucu health ok. Görsel kontrol yapılmadı.
+- Uygulama: `python -m streamlit run app/streamlit_app.py --server.address localhost`

@@ -1,0 +1,17 @@
+method,set,type,hiçbiri,ikisi,yalnız A3,yalnız C1
+OR-A,summer_dev,drop,8,0,0,0
+OR-A,summer_dev,level_shift,1,17,0,1
+OR-A,summer_dev,pattern,12,0,0,19
+OR-A,summer_dev,spike,5,5,15,0
+OR-A,winter_dev,drop,16,0,0,0
+OR-A,winter_dev,level_shift,0,10,1,0
+OR-A,winter_dev,pattern,1,20,0,6
+OR-A,winter_dev,spike,3,3,15,0
+OR-B,summer_dev,drop,8,0,0,0
+OR-B,summer_dev,level_shift,1,16,1,1
+OR-B,summer_dev,pattern,14,0,0,17
+OR-B,summer_dev,spike,5,2,18,0
+OR-B,winter_dev,drop,16,0,0,0
+OR-B,winter_dev,level_shift,0,9,2,0
+OR-B,winter_dev,pattern,1,20,0,6
+OR-B,winter_dev,spike,3,2,16,0

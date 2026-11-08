@@ -1,0 +1,86 @@
+Şeyda merhaba,
+
+Anomali iyileştirme denemelerini bitirdim ve dalı pushladım.
+
+DAL
+- Dal: dilara/anomali-adaylar (tabanı dilara/inceleme-zorunlu-duzeltmeler, b17ba84)
+- Bağlantı: https://github.com/sseydaltin/Enerji-Tuketiminde-Anomali-Tespiti-ve-Kisa-Vadeli-Talep-Tahmini/tree/dilara/anomali-adaylar
+- Merge yapılmadı. Model ağırlıkları dala eklenmedi.
+
+FİNAL SONUÇLAR (test kümesi 2026-10-31'de bir kez kullanıldı; DEĞİŞMEDİ)
+- Tahmin: F13-ens (0,8 Seq2Seq + 0,2 LSTM, lookback 48)
+  Test MAE 0,406 kW; SN168'e göre +%26 → H2 karşılandı.
+- Anomali: A3-s2s-norm (w = 3, eşik 3,558)
+  Test olay F1 (block_f1) 0,384; A0 0,398.
+  H3 (F1 ≥ 0,70) KARŞILANMADI.
+- Final model ve demo değişmedi.
+
+GELİŞTİRME SONUÇLARI
+Kış-dev / yaz-dev, orta senaryo, 10 seed, bu bilgisayarın hash'li ağırlıkları. Final değil.
+Referans S0-yerel (A3-s2s-hmean): block_f1 0,551 / 0,535.
+
+Kabul edilmeyenler (önceden yazılmış kurallarla):
+- E1, 6 saatlik işaretli artık: 0,575 / 0,529. Yalnız kış arttı, yaz deseni 0 kaldı.
+- C1, sağlam medyan/MAD profil sapması (L = 2 hafta): 0,475 / 0,513.
+  Yaz desenini ilk kez yakaladı (0 → 0,67), ama spike 0,90 → 0,10 düştü.
+- C2, C1 + A3 ortak yumuşatma: 0,478 / 0,546.
+- OR-A, A3 (w=1) VEYA C1 (w=6), kanal başına ayrı yumuşatma: 0,490 / 0,605.
+  Spike korundu, yaz deseni 0 → 0,67; ama kışta F1 düştü ve yanlış alarm arttı.
+- OR-B, aynı + T2 seçimi (seçim yanlılıklı): 0,510 / 0,614.
+
+Kabul edilen tek DENEYSEL ek:
+- S0 + fiziksel taban kanalı
+  Kural: tüketim, train'in 0,5. yüzdeliğinin (≈0,155 kW) altında ardışık 2 saat → alarm.
+  block_f1 0,644 / 0,604 (fark +0,093 / +0,069; %95 GA sıfırı dışlıyor).
+  Yanlış alarm değişmedi; spike ve desen korundu.
+- AMA kazancın tamamı drop'lardan geliyor. Enjekte drop değeri 0,05 kW, train'in en düşük
+  gözlenen değerinden (0,124 kW) de düşük. Drop değeri tabanın üstüne (train %5 ≈ 0,21 kW)
+  çekilince kazanç sıfır, drop recall 0.
+- Yani bu yalnız "tam kesinti" yakalayan bir kanal. Genel drop başarısı veya genel F1 artışı değil.
+- k = 2 değeri test sonrası A6'da val-dev'de seçilmişti.
+- Bağımsız doğrulama yapılmadı.
+- Dosyalar: configs/experimental_s0_floor.yaml, docs/anomaly_floor_channel.md
+- Final yönteme ve demoya EKLENMEDİ.
+
+DROP TANISI
+24 drop olayının hiçbirini mevcut yöntemler yakalamıyordu:
+- A3 skoru en fazla 0,80 (eşik 1,16). Hane tüketiminin olağan tahmin hatası içinde kalıyor.
+- C1'in 6 saatlik ortalaması kısa düşüşü seyreltiyor.
+
+ÇIKTI DOSYALARI
+Belgeler:
+- docs/anomaly_candidates.md (C1/C2)
+- docs/anomaly_or_channels.md (OR)
+- docs/anomaly_floor_channel.md (taban)
+- docs/deney_gunlugu.md
+Kod:
+- src/anomaly_candidates.py
+- src/anomaly_or_channels.py
+- src/anomaly_floor_channel.py
+Testler:
+- tests/test_anomaly_candidates.py
+- tests/test_anomaly_or_channels.py
+- tests/test_anomaly_floor_channel.py
+Tablolar:
+- results/tables/anomaly_candidates_*.csv
+- results/tables/anomaly_or_channels_*.csv
+- results/tables/anomaly_floor_*.csv
+Loglar:
+- results/logs/anomaly_candidates.log
+- results/logs/anomaly_or_channels.log
+- results/logs/anomaly_floor_channel.log
+
+KALAN SORUNLAR
+- Yaz-dev S-* ağırlıklarımız farklı. Bütün yeni sonuçlar repro_manifest.csv'deki hash'li yerel
+  ağırlıklarla; seninkilerle doğrudan kazanç hesabı yapılamaz.
+- Kış-dev A3-ens-norm kayıtlı tablodan ≤ 0,017 farklı (F5-opt ailesi dosyaları; doğrulanmadı).
+- XGBoost'un 2 testi bu Mac'te segmentation fault ile çöküyor; kök neden doğrulanmadı.
+- ELD ağırlıkları bende yok; 7 test gerekçeyle atlanıyor (isteğe bağlı Şebeke canlı tahmini).
+- Kolay senaryodaki desen tanımı hatası hâlâ karar bekliyor.
+- Geliştirme kümeleri defalarca kullanıldı. Hiçbir geliştirme kazancı bağımsız doğrulanmış değil.
+
+UYGULAMA
+Başlatma:
+  python -m streamlit run app/streamlit_app.py --server.address localhost
+Dört sayfa AppTest'te (Hane ve Şebeke seçimi) hatasız çalıştı. Final bilgiler doğru gösteriliyor.
+Tarayıcıda görsel kontrol yapılmadı.

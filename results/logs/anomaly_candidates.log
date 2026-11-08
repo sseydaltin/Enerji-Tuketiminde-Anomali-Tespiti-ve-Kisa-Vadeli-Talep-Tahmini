@@ -1,0 +1,13 @@
+00:00:44 [+ 0.0 dk] [1/6] manifest denetimi tamam
+00:01:11 [+ 0.4 dk] [2/6] hazırlandı 1/2 winter_dev: 10 kopya, ölçekler {'C1-L2': 19.431, 'C1-L4': 15.139, 'A3': 3.261}
+00:01:27 [+ 0.7 dk] [2/6] hazırlandı 2/2 summer_dev: 10 kopya, ölçekler {'C1-L2': 19.482, 'C1-L4': 15.524, 'A3': 3.208}
+00:01:29 [+ 0.8 dk] [3/6] pilot C1-L2: w=6, eşik 9.228
+00:01:31 [+ 0.8 dk] [3/6] pilot C1-L4: w=6, eşik 7.353
+00:01:31 [+ 0.8 dk]       pilot C1-L2: block_f1 ort 0.507 (S0 0.517) → devam
+00:01:31 [+ 0.8 dk]       pilot C1-L4: block_f1 ort 0.482 (S0 0.517) → ELENDİ
+00:01:31 [+ 0.8 dk]       C2 (C2-L2) çalıştırılacak (tamamlayıcı tip: True)
+00:01:33 [+ 0.8 dk] [3/6] pilot C2-L2: w=6, block_f1 ort 0.513 → devam
+00:01:40 [+ 0.9 dk] [4/6] tam C1-L2: w=6, eşik 7.052
+00:01:47 [+ 1.0 dk] [4/6] tam C2-L2: w=3, eşik 0.786
+00:01:47 [+ 1.0 dk] [5/6] değerlendirildi: 5 yöntem × 20 kopya
+00:01:47 [+ 1.0 dk] [6/6] kabul edilen: yok
