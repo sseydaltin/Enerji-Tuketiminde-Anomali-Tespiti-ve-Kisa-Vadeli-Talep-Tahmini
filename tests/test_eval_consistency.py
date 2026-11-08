@@ -71,11 +71,12 @@ def test_all_pipelines_use_identical_val_windows_and_kw_targets():
 
 def test_record_forecast_results_round_trip_and_keeps_other_experiments(tmp_path):
     config = make_config()
-    times = pd.date_range("2024-01-03", periods=4, freq="h")
+    times_us = pd.date_range("2024-01-03", periods=4, freq="h")
+    times_ns = times_us.as_unit("ns") + pd.Timedelta(nanoseconds=123)
     y_true = np.arange(12, dtype=float).reshape(4, 3) + 1.0
     y_pred = y_true + 0.5
 
-    for exp_id in ("E1", "E2"):
+    for exp_id, times in (("E1", times_us), ("E2", times_ns)):
         scores = record_forecast_results(
             tmp_path, config, "val", exp_id, "Model", y_true, y_pred, times,
             train_time_s=1.0, device="cpu", feature_set="B", lookback=4,
@@ -84,10 +85,17 @@ def test_record_forecast_results_round_trip_and_keeps_other_experiments(tmp_path
 
     results = pd.read_csv(tmp_path / "results/tables/forecast_val_results.csv")
     assert sorted(results["exp_id"]) == ["E1", "E2"]
-    loaded_true, loaded_pred, loaded_times = load_predictions(tmp_path, config, "E2")
-    np.testing.assert_allclose(loaded_true, y_true)
-    np.testing.assert_allclose(loaded_pred, y_pred)
-    assert loaded_times.equals(times)
+    for exp_id, expected_times in (("E1", times_us), ("E2", times_ns)):
+        loaded_true, loaded_pred, loaded_times = load_predictions(
+            tmp_path, config, exp_id
+        )
+        np.testing.assert_allclose(loaded_true, y_true)
+        np.testing.assert_allclose(loaded_pred, y_pred)
+        assert loaded_times.equals(expected_times)
+        np.testing.assert_array_equal(
+            np.load(tmp_path / f"results/predictions/{exp_id}_val.npz")["target_times"],
+            expected_times.as_unit("ns").asi8,
+        )
 
 
 def test_upsert_csv_replaces_only_matching_key(tmp_path):

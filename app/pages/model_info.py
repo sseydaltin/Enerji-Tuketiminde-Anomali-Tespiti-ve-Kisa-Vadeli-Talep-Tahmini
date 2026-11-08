@@ -551,7 +551,7 @@ def _protocol_section(info):
 - **Şebeke canlı analizi:** {eld_state}
 - **XGBoost canlı tahmini:** Eğitilmiş model dosyası yoksa sayfa yalnız kayıtlı deneyin config/protokol bilgisini gösterir.
 - **macOS/XGBoost:** XGBoost eğitim testinin macOS'ta segmentation fault oluşturduğu bildirilmiştir. Bu sayfa testi/eğitimi çalıştırmaz; kök neden burada teşhis edilmemiştir.
-- **Zaman birimi:** `src/data/preprocess.py` içindeki `DatetimeIndex.asi8` mesafesi `Timedelta.value` ile karşılaştırılıyor. İç gösterim birimleri aynı olmayabileceğinden bu bilinen çözülmemiş uyumsuzluktur. Bu sayfa ön işleme kodunu çağırmaz.
+- **Zaman birimi (düzeltildi, 2026-11-08):** pandas 3'te zaman damgaları µs olabildiği için ön işlemedeki küme sınırı koruması ve tahmin dosyalarındaki zaman kaydı birimden bağımsız hâle getirildi. Ölçüm: mevcut veride doldurulan değerler değişmedi; kayıtlı pencere ve gün sayıları (val 4213 / 177, test 5481 / 229) doğru zamanlarla tutuyor (`tests/test_time_alignment.py`).
 """
         )
     with st.expander("Protokol ve rapor alıntıları"):

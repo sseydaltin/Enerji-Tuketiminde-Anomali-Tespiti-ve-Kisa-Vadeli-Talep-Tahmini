@@ -105,8 +105,8 @@ def record_forecast_results(
         predictions_dir / f"{exp_id}_{split}.npz",
         y_true=y_true.astype(np.float32),
         y_pred=y_pred.astype(np.float32),
-        # Zamanlar int64 nanosaniye olarak saklanır (npz'de datetime yok).
-        target_times=pd.DatetimeIndex(target_times).asi8,
+        # NPZ'deki int64 zamanları her zaman nanosaniye sözleşmesiyle saklanır.
+        target_times=pd.DatetimeIndex(target_times).as_unit("ns").asi8,
     )
     return scores
 
@@ -123,5 +123,5 @@ def load_predictions(project_root, config, exp_id, split="val"):
     return (
         data["y_true"],
         data["y_pred"],
-        pd.DatetimeIndex(data["target_times"]),
+        pd.to_datetime(data["target_times"], unit="ns"),
     )

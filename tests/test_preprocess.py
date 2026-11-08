@@ -86,3 +86,21 @@ def test_boundary_neighbors_are_not_interpolated():
             expected,
             check_names=False,
         )
+
+
+@pytest.mark.parametrize("unit", ["us", "ns"])
+def test_only_hours_near_boundary_are_protected(unit):
+    """Koruma bölgesi ±max_gap saattir; uzak kısa boşluk interpolasyonla dolar (µs ve ns)."""
+    df = make_hourly_data()
+    df.index = df.index.as_unit(unit)
+    for column in MEAN_COLUMNS + SUM_COLUMNS:
+        df[column] = np.arange(len(df), dtype=float)
+
+    boundary = df.index[150]
+    far_gap = df.index[50]                     # sınırdan 100 saat uzak, 1 saatlik boşluk
+    df.loc[far_gap, MEAN_COLUMNS + SUM_COLUMNS] = np.nan
+
+    result = fill_missing_hours(df, max_gap=3, lag=24, split_boundaries=[boundary])
+
+    # Doğrusal seride interpolasyon tam değeri (50) verir; lag-24 dolgusu 26 verirdi.
+    assert result.loc[far_gap, "Global_active_power"] == pytest.approx(50.0)

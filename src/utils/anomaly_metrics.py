@@ -125,6 +125,29 @@ def event_metrics(types, predicted):
     return result
 
 
+def event_matched_metrics(types, predicted):
+    """Olay-eşleşmeli precision/recall/F1 (event_metrics'teki blok-precision'a EK, onun yerine değil).
+
+    Girdi: types [N] ("none" = normal), predicted [N] bool (TAM zaman ekseni).
+    Tanım: TP = en az bir saati işaretlenen olay sayısı (event_metrics'teki olay recall'üyle aynı);
+    FP = hiçbir anomali saatiyle kesişmeyen alarm bloğu (alarm_diagnostics'teki false_alarms);
+    P = TP / (TP + FP), R = TP / olay sayısı.
+    Neden: event_metrics'in precision'ı alarm BLOKLARINI sayar; bir olayın içinde parçalanan
+    alarmlar birden çok "doğru blok" yazar ve precision'ı şişirir, birleştirme onu düşürür.
+    Burada her olay bir kez sayılır; yanlış alarm bloğu iki tanımda da aynıdır. Bir alarm iki
+    olayı kapsarsa iki olay da yakalanmış sayılır (TP = 2). Hiçbir tanım "doğru" değildir;
+    ikisi ayrı adla raporlanır.
+    """
+    base = event_metrics(types, predicted)
+    false_alarms = alarm_diagnostics(types, predicted, 1)["false_alarms"]
+    detected = int(round(base["event_recall"] * base["n_events"])) if base["n_events"] else 0
+    precision = detected / (detected + false_alarms) if detected + false_alarms else 0.0
+    recall = base["event_recall"]
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return {"matched_precision": precision, "matched_recall": recall, "matched_f1": f1,
+            "detected_events": detected, "false_alarm_blocks": false_alarms}
+
+
 def evaluate_threshold(labels, scores, types, threshold, valid=None):
     """Bir eşikte nokta ve olay metrikleri, eşikten bağımsız ROC-AUC/PR-AUC.
 
