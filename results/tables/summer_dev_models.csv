@@ -1,0 +1,7 @@
+exp_id,epochs_run,best_epoch,train_time_s,note
+S-F10-L48,19,11,36.02335989987478,"Yaz-dev altyapısı (gelistirme_protokolu §2); Optuna öncesi ayar; train 2006-12-16–2009-04-30, iç val 2009-05-01–2009-05-31 MAE=0.3735; kat 3 (2009-06–09), gerçek val ve test kullanılmadı"
+S-F10-L48-oof1,44,36,62.65872079995461,"Yaz-dev altyapısı (gelistirme_protokolu §2); Optuna öncesi ayar; train 2006-12-16–2008-08-31, iç val 2008-09-01–2008-09-30 MAE=0.3867; kat 3 (2009-06–09), gerçek val ve test kullanılmadı"
+S-F10-L48-oof2,16,8,27.07397609995678,"Yaz-dev altyapısı (gelistirme_protokolu §2); Optuna öncesi ayar; train 2006-12-16–2008-12-31, iç val 2009-01-01–2009-01-31 MAE=0.5302; kat 3 (2009-06–09), gerçek val ve test kullanılmadı"
+S-F5-L48,15,7,18.969173199962825,"Yaz-dev altyapısı (gelistirme_protokolu §2); Optuna öncesi ayar; train 2006-12-16–2009-04-30, iç val 2009-05-01–2009-05-31 MAE=0.3909; kat 3 (2009-06–09), gerçek val ve test kullanılmadı"
+S-F5-L48-oof1,27,19,24.53721380000934,"Yaz-dev altyapısı (gelistirme_protokolu §2); Optuna öncesi ayar; train 2006-12-16–2008-08-31, iç val 2008-09-01–2008-09-30 MAE=0.4293; kat 3 (2009-06–09), gerçek val ve test kullanılmadı"
+S-F5-L48-oof2,23,15,24.707898400025442,"Yaz-dev altyapısı (gelistirme_protokolu §2); Optuna öncesi ayar; train 2006-12-16–2008-12-31, iç val 2009-01-01–2009-01-31 MAE=0.5591; kat 3 (2009-06–09), gerçek val ve test kullanılmadı"
