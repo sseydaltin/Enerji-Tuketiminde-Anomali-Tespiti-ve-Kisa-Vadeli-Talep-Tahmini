@@ -45,3 +45,8 @@ Thumbs.db
 # Kayıtlı val/test tahminleri (yeniden üretilebilir, büyük)
 results/predictions/
 results/eld/predictions/
+
+# Yerel araç ayarları ve model arşivi (git dışı)
+models_release.zip
+.mcp.json
+.claude/
