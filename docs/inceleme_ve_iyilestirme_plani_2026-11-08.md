@@ -94,7 +94,7 @@ Bu yüzden "tüm proje satır satır incelendi" denemez. Veri → bölme → pen
 - **Kış-dev:** A0, A1, A2, A3-s2s-norm, A3-s2s-hmean, A5 kayıtlı kopya F1'leriyle birebir aynı.
   - **A3-ens-norm farklı** (en fazla 0,017). Bu yöntem F5-opt ailesine bağlı; bu makinedeki F5-opt / F5-opt-oof dosyaları, Aşama 2 tablosunu üretenlerle aynı olmayabilir. Neden doğrulanamadı.
   - Final yöntem ve S0–S5 bu modeli kullanmıyor.
-- **XGBoost:** 2 test macOS'ta segmentation fault veriyor (bilinen ortam sorunu). F12 sonuçları kayıtlı tablolardan geliyor.
+- **XGBoost:** 2 test macOS'ta segmentation fault veriyor (kök neden doğrulanmadı). F12 sonuçları kayıtlı tablolardan geliyor.
 
 ## 4. Güncel durum
 

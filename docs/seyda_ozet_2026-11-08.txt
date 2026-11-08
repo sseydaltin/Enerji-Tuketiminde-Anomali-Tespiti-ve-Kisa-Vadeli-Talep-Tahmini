@@ -1,0 +1,107 @@
+Şeyda merhaba,
+
+İnceleme, zorunlu düzeltmeler ve E1 deneyi bitti; dalı GitHub'a pushladım.
+
+DAL VE COMMIT'LER
+- Dal: dilara/inceleme-zorunlu-duzeltmeler
+- Bağlantı: https://github.com/sseydaltin/Enerji-Tuketiminde-Anomali-Tespiti-ve-Kisa-Vadeli-Talep-Tahmini/tree/dilara/inceleme-zorunlu-duzeltmeler
+- Taban: 825f7c7 (dilara/asama3-kisa-olay-deneyleri, Aşama 3)
+- 00ca661: zorunlu düzeltmeler, metrik denetimi, yeniden üretim manifestosu
+- 131855c: E1 kaydı; A3 referansı korundu
+- Merge yapılmadı. Model ağırlıkları dala eklenmedi.
+
+1) ZORUNLU DÜZELTMELER VE SONUÇLARA ETKİLERİ
+- pandas 3 zaman birimi hatası (tahmin dosyalarının kayıt/okuması: results_io, forecast_levels, evaluate_forecast, verify_forecast_eval)
+  Düzeltildi ve testle doğrulandı.
+  Etkisi yok: pencere ve gün sayıları kayıtlı tablolarla aynı (val 4213 / 177, test 5481 / 229).
+- Aynı hata ön işlemede (fill_missing_hours)
+  Sınır koruması ±3 saat olması gerekirken ±125 gün korunuyordu. Düzeltildi.
+  Etkisi yok: ham veriden yeniden üretimde doldurulan değerler değişmedi (0 saat).
+- Olay metriği
+  Kod tanıma uygun. Mevcut "olay F1" = block_f1 (precision alarm bloğu sayar), aynen korundu.
+  Ek olarak count_f1 (olay sayımlı F1): TP = yakalanan olay, FN = kaçırılan olay,
+  FP = hiçbir anomaliye dokunmayan alarm bloğu.
+  count_f1 birebir alarm–olay eşleştirmesi DEĞİL: bir alarm iki olayı kapsarsa TP = 2;
+  bir olaydaki fazla alarmlar FP sayılmaz. Standart bir metrik olarak sunmuyoruz.
+  A3 ailesinde count_f1 0,07–0,09 daha düşük; Aşama 3 sıralaması değişmiyor.
+- Etiketsiz arka plan alarmları
+  Enjeksiyonsuz veride de alarm veren bloklar ayrı raporlanıyor. Metrikten çıkarılmadı;
+  gerçek anomali mi model hatası mı ayırt edilemiyor.
+- Yeniden üretim
+  Bu bilgisayardaki ağırlıklar SHA-256 ile sabitlendi (results/tables/repro_manifest.csv).
+  Senin yaz-dev ağırlıklarınla aynı değiller; yaz sayılarında doğrudan kazanç hesabı yapmıyorum.
+- Diğer
+  ELD ağırlığı yokken başarısız olan demo testi düzeltildi.
+  README ve CLAUDE.md'deki "GRU artığı / lookback 168" ifadeleri kodla uyumlu hâle getirildi
+  (final artık F10-opt'tan, lookback 48).
+
+2) S0 VE E1 SKORLARI
+Kış-dev / yaz-dev, orta senaryo, 10 seed, bu bilgisayarın ağırlıkları. Geliştirme sonucu, final değil.
+- S0-yerel (A3-s2s-hmean):
+  block_f1 0,551 / 0,535
+  count_f1 0,442 / 0,481
+  desen recall 0,76 / 0,00
+  yanlış alarm/gün 0,098 / 0,025
+- E1-w6 (A3 + 6 saatlik işaretli artık ortalaması):
+  block_f1 0,575 / 0,529
+  count_f1 0,476 / 0,464
+  desen recall 0,93 / 0,00
+  yanlış alarm/gün 0,098 / 0,034
+
+3) E1 NEDEN KABUL EDİLMEDİ?
+Koşudan önce yazılan altı koşuldan üçü sağlanmadı:
+- İki mevsim ortalamasındaki block_f1 kazancı (+0,009 ± 0,008) gürültü sınırında.
+- Yazda block_f1 düştü (−0,006).
+- Asıl hedef olan yaz deseni hiç yakalanmadı (0 → 0).
+Ayrıca yazda her seed'de bir ek yanlış alarm bloğu çıktı.
+Arama genişletilmedi, E2 başlatılmadı, test ve val-hold kullanılmadı.
+E1 final modele veya demoya eklenmedi.
+
+4) MEVCUT FİNAL MODEL VE KARŞILANMAYAN HEDEF
+- Tahmin: F13-ens (0,8 Seq2Seq + 0,2 LSTM, lookback 48)
+  Test MAE 0,406 kW; SN168'e göre +%26 → H2 karşılandı.
+- Anomali: A3-s2s-norm (w = 3, eşik 3,558)
+  Test olay F1 (block_f1) 0,384; A0 0,398.
+  PR-AUC 0,241 / A0 0,148.
+  H3 (F1 ≥ 0,70) KARŞILANMADI.
+- Demo kontrolü (otomatik, görsel değil)
+  Dört sayfa (Talep Tahmini, Anomali Tespiti, Sonuçlar, Model Bilgisi) Hane ve Şebeke seçimiyle
+  Streamlit AppTest'te hatasız çalıştı.
+  Final bilgiler doğru: Topluluk 0,8, lookback 48, A3-s2s-norm, eşik 3,558, test olay F1 0,384.
+  Sunucu açıldı (health ok, HTTP 200).
+  Tarayıcıda görsel kontrol yapılmadı.
+
+5) ÇIKTI DOSYALARI
+Belgeler:
+- docs/durum_ozeti_2026-11-08.md
+- docs/inceleme_ve_iyilestirme_plani_2026-11-08.md
+- docs/anomaly_e1_sustained.md
+- docs/deney_gunlugu.md
+Kod:
+- src/anomaly_eval_audit.py
+- src/anomaly_e1_sustained.py
+- src/utils/anomaly_metrics.py
+Tablolar:
+- results/tables/anomaly_eval_audit_{per_seed,summary,background,oracle}.csv
+- results/tables/E1_sustained_{per_seed,summary,paired,candidates,decision,scales}.csv
+- results/tables/repro_manifest.csv
+Log:
+- results/logs/E1_sustained.log
+Testler:
+- tests/test_time_alignment.py
+- tests/test_event_metric_definitions.py
+- tests/test_anomaly_eval_audit.py
+- tests/test_anomaly_e1_sustained.py
+
+6) HENÜZ ÇÖZÜLMEYEN SORUNLAR
+- Yaz-dev S-* ağırlıklarımız farklı. Ortak bir sette anlaşmamız gerekiyor
+  (benim hash'li dosyalarım ya da seninkiler).
+- Kış-dev A3-ens-norm kayıtlı tablodan en fazla 0,017 farklı. F5-opt ailesi dosyaları farklı
+  olabilir; doğrulanmadı. Final yöntem bu modeli kullanmıyor.
+- XGBoost'un 2 testi bu Mac'te segmentation fault ile çöküyor. Kök neden doğrulanmadı.
+- ELD ağırlıkları bende yok; ilgili 7 test gerekçeyle atlanıyor. Şebeke canlı tahmini isteğe
+  bağlı; sayfa bunu kullanıcıya bildiriyor.
+- Kolay senaryodaki desen tanımı hatası hâlâ karar bekliyor.
+
+Testler (bu Mac): 209 geçti, 7 atlandı (ELD), 2 çöktü (XGBoost);
+XGBoost dışındaki stage3 testleri 7/7 geçti.

@@ -75,7 +75,7 @@ Referans **S0-yerel** bir yerel geliştirme referansıdır; Şeyda'nın ağırl�
 | Geçen | 209 | `pytest tests --ignore=tests/test_stage3_models.py` (E1 ve metrik testleri dahil) |
 | Atlanan | 7 | Hepsi isteğe bağlı Şebeke (ELD) verisi/ağırlıkları yok (`test_demo_doc_consistency.py`); gerekçe test çıktısında |
 | Geçen (ayrı koşu) | 7 | `tests/test_stage3_models.py -k "not xgb and not xgboost"` |
-| Çöken | 2 | `test_stage3_models.py` içindeki XGBoost testleri macOS'ta segmentation fault veriyor (ortam sorunu; kod düzeltmesi yapılmadı) |
+| Çöken | 2 | `test_stage3_models.py` içindeki XGBoost testleri macOS'ta segmentation fault veriyor (kök neden doğrulanmadı; kod düzeltmesi yapılmadı) |
 
 ## 4. Bu dalda düzeltilenler (skora etkisi ölçüldü)
 
