@@ -493,8 +493,10 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 
 ### 6.2 Bölüm bölüm
 
-**Proje Başlığı** – kısa, açık, özgün. Öneri:
-> *"LSTM, GRU ve LSTM-Autoencoder ile Hane Düzeyinde Kısa Vadeli Elektrik Talep Tahmini ve Tüketim Anomalisi Tespiti"*
+**Proje Başlığı** – kısa, açık, özgün. Kesinleşen başlık (2026-11-08; final modeller F13-ens ve A3-s2s-norm ile şebeke düzeyi deneyini kapsayacak şekilde):
+> *"Derin Öğrenme ile Hane ve Şebeke Düzeyinde 24 Saatlik Elektrik Talep Tahmini ve Tahmin Artığı Tabanlı Tüketim Anomalisi Tespiti"*
+
+İlk öneri (artık kullanılmıyor): *"LSTM, GRU ve LSTM-Autoencoder ile Hane Düzeyinde Kısa Vadeli Elektrik Talep Tahmini ve Tüketim Anomalisi Tespiti"*. Öneri formunun kaynağı: `docs/oneri_formu/oneri_formu.md`.
 
 **Proje Ekibi** – tablo: Ad Soyad | Numara | Projedeki Görevi (§2.1'den kısa: "Veri hattı, talep tahmini modelleri, demo uygulaması" / "Veri analizi, literatür, anomali tespiti modelleri, görselleştirme").
 
