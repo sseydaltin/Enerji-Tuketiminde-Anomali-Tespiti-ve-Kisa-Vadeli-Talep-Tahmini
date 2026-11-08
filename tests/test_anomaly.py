@@ -453,3 +453,26 @@ def test_final_choice_uses_standard_error_not_std():
     final, best, paired = choose_final(per_seed, ["A0", "B"], se_multiplier=2)
     assert best == "B" and final == "B"
     assert paired.loc[0, "event_f1_diff_std"] == pytest.approx(0.15)
+
+
+def test_alarm_diagnostics_counts_false_alarms_and_delays():
+    """Yanlış alarm = anomaliyle kesişmeyen blok; gecikme = olay içindeki ilk işaretli saat."""
+    from src.utils.anomaly_metrics import alarm_diagnostics
+    types = np.array(["none"] * 4 + ["spike"] * 3 + ["none"] * 3 + ["drop"] * 2 + ["none"] * 12)
+    predicted = np.zeros(len(types), dtype=bool)
+    predicted[0] = True          # yanlış alarm 1
+    predicted[6] = True          # spike yakalandı, 2 saat gecikmeyle (olay 4. saatte başlıyor)
+    predicted[14:16] = True      # yanlış alarm 2 (tek blok); drop kaçırıldı
+    result = alarm_diagnostics(types, predicted, n_valid_hours=24)
+    assert result["false_alarms"] == 2
+    assert result["false_alarms_per_day"] == pytest.approx(2.0)
+    assert result["delays"] == [2]
+    assert result["detection_delay_mean"] == pytest.approx(2.0)
+
+
+def test_alarm_diagnostics_without_detections_returns_nan_delay():
+    from src.utils.anomaly_metrics import alarm_diagnostics
+    types = np.array(["none"] * 5 + ["level_shift"] * 5)
+    result = alarm_diagnostics(types, np.zeros(10, dtype=bool), n_valid_hours=48)
+    assert result["false_alarms"] == 0 and result["delays"] == []
+    assert np.isnan(result["detection_delay_mean"])
