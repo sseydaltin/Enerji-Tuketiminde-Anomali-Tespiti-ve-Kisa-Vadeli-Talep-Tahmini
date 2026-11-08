@@ -16,7 +16,7 @@ def test_false_blocks_split_into_background_and_new():
     row = copy_row(types, flagged, background)
     assert row["false_alarm_blocks"] == 2
     assert row["false_blocks_in_background"] == 1 and row["false_blocks_new"] == 1
-    assert row["block_precision"] == row["matched_precision"] == 1 / 3
+    assert row["block_precision"] == row["count_precision"] == 1 / 3
 
 
 def test_alarm_mask_never_flags_invalid_hours():

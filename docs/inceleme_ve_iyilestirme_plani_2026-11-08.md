@@ -46,19 +46,19 @@ Bu yüzden "tüm proje satır satır incelendi" denemez. Veri → bölme → pen
 | Ad | Precision | Recall | Gerekçe |
 |---|---|---|---|
 | `block_f1` (mevcut "olay F1") | doğru alarm bloğu / alarm bloğu | yakalanan olay / olay | Önceki bütün sonuçlar ve seçimler bununla yapıldı |
-| `matched_f1` (olay-eşleşmeli) | yakalanan olay / (yakalanan olay + yanlış blok) | aynı | Her gerçek olay bir kez sayılır; yanlış blok iki tanımda aynı. Hundman vd. (KDD 2018) değerlendirmesine benzer (**doğrulanmalı**) |
+| `count_f1` (olay sayımlı) | yakalanan olay / (yakalanan olay + yanlış blok) | aynı | Her gerçek olay bir kez sayılır; yanlış blok iki tanımda aynı. **Birebir alarm–olay eşleştirmesi değildir:** bir alarm iki olayı kapsarsa TP = 2; bir olaydaki fazla alarmlar FP sayılmaz. Standart ya da tartışmasız doğru bir metrik olarak sunulmaz |
 
 - İki tanımın da sınırı var:
   - Hiçbiri gereğinden uzun alarmı cezalandırmıyor; nokta precision'ı bunun için tabloda duruyor.
-  - `matched_f1`'de tek bir alarm iki olayı kapsarsa iki doğru tespit sayılıyor.
+  - `count_f1`'de tek bir alarm iki olayı kapsarsa iki doğru tespit sayılıyor.
 
 ## 2. Düzeltmelerin skorlara etkisi
 
 - **Tahmin:** D1 ve D2 kayıtlı hiçbir tahmin sayısını değiştirmiyor (yukarıdaki ölçümler).
 - **Anomali, mevcut tanım:** Denetim betiği Aşama 3'ün S0–S5 kopya F1'lerini birebir yeniden üretiyor (120 kopya, fark 0).
-- **Anomali, olay-eşleşmeli tanım** (`anomaly_eval_audit_summary.csv`; kış-dev + yaz-dev, orta senaryo, kayıtlı ayarlar, yeni seçim yok):
+- **Anomali, olay sayımlı tanım** (`anomaly_eval_audit_summary.csv`; kış-dev + yaz-dev, orta senaryo, kayıtlı ayarlar, yeni seçim yok):
 
-| Yöntem | block_f1 kış / yaz / ort. | matched_f1 kış / yaz / ort. |
+| Yöntem | block_f1 kış / yaz / ort. | count_f1 kış / yaz / ort. |
 |---|---|---|
 | A0 z-skoru | 0,52 / 0,31 / 0,414 | 0,51 / 0,27 / 0,391 |
 | A3-s2s-norm (final yöntem, Aşama 2 ayarıyla) | 0,54 / 0,53 / 0,535 | 0,44 / 0,49 / 0,466 |
@@ -70,7 +70,7 @@ Bu yüzden "tüm proje satır satır incelendi" denemez. Veri → bölme → pen
 | S5 | 0,53 / 0,60 / 0,563 | 0,44 / 0,56 / 0,497 |
 
 **Okuma:**
-- A3 ailesinde `matched_f1`, `block_f1`'den 0,07–0,09 düşük. A0'da fark küçük (0,02), çünkü A0 tek olayda daha az parçalı alarm üretiyor.
+- A3 ailesinde `count_f1`, `block_f1`'den 0,07–0,09 düşük. A0'da fark küçük (0,02), çünkü A0 tek olayda daha az parçalı alarm üretiyor.
 - Aşama 3 içindeki sıralama iki tanımda aynı (S5 > S2 = S4 > S3 > S0 = S1), dolayısıyla Aşama 3 kararı değişmiyor.
 - Aşama 2'de A3-s2s-norm ile A3-s2s-hmean'in sırası yer değiştiriyor (2./4.). Bu iki varyant arasındaki fark metrik tanımına duyarlı.
 
@@ -106,7 +106,7 @@ Bu yüzden "tüm proje satır satır incelendi" denemez. Veri → bölme → pen
 **Anomali:**
 - Final (test): A3-s2s-norm olay F1 (blok tanımı) 0,384; A0 0,398. H3 (F1 ≥ 0,70) karşılanmadı.
 - Geliştirme (dev, final değil): Aşama 3'te hiçbir aday kabul edilmedi, S0 korundu.
-- Olay-eşleşmeli tanımla bütün A3 değerleri daha düşük, sıralama büyük ölçüde aynı.
+- Olay sayımlı tanımla bütün A3 değerleri daha düşük, sıralama büyük ölçüde aynı.
 
 ## 5. En fazla iki kısa deney (önerildi, çalıştırılmadı)
 
@@ -145,7 +145,7 @@ python -m src.anomaly_eval_audit                             # iki metrik + arka
 > Şeyda, inceleme ve zorunlu düzeltmeler hazır (yerel dal `dilara/inceleme-zorunlu-duzeltmeler`, henüz push yok).
 > - **pandas 3 zaman birimi hatası iki yerde vardı:** tahmin kayıtları ve ön işlemedeki sınır koruması. İkisi düzeltildi ve testlendi.
 >   - Ölçtüm: kayıtlı hiçbir sonuç değişmiyor. Pencere ve gün sayıları tutuyor; doldurulan değerler aynı.
-> - **Olay F1 kodu tanımına uygun, ama precision alarm bloklarını sayıyor.** Olay-eşleşmeli F1'i ek metrik olarak ekledim.
+> - **Olay F1 kodu tanımına uygun, ama precision alarm bloklarını sayıyor.** Olay sayımlı F1'i ek metrik olarak ekledim.
 >   - A3 ailesi 0,07–0,09 düşüyor.
 >   - Aşama 3 sıralaması değişmiyor.
 >   - A3-s2s-norm ile A3-s2s-hmean'in sırası metriğe duyarlı.

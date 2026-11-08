@@ -47,7 +47,7 @@ F13-ens MAE'de birinci; RMSE, R² ve günlük toplamda XGBoost daha iyi. Proje h
 
 Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomali tespitini kolaylaştırıyor. Şebeke testindeki bozulmanın çoğu Aralık'tan (Noel) geliyor. Protokol: `docs/eld_protokol.md`.
 
-**Test sonrası geliştirme (final sonuç değildir; yalnız kış-dev + yaz-dev):** Aşama 3 kısa olay sinyalleri (`docs/anomaly_short_event_experiments.md`): hiçbir aday kabul edilmedi, A3-s2s-hmean referansı korundu. Değerlendirme denetimi (`python -m src.anomaly_eval_audit`, `docs/inceleme_ve_iyilestirme_plani_2026-11-08.md`): "olay F1" alarm **bloklarını** sayan precision kullanır (`block_f1`); her olayı bir kez sayan olay-eşleşmeli tanım (`matched_f1`) ayrıca raporlanır ve değerler daha düşüktür. Enjeksiyonsuz veride de alarm veren bloklar "etiketsiz arka plan alarmı" olarak ayrıca sayılır.
+**Test sonrası geliştirme (final sonuç değildir; yalnız kış-dev + yaz-dev):** Aşama 3 kısa olay sinyalleri (`docs/anomaly_short_event_experiments.md`): hiçbir aday kabul edilmedi, A3-s2s-hmean referansı korundu. Değerlendirme denetimi (`python -m src.anomaly_eval_audit`, `docs/inceleme_ve_iyilestirme_plani_2026-11-08.md`): "olay F1" alarm **bloklarını** sayan precision kullanır (`block_f1`); her olayı bir kez sayan olay sayımlı tanım (`count_f1`) ayrıca raporlanır ve değerler daha düşüktür. Enjeksiyonsuz veride de alarm veren bloklar "etiketsiz arka plan alarmı" olarak ayrıca sayılır.
 
 ---
 

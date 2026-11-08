@@ -1,0 +1,8 @@
+23:35:32 [+ 0.0 dk] [1/5] manifest denetimi tamam (9 dosya)
+23:35:44 [+ 0.2 dk] [2/5] puanlandı 1/2: winter_dev, 10 kopya; ölçek {'A3': 3.260563543154491, 'u3': 2.7644708497036663, 'u6': 2.4668282456278603}
+23:35:54 [+ 0.4 dk] [2/5] puanlandı 2/2: summer_dev, 10 kopya; ölçek {'A3': 3.20764638558282, 'u3': 2.644355244604538, 'u6': 2.4011731757969006}
+23:35:56 [+ 0.4 dk] [3/5] aday 1/2 E1-w3: eşik 1.1719, seçim block_f1 0.5454
+23:35:59 [+ 0.4 dk] [3/5] aday 2/2 E1-w6: eşik 1.1419, seçim block_f1 0.5519
+23:35:59 [+ 0.4 dk] seçilen aday: E1-w6
+23:35:59 [+ 0.4 dk] [4/5] değerlendirildi: 60 kopya × yöntem
+23:35:59 [+ 0.4 dk] [5/5] tablolar yazıldı; kabul: {'E1-w6': False, 'E1-w3': False}

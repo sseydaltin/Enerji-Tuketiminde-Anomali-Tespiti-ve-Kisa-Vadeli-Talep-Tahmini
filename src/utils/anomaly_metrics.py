@@ -125,18 +125,20 @@ def event_metrics(types, predicted):
     return result
 
 
-def event_matched_metrics(types, predicted):
-    """Olay-eşleşmeli precision/recall/F1 (event_metrics'teki blok-precision'a EK, onun yerine değil).
+def event_count_metrics(types, predicted):
+    """Olay SAYIMLI precision/recall/F1 (event_metrics'teki blok-precision'a EK, onun yerine değil).
 
     Girdi: types [N] ("none" = normal), predicted [N] bool (TAM zaman ekseni).
-    Tanım: TP = en az bir saati işaretlenen olay sayısı (event_metrics'teki olay recall'üyle aynı);
-    FP = hiçbir anomali saatiyle kesişmeyen alarm bloğu (alarm_diagnostics'teki false_alarms);
-    P = TP / (TP + FP), R = TP / olay sayısı.
+    Sayım (birebir alarm–olay eşleştirmesi YAPILMAZ):
+      TP = en az bir saati işaretlenen olay sayısı (event_metrics'teki olay recall'üyle aynı),
+      FN = hiç işaretlenmeyen olay sayısı,
+      FP = hiçbir anomali saatiyle kesişmeyen alarm bloğu (alarm_diagnostics'teki false_alarms).
+      P = TP / (TP + FP), R = TP / (TP + FN).
+    Örnekler: bir alarm iki olayı kapsarsa TP = 2, FP = 0 (birebir eşleştirmede TP 1, FN 1 olurdu);
+    bir olay üç alarm bloğu üretirse TP = 1, FP = 0 (birebir eşleştirmede fazla iki blok FP olurdu).
     Neden: event_metrics'in precision'ı alarm BLOKLARINI sayar; bir olayın içinde parçalanan
-    alarmlar birden çok "doğru blok" yazar ve precision'ı şişirir, birleştirme onu düşürür.
-    Burada her olay bir kez sayılır; yanlış alarm bloğu iki tanımda da aynıdır. Bir alarm iki
-    olayı kapsarsa iki olay da yakalanmış sayılır (TP = 2). Hiçbir tanım "doğru" değildir;
-    ikisi ayrı adla raporlanır.
+    alarmlar birden çok "doğru blok" yazar ve precision'ı şişirir. Burada her olay bir kez sayılır.
+    Bu standart ya da tartışmasız doğru bir metrik değildir; block_f1 ile yan yana raporlanır.
     """
     base = event_metrics(types, predicted)
     false_alarms = alarm_diagnostics(types, predicted, 1)["false_alarms"]
@@ -144,8 +146,9 @@ def event_matched_metrics(types, predicted):
     precision = detected / (detected + false_alarms) if detected + false_alarms else 0.0
     recall = base["event_recall"]
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-    return {"matched_precision": precision, "matched_recall": recall, "matched_f1": f1,
-            "detected_events": detected, "false_alarm_blocks": false_alarms}
+    return {"count_precision": precision, "count_recall": recall, "count_f1": f1,
+            "detected_events": detected, "missed_events": base["n_events"] - detected,
+            "false_alarm_blocks": false_alarms}
 
 
 def evaluate_threshold(labels, scores, types, threshold, valid=None):

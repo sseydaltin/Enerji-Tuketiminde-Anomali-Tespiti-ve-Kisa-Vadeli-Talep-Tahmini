@@ -7,7 +7,7 @@ Kümeler kış-dev ve yaz-dev, orta senaryo (seçim senaryosu); val_hold ve test
 
 Ölçülenler (kopya başına):
 - blok tanımı: event_metrics (mevcut "olay F1"; precision = doğru alarm bloğu / alarm bloğu),
-- olay-eşleşmeli tanım: event_matched_metrics (precision = yakalanan olay / (olay + yanlış blok)),
+- olay sayımlı tanım: event_count_metrics (precision = yakalanan olay / (olay + yanlış blok)),
 - yanlış blokların kaçının ENJEKSİYONSUZ kopyada da aynı saatte alarm verdiği ("arka plan").
   Enjeksiyonsuz veri anomaliden arınmış KABUL EDİLMEZ; bu alarmlar "etiketsiz arka plan alarmı"
   olarak ayrıca sayılır ve metriklerden çıkarılmaz.
@@ -40,7 +40,7 @@ from src.data.inject_anomalies import ANOMALY_TYPES
 from src.data.load import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import add_combinations, score_frame, smooth_scores, with_context
 from src.models.residual_detector import multi_step_predictions
-from src.utils.anomaly_metrics import event_matched_metrics, event_metrics, fill_alarm_gaps, runs
+from src.utils.anomaly_metrics import event_count_metrics, event_metrics, fill_alarm_gaps, runs
 from src.utils.console import setup_console
 from src.utils.results_io import resolve_path
 from src.utils.seed import set_seed
@@ -61,13 +61,13 @@ def copy_row(types, flagged, background):
     background [N] bool: aynı yöntemin ENJEKSİYONSUZ kopyadaki alarm maskesi.
     """
     block = event_metrics(types, flagged)
-    matched = event_matched_metrics(types, flagged)
+    counted = event_count_metrics(types, flagged)
     anomalous = types != "none"
     false_blocks = [(a, b) for a, b in runs(flagged) if not anomalous[a:b].any()]
     in_background = sum(background[a:b].any() for a, b in false_blocks)
     row = {"block_f1": block["event_f1"], "block_precision": block["event_precision"],
            "event_recall": block["event_recall"], "n_events": block["n_events"],
-           "alarm_blocks": block["n_pred_blocks"], **matched,
+           "alarm_blocks": block["n_pred_blocks"], **counted,
            "false_blocks_in_background": in_background,
            "false_blocks_new": len(false_blocks) - in_background}
     for kind in ANOMALY_TYPES:
@@ -146,21 +146,21 @@ def oracle(set_name, seed, types, flagged):
         extended = flagged | (types == kind) if kind != "none" else flagged
         rows.append({"set": set_name, "seed": seed, "added_type": kind,
                      "block_f1": event_metrics(types, extended)["event_f1"],
-                     "matched_f1": event_matched_metrics(types, extended)["matched_f1"]})
+                     "count_f1": event_count_metrics(types, extended)["count_f1"]})
     return rows
 
 
 def summarize(per_seed):
     """Küme × yöntem ortalamaları, iki mevsim ortalaması ve iki tanımdaki sıra."""
-    metrics = ["block_f1", "matched_f1", "block_precision", "matched_precision", "event_recall",
+    metrics = ["block_f1", "count_f1", "block_precision", "count_precision", "event_recall",
                "alarm_blocks", "detected_events", "false_alarm_blocks", "false_blocks_in_background",
                "false_blocks_new"] + [f"event_recall_{k}" for k in ANOMALY_TYPES]
     means = per_seed.groupby(["stage", "method", "set"])[metrics].mean().unstack("set")
     means.columns = [f"{s}_{m}" for m, s in means.columns]
-    for metric in ("block_f1", "matched_f1"):
+    for metric in ("block_f1", "count_f1"):
         means[f"both_{metric}"] = means[[f"{s}_{metric}" for s in SET_KEYS]].mean(axis=1)
     means = means.reset_index()
-    for metric in ("block_f1", "matched_f1"):
+    for metric in ("block_f1", "count_f1"):
         means[f"rank_{metric}"] = means.groupby("stage")[f"both_{metric}"].rank(ascending=False, method="min")
     return means
 
@@ -219,15 +219,15 @@ def main():
 
     per_seed = pd.DataFrame(rows)
     summary = summarize(per_seed)
-    oracle_table = pd.DataFrame(oracles).groupby(["set", "added_type"])[["block_f1", "matched_f1"]].mean()
+    oracle_table = pd.DataFrame(oracles).groupby(["set", "added_type"])[["block_f1", "count_f1"]].mean()
     per_seed.to_csv(tables_dir / "anomaly_eval_audit_per_seed.csv", index=False)
     summary.to_csv(tables_dir / "anomaly_eval_audit_summary.csv", index=False)
     pd.DataFrame(background).to_csv(tables_dir / "anomaly_eval_audit_background.csv", index=False)
     oracle_table.reset_index().to_csv(tables_dir / "anomaly_eval_audit_oracle.csv", index=False)
     manifest(config).to_csv(tables_dir / "repro_manifest.csv", index=False)
 
-    columns = ["stage", "method", "both_block_f1", "both_matched_f1", "rank_block_f1", "rank_matched_f1",
-               "winter_dev_block_f1", "winter_dev_matched_f1", "summer_dev_block_f1", "summer_dev_matched_f1"]
+    columns = ["stage", "method", "both_block_f1", "both_count_f1", "rank_block_f1", "rank_count_f1",
+               "winter_dev_block_f1", "winter_dev_count_f1", "summer_dev_block_f1", "summer_dev_count_f1"]
     print(summary[columns].round(3).to_string(index=False))
     print(pd.DataFrame(background)[["set", "method", "background_blocks", "background_per_day"]]
           .round(3).to_string(index=False))

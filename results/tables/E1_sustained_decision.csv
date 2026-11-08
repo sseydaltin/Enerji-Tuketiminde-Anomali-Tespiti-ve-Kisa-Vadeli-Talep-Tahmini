@@ -1,0 +1,3 @@
+method,both_block_f1_diff,both_block_f1_diff_se,both_count_f1_diff,c1_block_f1_gain_beyond_2se,c2_block_f1_gain_both_seasons,c3_false_alarm_increase_le_0.05,c4_level_pattern_loss_le_0.05,c5_count_f1_gain,c6_summer_pattern_recall_up,accepted,chosen_candidate
+E1-w6,0.009047903170483235,0.008264457301358503,0.008269114501290928,False,False,True,True,True,False,False,True
+E1-w3,0.0024993071951970418,0.008406033549896268,0.016428553213966964,False,False,True,True,True,False,False,False

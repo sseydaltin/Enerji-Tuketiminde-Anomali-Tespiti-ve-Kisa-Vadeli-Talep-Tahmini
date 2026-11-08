@@ -42,17 +42,37 @@ H3 (F1 ≥ 0,70) karşılanmadı.
 | S4 (+spike+drop) | 0,553 | 0,542 | 0,548 | 0,471 |
 | S5 (hepsi) | 0,529 | 0,598 | 0,563 | 0,497 |
 
-\* Ek metrik, olay sayımlı F1'dir (tanım ve sınırları: `docs/inceleme_ve_iyilestirme_plani_2026-11-08.md` §1). Birebir alarm–olay eşleştirmesi değildir.
+\* Ek metrik = `count_f1`, olay sayımlı F1'dir (tanım ve sınırları: `docs/inceleme_ve_iyilestirme_plani_2026-11-08.md` §1). Birebir alarm–olay eşleştirmesi değildir.
 
 - Önceden konan karar kuralına göre hiçbir aday kabul edilmedi; S0 korundu.
 - S5'in ortalama kazancı gürültü sınırında. Yazda arttı, kışta düştü (kış −0,022).
 - **Yaz-dev ağırlıkları** bu makinede yeniden eğitildi (hash'ler: `repro_manifest.csv`). Yaz sayıları Şeyda'nın Aşama 2 tablolarıyla doğrudan karşılaştırılamaz.
 
+### E1 – sürekli işaretli artık (`docs/anomaly_e1_sustained.md`, `E1_sustained_*.csv`)
+
+Ortak sabit başlangıç: bu makinedeki ağırlıklar (`repro_manifest.csv` hash'leri koşu başında denetlendi).
+Referans **S0-yerel** bir yerel geliştirme referansıdır; Şeyda'nın ağırlıklarıyla üretilen sonuçlarla kazanç hesabı yapılmaz.
+
+| | S0-yerel kış | E1-w6 kış | S0-yerel yaz | E1-w6 yaz |
+|---|---|---|---|---|
+| block_f1 | 0,551 | 0,575 | 0,535 | 0,529 |
+| count_f1 | 0,442 | 0,476 | 0,481 | 0,464 |
+| desen recall’ü | 0,76 | 0,93 | 0,00 | 0,00 |
+| yanlış alarm / gün | 0,098 | 0,098 | 0,025 | 0,034 |
+
+**Kabul edilmedi.** Kazanç yalnız kışta; hedeflenen yaz deseni değişmedi; yazda F1 düştü.
+
+### Metrik adları
+- `block_f1` = mevcut "olay F1"; precision alarm bloğu sayar.
+- `count_f1` = olay sayımlı F1: TP = yakalanan olay, FN = kaçırılan olay, FP = anomaliye dokunmayan alarm bloğu.
+- `count_f1` **birebir alarm–olay eşleştirmesi değildir**: bir alarm iki olayı kapsarsa TP = 2; bir olaydaki fazla alarmlar FP sayılmaz.
+- İkisi de standart ya da tartışmasız doğru metrik olarak sunulmaz; yan yana raporlanır.
+
 ## 3. Testler (bu makine: macOS, Python 3.11.18, pandas 3.1.0)
 
 | Durum | Sayı | Açıklama |
 |---|---|---|
-| Geçen | 205 | `pytest tests --ignore=tests/test_stage3_models.py` |
+| Geçen | 209 | `pytest tests --ignore=tests/test_stage3_models.py` (E1 ve metrik testleri dahil) |
 | Atlanan | 7 | Hepsi isteğe bağlı Şebeke (ELD) verisi/ağırlıkları yok (`test_demo_doc_consistency.py`); gerekçe test çıktısında |
 | Geçen (ayrı koşu) | 7 | `tests/test_stage3_models.py -k "not xgb and not xgboost"` |
 | Çöken | 2 | `test_stage3_models.py` içindeki XGBoost testleri macOS'ta segmentation fault veriyor (ortam sorunu; kod düzeltmesi yapılmadı) |
