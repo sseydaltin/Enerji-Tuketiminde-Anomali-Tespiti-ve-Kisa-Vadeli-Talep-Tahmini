@@ -191,3 +191,6 @@ ORCH-OR-A,2026-11-09,anomali OR-A (KEŞİFSEL; docs/anomaly_or_channels.md),,,,,
 ORCH-OR-B,2026-11-09,anomali OR-B (KEŞİFSEL; docs/anomaly_or_channels.md),,,,,,,,,,42,,,,,,orta senaryo block_f1 kış 0.510 / yaz 0.614; eşikler aynı dev kopyalarında seçildi (seçim yanlılığı); val_hold/test yok
 FLOOR-medium,2026-11-09,anomali S0+taban (deneysel; docs/anomaly_floor_channel.md),,,,,,,,,,42,,,,,,medium block_f1 kış 0.644 / yaz 0.604 (S0 0.551 / 0.535); val_hold/test yok
 FLOOR-drop_sensitivity,2026-11-09,anomali S0+taban (deneysel; docs/anomaly_floor_channel.md),,,,,,,,,,42,,,,,,drop_sensitivity block_f1 kış 0.551 / yaz 0.535 (S0 0.551 / 0.535); val_hold/test yok
+SUP-LR,2026-11-09,anomali gözetimli LR (sentetik eğitim; docs/anomaly_supervised.md),,,,,,,,,,42,,,,,,dev orta senaryo block_f1 kış 0.562 / yaz 0.533; eşik iç doğrulamada; val_hold/test yok
+SUP-RF,2026-11-09,anomali gözetimli RF (sentetik eğitim; docs/anomaly_supervised.md),,,,,,,,,,42,,,,,,dev orta senaryo block_f1 kış 0.571 / yaz 0.259; eşik iç doğrulamada; val_hold/test yok
+SUP-HGB,2026-11-09,anomali gözetimli HGB (sentetik eğitim; docs/anomaly_supervised.md),,,,,,,,,,42,,,,,,dev orta senaryo block_f1 kış 0.668 / yaz 0.588; eşik iç doğrulamada; val_hold/test yok
