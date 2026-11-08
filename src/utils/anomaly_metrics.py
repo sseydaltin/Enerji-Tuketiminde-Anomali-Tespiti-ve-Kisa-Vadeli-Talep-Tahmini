@@ -25,7 +25,26 @@ def f1_max_threshold(labels, scores):
     return float(thresholds[np.nanargmax(f1)])
 
 
-def event_f1_max_threshold(copies, quantiles):
+def fill_alarm_gaps(flagged, max_gap):
+    """İki alarm bloğu arasındaki en çok `max_gap` saatlik boşluğu doldurur (alarm birleştirme).
+
+    Girdi: flagged [N] bool (TAM zaman ekseni), max_gap ≥ 0 saat. Çıktı: yeni [N] bool dizi.
+    Örnek (max_gap=1): [1, 0, 1, 0, 0, 1] → [1, 1, 1, 0, 0, 1].
+    Neden: Bir olay sırasında skor bir saatliğine eşiğin altına inerse iki ayrı alarm bloğu
+    oluşur; birleştirme gereksiz blok sayısını azaltır. Etiketler ve olay tanımı değişmez.
+    Dizinin başındaki/sonundaki boşluklar doldurulmaz (iki yanında alarm olmalı).
+    """
+    flagged = np.asarray(flagged, dtype=bool).copy()
+    if max_gap <= 0:
+        return flagged
+    blocks = runs(flagged)
+    for (_, end), (next_start, _) in zip(blocks[:-1], blocks[1:]):
+        if next_start - end <= max_gap:
+            flagged[end:next_start] = True
+    return flagged
+
+
+def event_f1_max_threshold(copies, quantiles, max_gap=0):
     """Birleşik (tüm kopyalar) olay F1'ini en büyük yapan eşiği aday ızgarasında arar.
 
     Girdi: copies = [(types [N], scores [N], valid [N]), ...] (her biri TAM zaman
@@ -35,7 +54,8 @@ def event_f1_max_threshold(copies, quantiles):
     Neden: Olay F1 eşiğe göre basamaklıdır ve kapalı bir çözümü yoktur; ızgara
     araması yapılır. Birleşik: yakalanan olaylar / tüm olaylar ve doğru alarm
     blokları / tüm bloklar kopyalar üzerinden toplanır. Eşitlikte YÜKSEK eşik
-    seçilir (daha az alarm).
+    seçilir (daha az alarm). max_gap > 0 ise alarm maskesine fill_alarm_gaps
+    uygulanır (varsayılan 0 = eski davranış aynen).
     """
     pooled = np.concatenate([scores[valid] for _, scores, valid in copies])
     candidates = np.unique(np.quantile(pooled, quantiles))
@@ -45,6 +65,7 @@ def event_f1_max_threshold(copies, quantiles):
         for types, scores, valid in copies:
             with np.errstate(invalid="ignore"):
                 flagged = (scores >= threshold) & valid
+            flagged = fill_alarm_gaps(flagged, max_gap) & valid      # geçersiz saat işaretlenmez
             metrics = event_metrics(types, flagged)
             if metrics["n_events"]:                      # olaysız kopyada recall NaN'dır
                 n_events += metrics["n_events"]

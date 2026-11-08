@@ -1,0 +1,7 @@
+experiment,both_f1,both_f1_diff,both_f1_diff_se,c1_gain_beyond_noise,c2_gain_both_seasons,c3_false_alarms_ok,c4_other_types_ok,accepted
+S0,0.5428626476302297,0.0,0.0,False,False,True,True,False
+S1,0.5428626476302297,0.0,0.0,False,False,True,True,False
+S2,0.5475049847821327,0.0046423371519030195,0.014021175885366399,False,True,True,True,False
+S3,0.5448212738063312,0.001958626176101378,0.014037816175163144,False,False,True,True,False
+S4,0.5475049847821327,0.0046423371519030195,0.014021175885366399,False,True,True,True,False
+S5,0.5632297803441224,0.02036713271389276,0.02019712247451516,False,False,True,False,False
