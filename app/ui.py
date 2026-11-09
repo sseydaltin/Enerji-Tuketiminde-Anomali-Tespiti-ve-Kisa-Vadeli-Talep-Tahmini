@@ -39,6 +39,7 @@ METHOD_LABELS = {
     "A5-mean-z": "Birleşik skor (z-skoru + Topluluk artığı)",
     "A6-dual": "Geliştirilmiş: kısa sıçramalar (deneysel)",
     "A6-dual-floor": "Geliştirilmiş: sıçrama + taban yük (deneysel)",
+    "A3 + taban (v2)": "A3 + taban (v2) – test sonrası, final değil",
 }
 METHOD_COLORS = {"A0": BASELINE_COLOR, "A3-s2s-norm": MODEL_COLOR, "A5-mean-z": SECOND_COLOR}
 

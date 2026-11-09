@@ -12,6 +12,7 @@ from app.services import demo_paths
 from app.ui import ANOMALY_LABELS
 from src.anomaly_dual import BASE_METHOD, DUAL, DUAL_FLOOR, SELECTION_FILE, dual_alarm, floor_alarm
 from src.anomaly_protocol import protocol_splits, scenario_settings
+from src.anomaly_v2 import V2_METHOD, train_floor, v2_score
 from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for, train_sigma_table
 from src.models.anomaly_baselines import rolling_zscore
 from src.models.residual_detector import (
@@ -30,6 +31,7 @@ A5_COMPONENTS = ("A0", "A3-ens-norm")
 SEVERITY_TYPES = ("spike", "level_shift")   # büyüklüğü ayarlanabilen tipler
 EXPERIMENTAL_METHODS = (DUAL, DUAL_FLOOR)   # "Geliştirilmiş" seçenekleri; final sonuç değildir
 EXPERIMENT_SPLIT = "val_hold"       # deneysel yöntem test kümesinde çalıştırılmaz
+V2_METHODS = (V2_METHOD,)           # A3 + taban (v2): test sonrası, final değil; testte A3 ile yan yana
 CAUGHT = "Yakalandı"
 MISSED = "Kaçırıldı"
 
@@ -286,7 +288,7 @@ def experimental_flags(scored, settings, target):
 
 def analyze_test_range(
     frame, config, start, end, inject, anomaly_type, scenario, seed, calibration,
-    model_signature, _models, severity=1.0, split="test",
+    model_signature, _models, severity=1.0, split="test", v2=False,
 ):
     """Kümenin skorlarından seçili aralığı dilimler; olay tablosunu kurar.
 
@@ -295,8 +297,11 @@ def analyze_test_range(
     Çıktı: aralıkla hizalı gerçek/enjekte seri, ham ve yumuşatılmış skorlar (eşik
     yumuşatılmış skora uygulanır), sabit eşikler, geçerli saat maskesi, etiketler, alarmlar.
     Neden: Enjeksiyon yalnız kopyaya yapılır; eşik ve artık ölçekleri değişmez.
+    v2=True (yalnız test): "A3 + taban (v2)" alarmları src.anomaly_v2.v2_score ile, deney betiğiyle
+    aynı kuralla eklenir; taban yalnız train'den hesaplanır, hiçbir ayar seçilmez.
     """
-    test = protocol_splits(frame, config)[split]
+    splits = protocol_splits(frame, config)
+    test = splits[split]
     start_time = pd.Timestamp(start)
     end_time = pd.Timestamp(end)
     if start_time not in test.index or end_time not in test.index or end_time < start_time:
@@ -338,6 +343,19 @@ def analyze_test_range(
             thresholds[method] = settings["t1"]
             windows[method] = windows[BASE_METHOD]
             flags[method] = experimental_flags(scored, settings, target).loc[requested].to_numpy()
+    floor_kw = None
+    if v2 and split == "test":
+        floor_kw = train_floor(splits["train"], target)
+        injected = scored["injected"]
+        # Bütün kümede hesaplanır: aralık başındaki saat de bir önceki saate bakabilsin.
+        v2_values, _ = v2_score(scored["smoothed"][BASE_METHOD].to_numpy(dtype=float), thresholds[BASE_METHOD],
+                                injected[target].to_numpy(), floor_kw, injected.index,
+                                injected["is_imputed"].to_numpy() == 1)
+        selected_scores = selected_scores.assign(**{V2_METHOD: selected_scores[BASE_METHOD]})
+        selected_raw = selected_raw.assign(**{V2_METHOD: selected_raw[BASE_METHOD]})
+        thresholds[V2_METHOD] = thresholds[BASE_METHOD]
+        windows[V2_METHOD] = windows[BASE_METHOD]
+        flags[V2_METHOD] = pd.Series(v2_values >= 1.0, index=injected.index).loc[requested].to_numpy()
 
     return {
         "real_kw": selected[target].astype(float),
@@ -355,6 +373,7 @@ def analyze_test_range(
         "split": split,
         "experimental": experimental,
         "flags": flags,
+        "floor_kw": floor_kw,
     }
 
 

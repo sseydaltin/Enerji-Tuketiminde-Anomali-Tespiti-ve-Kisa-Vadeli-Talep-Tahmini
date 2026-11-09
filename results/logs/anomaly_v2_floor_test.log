@@ -1,0 +1,13 @@
+Girdiler (SHA-256) yazıldı: 12 dosya
+A3-s2s-norm: pencere 3, eşik 3.5580; taban (train %0,5) = 0.1554 kW
+Enjeksiyonsuz test (5550 saat): taban kanalı 0 blok, A3 8 blok, v2 8 blok
+Korumalı ve korumasız taban bayrağı arasındaki fark (tüm kopyalar): 0 saat
+Yeniden üretim: A3-s2s-norm ana olay F1 = 0.3835 (resmî 0.3835); TAMAM
+scenario          method  event_f1_mean  event_f1_std  event_recall_mean  event_recall_std  event_precision_mean  event_precision_std  event_recall_spike_mean  event_recall_spike_std  event_recall_drop_mean  event_recall_drop_std  event_recall_level_shift_mean  event_recall_level_shift_std  event_recall_pattern_mean  event_recall_pattern_std
+    hard A3 + taban (v2)          0.460         0.059              0.463             0.062                 0.462                0.082                    0.217                   0.158                     1.0                  0.000                           0.35                         0.285                      0.396                     0.129
+    hard     A3-s2s-norm          0.318         0.073              0.286             0.073                 0.364                0.083                    0.217                   0.158                     0.0                  0.000                           0.35                         0.285                      0.396                     0.129
+    main A3 + taban (v2)          0.506         0.135              0.510             0.158                 0.507                0.125                    0.273                   0.300                     1.0                  0.000                           0.73                         0.277                      0.180                     0.185
+    main     A3-s2s-norm          0.384         0.170              0.358             0.180                 0.424                0.164                    0.273                   0.300                     0.1                  0.224                           0.73                         0.277                      0.180                     0.185
+scenario  n  event_f1_diff_mean  event_f1_diff_std  n_seeds_improved
+    hard  5               0.141              0.056                 5
+    main  5               0.123              0.072                 5

@@ -479,6 +479,8 @@ python -m src.evaluate_anomaly  --split test
 python -m src.anomaly_eval_audit        # iki olay metriği + arka plan alarmları + repro manifestosu (yalnız dev)
 python -m src.anomaly_floor_channel      # DENEYSEL S0 + taban kanalı (yalnız dev; final değil)
 python -m src.anomaly_supervised         # gözetimli sınıflandırıcı (sentetik eğitim; yalnız dev; kabul edilmedi)
+python -m src.anomaly_v2_floor_test --device cpu   # A3 + taban (v2), TEST SONRASI ek değerlendirme (final değil; docs/v2_entegrasyon_sonuc_ozeti.md)
+python -m src.plot_h3_type_recall        # H3 neden karşılanmadı figürü (docs/h3_neden_karsilanmadi.md)
 pytest tests/
 python -m streamlit run app/streamlit_app.py
 ```

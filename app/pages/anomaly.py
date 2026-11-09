@@ -12,6 +12,7 @@ from app.anomaly_services import (
     METHODS,
     MISSED,
     SEVERITY_TYPES,
+    V2_METHODS,
     analyze_test_range,
     anomaly_demo_paths,
     checkpoint_signature,
@@ -111,6 +112,11 @@ def _make_figure(result, anomaly_type, method):
                 y=experimental["floor_kw"], line_dash="dot", line_color=ACTUAL_COLOR, line_width=1, row=1, col=1,
                 annotation_text=f"Taban {number(experimental['floor_kw'])} kW", annotation_position="top right",
             )
+    if method in V2_METHODS and result.get("floor_kw") is not None:
+        figure.add_hline(
+            y=result["floor_kw"], line_dash="dot", line_color=ACTUAL_COLOR, line_width=1, row=1, col=1,
+            annotation_text=f"Taban {number(result['floor_kw'])} kW", annotation_position="top right",
+        )
     flagged = flagged_hours(result, method)
     figure.add_trace(go.Scatter(
         x=index[flagged], y=marker_scores.to_numpy()[flagged], mode="markers", name="İşaretlenen saat",
@@ -222,7 +228,8 @@ def _controls(frame, config, calibration):
     çalıştırılmadığı için seçilince dönem val-hold olur; bu yüzden tarih anahtarları kümeye bağlıdır.
     """
     method_col, type_col, scenario_col, severity_col, start_col, end_col = st.columns([4, 2, 2, 2, 2, 2])
-    options = list(METHODS) + (list(EXPERIMENTAL_METHODS) if calibration.get("experimental") else [])
+    options = list(METHODS) + list(V2_METHODS) + (
+        list(EXPERIMENTAL_METHODS) if calibration.get("experimental") else [])
     method = method_col.selectbox(
         "Yöntem", options=options, index=options.index(FINAL_METHOD),
         format_func=METHOD_LABELS.get, key="anomaly-method",
@@ -360,6 +367,13 @@ def render(dataset="household"):
             f"{METHOD_LABELS[method]} final sonuç değildir ve test kümesinde çalıştırılmaz. "
             "Bu yüzden burada doğrulama (val-hold) dönemi gösterilir; açıklama Detaylar'dadır."
         )
+    if method in V2_METHODS:
+        st.info(
+            f"{METHOD_LABELS[method]}: final sonuç değildir. Final A3 yöntemi aynen çalışır; ek olarak tüketim, eğitim "
+            "verisinin 0,5. yüzdeliği olan taban değerinin altında iki ardışık saat kalırsa alarm verilir. "
+            "Test kümesi bu kuraldan önce görülmüştü; bu yüzden testteki sonuç bağımsız değildir. Enjekte düşüş "
+            "0,05 kW olduğundan taban kuralı o olayları neredeyse tanım gereği yakalar."
+        )
     if start_day not in days or end_day not in days or end_day < start_day:
         st.error("Başlangıç ve bitiş, bitiş sonra gelecek şekilde dönem içinde tam 24 saatlik günler olmalı.")
         return
@@ -376,6 +390,7 @@ def render(dataset="household"):
             frame, config, start, end, inject,
             anomaly_type if inject else ANOMALY_TYPES[0],
             scenario, seed, calibration, checkpoint_signature(models_dir), models, severity, split,
+            v2=method in V2_METHODS,
         )
     except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError, KeyError) as error:
         st.error(f"Anomali analizi tamamlanamadı: {error}")

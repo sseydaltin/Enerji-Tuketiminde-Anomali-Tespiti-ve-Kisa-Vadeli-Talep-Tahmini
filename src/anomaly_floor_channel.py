@@ -31,11 +31,28 @@ SENSITIVITY_QUANTILE = 0.05        # duyarlılık senaryosu drop değeri (train)
 SCENARIOS = ("medium", "drop_sensitivity")
 
 
-def floor_flags(values, floor):
-    """f_t = (y_t < taban) VE (y_{t−1} < taban); ilk saatin geçmişi yoksa False. Yalnız geçmiş."""
-    low = np.asarray(values, dtype=float) < floor
+def floor_flags(values, floor, index=None, imputed=None):
+    """f_t = (y_t < taban) VE (y_{t−1} < taban); ilk saatin geçmişi yoksa False. Yalnız geçmiş.
+
+    İsteğe bağlı korumalar (v2 ve demo kullanır; varsayılan çağrı eski davranışla aynı):
+    - index [N] DatetimeIndex: iki kayıt arası tam 1 saat değilse (zaman boşluğu) önceki kayıt
+      "ardışık saat" sayılmaz;
+    - imputed [N] bool: doldurulmuş saatin değeri ölçüm olmadığı için "düşük" sayılmaz.
+    """
+    low = np.asarray(values, dtype=float) < floor                        # NaN → False
+    if imputed is not None:
+        low &= ~np.asarray(imputed, dtype=bool)
     previous = np.concatenate(([False], low[:-1]))
+    if index is not None:
+        index = pd.DatetimeIndex(index)
+        consecutive = np.concatenate(([False], np.diff(index) == pd.Timedelta(hours=1)))
+        previous &= consecutive
     return low & previous
+
+
+def train_floor(train, target):
+    """Taban = train'in doldurulmamış saatlerinin 0,5. yüzdeliği (pandas quantile 0,005; yalnız train)."""
+    return float(train.loc[train["is_imputed"] == 0, target].quantile(FLOOR_QUANTILE))
 
 
 def combined(a, flags, imputed):
