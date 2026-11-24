@@ -1,4 +1,4 @@
-"""A2: LSTM-Autoencoder'ı yalnız train'de eğitir (early stopping: val yeniden yapılandırma kaybı)."""
+"""A2 LSTM-AE / A7 TCN-AE (keşif): yalnız train'de eğitir (early stopping: val yeniden yapılandırma kaybı)."""
 
 import argparse
 from copy import deepcopy
@@ -15,7 +15,7 @@ from torch import nn
 
 from src.data.load import PROJECT_ROOT, load_config
 from src.data.split import chronological_split
-from src.models.autoencoder import LSTMAutoencoder, make_windows, reconstruct
+from src.models.autoencoder import build_autoencoder, make_windows, reconstruct
 from src.utils.console import setup_console
 from src.utils.results_io import resolve_path, upsert_csv
 from src.utils.seed import set_seed
@@ -42,14 +42,16 @@ def clean_windows(frame, target, window, mean, scale, exclude=None):
     return windows[keep].astype(np.float32)
 
 
-def train_autoencoder(df, config, exp_id, device_name, exclude_contamination=False):
-    """LSTM-AE'yi eğitir, checkpoint/geçmiş/eğri ve experiments satırını yazar.
+def train_autoencoder(df, config, exp_id, device_name, exclude_contamination=False, arch="lstm"):
+    """AE'yi (LSTM veya TCN) eğitir, checkpoint/geçmiş/eğri ve experiments satırını yazar.
 
-    Girdi: saatlik tablo, config (anomaly.ae), exp_id, cihaz, ablasyon bayrağı.
+    Girdi: saatlik tablo, config (lstm → anomaly.ae, tcn → anomaly.ae_tcn), exp_id,
+    cihaz, ablasyon bayrağı, mimari.
     Çıktı: (en iyi val kaybı, epoch geçmişi).
     Neden: Ölçek istatistikleri yalnız train'den; test kümesi hiç kullanılmaz.
     """
-    settings = config["anomaly"]["ae"]
+    settings = config["anomaly"]["ae" if arch == "lstm" else "ae_tcn"]
+    label = "LSTM-AE" if arch == "lstm" else "TCN-AE"
     set_seed(config["seed"])
     device = torch.device(device_name if torch.cuda.is_available() or device_name == "cpu" else "cpu")
     splits = chronological_split(df, config)
@@ -64,7 +66,7 @@ def train_autoencoder(df, config, exp_id, device_name, exclude_contamination=Fal
     X_train = torch.from_numpy(train_windows[:, :, None]).to(device)  # [N, 24, 1]
     X_val = torch.from_numpy(val_windows[:, :, None]).to(device)
 
-    model = LSTMAutoencoder(1, settings["hidden"], settings["latent"], settings["dropout"]).to(device)
+    model = build_autoencoder(settings).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=settings["lr"],
                                  weight_decay=settings["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -127,7 +129,7 @@ def train_autoencoder(df, config, exp_id, device_name, exclude_contamination=Fal
     figure, axis = plt.subplots(figsize=(8, 5))
     axis.plot([h["epoch"] for h in history], [h["train_loss"] for h in history], label="Train")
     axis.plot([h["epoch"] for h in history], [h["val_loss"] for h in history], label="Val (enjeksiyonsuz)")
-    axis.set_title(f"{exp_id} LSTM-AE öğrenme eğrisi (train/val)")
+    axis.set_title(f"{exp_id} {label} öğrenme eğrisi (train/val)")
     axis.set_xlabel("Epoch")
     axis.set_ylabel("Yeniden yapılandırma MSE (ölçekli, boyutsuz)")
     axis.legend()
@@ -135,15 +137,24 @@ def train_autoencoder(df, config, exp_id, device_name, exclude_contamination=Fal
     figure.savefig(figures_dir / f"{exp_id}_learning_curve.png", dpi=200)
     plt.close(figure)
 
+    if arch == "lstm":
+        shape = f"hidden={settings['hidden']}->latent={settings['latent']}"
+        hidden, layers = settings["hidden"], 2
+    else:
+        shape = (f"channels={settings['channels']}, dilations={settings['dilations']}, "
+                 f"latent_channels={settings['latent_channels']}, pool={settings['pool']}; "
+                 "KEŞİF (test sonrası eklendi, yalnız val)")
+        hidden, layers = settings["channels"], len(settings["dilations"])
     note = (
-        f"LSTM-AE window={window}; hidden={settings['hidden']}->latent={settings['latent']}; "
+        f"{label} window={window}; {shape}; "
         f"best_val_recon_mse={best_loss:.6f}; train_windows={len(train_windows)}; "
-        f"exclude={exclude}; device={device.type}; detection metrics in anomaly_val_results.csv"
+        f"exclude={exclude}; device={device.type}; detection metrics in "
+        + ("anomaly_val_results.csv" if arch == "lstm" else "A7_explore_val.csv")
     )
     upsert_csv(resolve_path(PROJECT_ROOT, config["paths"]["experiments_file"]), [{
-        "exp_id": exp_id, "date": date.today().isoformat(), "model": "LSTM-AE",
-        "feature_set": "A", "lookback": window, "hidden": settings["hidden"],
-        "layers": 2, "dropout": settings["dropout"], "lr": settings["lr"],
+        "exp_id": exp_id, "date": date.today().isoformat(), "model": label,
+        "feature_set": "A", "lookback": window, "hidden": hidden,
+        "layers": layers, "dropout": settings["dropout"], "lr": settings["lr"],
         "batch": batch_size, "epochs_run": len(history), "best_epoch": best_epoch,
         "seed": config["seed"], "val_mae": "", "val_rmse": "", "test_mae": "",
         "test_rmse": "", "train_time_s": elapsed, "note": note,
@@ -152,10 +163,12 @@ def train_autoencoder(df, config, exp_id, device_name, exclude_contamination=Fal
 
 
 def main():
-    """CLI: --exp, --exclude_contamination, --max_epochs (smoke test için), --device."""
+    """CLI: --exp, --arch, --exclude_contamination, --max_epochs (smoke test için), --device."""
     setup_console()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exp", default="A2")
+    parser.add_argument("--arch", choices=("lstm", "tcn"), default="lstm",
+                        help="lstm: A2 (config anomaly.ae), tcn: A7 keşif (config anomaly.ae_tcn)")
     parser.add_argument("--exclude_contamination", action="store_true",
                         help="config'teki olağandışı dönemi train'den çıkar")
     parser.add_argument("--max_epochs", type=int, default=None)
@@ -167,15 +180,16 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
+    settings = config["anomaly"]["ae" if args.arch == "lstm" else "ae_tcn"]
     if args.max_epochs is not None:
-        config["anomaly"]["ae"]["max_epochs"] = args.max_epochs
+        settings["max_epochs"] = args.max_epochs
     if args.latent is not None:
-        config["anomaly"]["ae"]["latent"] = args.latent
+        settings["latent" if args.arch == "lstm" else "latent_channels"] = args.latent
     if args.seed is not None:
         config["seed"] = args.seed
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
     best_loss, history = train_autoencoder(
-        df, config, args.exp, args.device, args.exclude_contamination
+        df, config, args.exp, args.device, args.exclude_contamination, args.arch
     )
     print(f"{args.exp}: en iyi val yeniden yapılandırma MSE {best_loss:.5f}, {len(history)} epoch")
 

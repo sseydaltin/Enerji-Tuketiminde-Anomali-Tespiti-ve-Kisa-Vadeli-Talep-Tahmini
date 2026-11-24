@@ -9,7 +9,10 @@ from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies
 from src.data.load import load_config
 from src.evaluate_anomaly import evaluate_split
 from src.models.anomaly_baselines import rolling_zscore, window_features
-from src.models.autoencoder import LSTMAutoencoder, make_windows, point_scores
+from src.models.autoencoder import (
+    LSTMAutoencoder, TCNAutoencoder, TemporalBlock, build_autoencoder, make_windows, point_scores,
+    receptive_field,
+)
 from src.train_autoencoder import clean_windows
 from src.utils.anomaly_metrics import evaluate_threshold, event_metrics, f1_max_threshold, runs
 
@@ -123,6 +126,35 @@ def test_autoencoder_shapes_and_point_score_averaging():
     scores = point_scores(errors, starts, length=5, window=3)
     # Saat 2 üç pencerede: konum 2 (3), konum 1 (5), konum 0 (7) → ortalama 5.
     np.testing.assert_allclose(scores, [1.0, 3.0, 5.0, 7.0, 9.0])
+
+
+def test_tcn_autoencoder_shapes_and_bottleneck():
+    config = load_config()
+    settings = config["anomaly"]["ae_tcn"]
+    model = build_autoencoder(settings)
+    assert isinstance(model, TCNAutoencoder)
+    assert model(torch.zeros((3, 24, 1))).shape == (3, 24, 1)
+    # Alıcı alan pencerenin tamamını kapsamalı; darboğaz girdiden küçük olmalı.
+    assert receptive_field(settings["kernel_size"], settings["dilations"]) >= settings["window"]
+    assert settings["latent_channels"] * settings["window"] // settings["pool"] < settings["window"]
+    with pytest.raises(ValueError):
+        model(torch.zeros((2, 25, 1)))       # 25, pool=4'e bölünmez
+
+
+def test_temporal_block_is_causal():
+    torch.manual_seed(0)
+    block = TemporalBlock(1, 4, kernel_size=3, dilation=2, dropout=0.0).eval()
+    x = torch.randn(1, 1, 20)
+    changed = x.clone()
+    changed[0, 0, 12:] += 5.0                # yalnız t ≥ 12 değişti
+    with torch.no_grad():
+        # t < 12 çıktıları gelecekteki değişiklikten etkilenmemeli.
+        torch.testing.assert_close(block(x)[..., :12], block(changed)[..., :12])
+
+
+def test_build_autoencoder_defaults_to_lstm_for_old_checkpoints():
+    settings = {"hidden": 64, "latent": 32, "dropout": 0.1}    # eski A2 ayarlarında arch yok
+    assert isinstance(build_autoencoder(settings), LSTMAutoencoder)
 
 
 def test_clean_windows_drop_imputed_and_excluded_period():
