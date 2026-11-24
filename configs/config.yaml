@@ -182,6 +182,24 @@ anomaly:
     scheduler_factor: 0.5
     scheduler_patience: 3
     grad_clip: 1.0
+  ae_tcn:                              # A7 (KEŞİF, test sonrası eklendi; yalnız val): TCN-Autoencoder
+    arch: tcn
+    window: 24
+    stride: 1
+    channels: 32                       # her TCN bloğunun kanal sayısı
+    kernel_size: 3
+    dilations: [1, 2, 4]               # alıcı alan 1 + 2·2·7 = 29 saat ≥ 24
+    latent_channels: 2                 # darboğaz: 2 kanal × 6 adım = 12 sayı (< 24 girdi)
+    pool: 4                            # 24 → 6 zaman adımı
+    dropout: 0.1
+    lr: 0.001                          # eğitim ayarları A2 ile aynı (adil kıyas)
+    weight_decay: 0.0
+    batch_size: 128
+    max_epochs: 60
+    early_stopping_patience: 8
+    scheduler_factor: 0.5
+    scheduler_patience: 3
+    grad_clip: 1.0
   threshold_percentiles: [95, 99, 99.5]  # A4: eşik duyarlılığı (yalnız val)
   residual:                            # A3: tahmin artığı dedektörü (h=1 mutlak hata)
     seq2seq: F10-opt                   # models/F10-opt_best.pt (seyda/model-fixes, yalnız train)

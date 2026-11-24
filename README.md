@@ -296,6 +296,7 @@ dosyasındadır; rapor ve sunumdaki sayılar bu dosyadan alınır.
 | A2 | **LSTM-Autoencoder** (encoder LSTM → gizli vektör → decoder LSTM) | Yeniden yapılandırma MSE |
 | A3 | **Tahmin artığı dedektörü** (2026-10-31 kararı: final tahmin modeli F13-ens; 1 adım ileri tahmin için F10-opt seq2seq, ikinci varyant F13-ens = 0,8·F10-opt + 0,2·F5-opt; ağırlıklar yalnız train ile eğitildi) | \|y − ŷ\| (kW) ve \|y − ŷ\| / std(saat × gün, yalnız train artıkları) |
 | A4 | Eşik duyarlılığı: val'de F1-max vs yüzdelik 95 / 99 / 99.5 | — |
+| A7 | **TCN-Autoencoder – KEŞİF** (2026-11-10, final test *sonrası* eklendi; yalnız val-dev / val-hold, test yok; final yöntemi değiştirmez). Nedensel genişletilmiş Conv1d blokları (dilation 1, 2, 4; alıcı alan 29 s) → 2 kanal × 6 adımlık havuzlama darboğazı → simetrik decoder. Sonuç: `results/tables/A7_explore_side_by_side.md` | Yeniden yapılandırma MSE |
 
 LSTM-AE bilinçli olarak **yalnız eğitim kümesinde** ve "çoğunlukla normal" varsayımıyla eğitilir. Eğitim verisinde gerçek anomaliler olabileceği (kontaminasyon) bir sınırlılıktır.
 
@@ -467,6 +468,8 @@ python -m src.weather_eda                 # sıcaklık – günlük tüketim (ya
 python -m src.train_forecast --model seq2seq --config configs/optuna_seq2seq_best.yaml --feature_set W1 --exp F10-opt-W1
 python -m src.analyze_forecast_errors --exp F3-a0.1 F5 F6   # saat, düzey, ufuk analizi
 python -m src.train_autoencoder --exp A2
+python -m src.train_autoencoder --arch tcn --exp A7   # A7 keşif (TCN-AE)
+python -m src.explore_tcn_ae                           # A7 yalnız val değerlendirmesi (test seçeneği yok)
 python -m src.models.baselines          # yalnız val
 python -m src.models.baselines --split test
 python -m src.models.forecast_baselines # yalnız Ridge, yalnız val

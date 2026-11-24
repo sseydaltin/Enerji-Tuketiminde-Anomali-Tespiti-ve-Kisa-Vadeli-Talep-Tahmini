@@ -30,7 +30,7 @@ from src.models.anomaly_baselines import (
     rolling_zscore,
     window_features,
 )
-from src.models.autoencoder import LSTMAutoencoder, make_windows, point_scores, reconstruct
+from src.models.autoencoder import build_autoencoder, make_windows, point_scores, reconstruct
 from src.models.residual_detector import (
     combine_predictions,
     load_forecaster,
@@ -91,7 +91,7 @@ def injection_seeds(config, split):
 
 
 def autoencoder_scores(checkpoint_path, series, window, relative_eps, device):
-    """Kayıtlı LSTM-AE ile her saat için iki skor üretir.
+    """Kayıtlı AE (LSTM veya TCN) ile her saat için iki skor üretir.
 
     Girdi: checkpoint yolu, saatlik kW serisi (geçmiş bağlam + değerlendirilen
     küme), pencere (24), göreli skorun payda alt sınırı (kW).
@@ -102,7 +102,7 @@ def autoencoder_scores(checkpoint_path, series, window, relative_eps, device):
     """
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     settings = checkpoint["settings"]
-    model = LSTMAutoencoder(1, settings["hidden"], settings["latent"], settings["dropout"])
+    model = build_autoencoder(settings)   # arch yoksa LSTM (A2); "tcn" ise A7
     model.load_state_dict(checkpoint["state_dict"])
     model.to(device)
     mean, scale = checkpoint["target_mean"], checkpoint["target_scale"]

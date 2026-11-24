@@ -1,4 +1,4 @@
-"""A2: 24 saatlik pencereler için LSTM-Autoencoder ve nokta skoru."""
+"""A2: 24 saatlik pencereler için LSTM-Autoencoder ve nokta skoru; A7: TCN-Autoencoder (keşif)."""
 
 import numpy as np
 import torch
@@ -33,6 +33,88 @@ class LSTMAutoencoder(nn.Module):
         decoded, _ = self.decoder_1(repeated)
         decoded, _ = self.decoder_2(self.dropout(decoded))   # [batch, 24, 64]
         return self.output(decoded)
+
+
+class TemporalBlock(nn.Module):
+    """TCN bloğu: iki genişletilmiş (dilated) nedensel Conv1d + artık bağlantı.
+
+    Girdi: [batch, in_channels, T]. Çıktı: [batch, out_channels, T].
+    Nedensel: sola (kernel−1)·dilation sıfır eklenir, çıktı t yalnız ≤ t
+    girdilerini görür. Artık bağlantı derin ağda gradyan akışını kolaylaştırır.
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size, dilation, dropout):
+        super().__init__()
+        self.left_pad = (kernel_size - 1) * dilation
+        self.conv_1 = nn.Conv1d(in_channels, out_channels, kernel_size, dilation=dilation)
+        self.conv_2 = nn.Conv1d(out_channels, out_channels, kernel_size, dilation=dilation)
+        self.dropout = nn.Dropout(dropout)
+        # Kanal sayısı değişiyorsa artık yol 1x1 conv ile eşlenir.
+        self.residual = (nn.Conv1d(in_channels, out_channels, 1)
+                         if in_channels != out_channels else nn.Identity())
+
+    def forward(self, x):
+        """[batch, C_in, T] → [batch, C_out, T]; uzunluk korunur."""
+        out = self.conv_1(nn.functional.pad(x, (self.left_pad, 0)))   # yalnız sola dolgu
+        out = self.dropout(torch.relu(out))
+        out = self.conv_2(nn.functional.pad(out, (self.left_pad, 0)))
+        out = self.dropout(torch.relu(out))
+        return torch.relu(out + self.residual(x))
+
+
+def receptive_field(kernel_size, dilations):
+    """TCN yığınının alıcı alanı (saat): 1 + 2·(k−1)·Σd (blok başına iki conv)."""
+    return 1 + 2 * (kernel_size - 1) * sum(dilations)
+
+
+class TCNAutoencoder(nn.Module):
+    """A7 (keşif): TCN encoder → zamansal havuzlama darboğazı → TCN decoder.
+
+    Şekiller (varsayılan: window 24, channels 32, latent_channels 2, pool 4):
+    [B, 24, 1] → TCN [B, 32, 24] → 1x1 conv [B, 2, 24] → AvgPool [B, 2, 6]
+    (12 sayı < 24 girdi: gerçek darboğaz) → Upsample [B, 2, 24] → TCN [B, 32, 24]
+    → 1x1 conv [B, 1, 24] → [B, 24, 1].
+    Neden: LSTM-AE'ye alternatif; konvolüsyonlar paralel çalışır, alıcı alan
+    dilation ile pencerenin tamamını kapsar. Havuzlama olmasaydı her saat kendi
+    kanalında kopyalanıp kimlik fonksiyonu kolayca öğrenilebilirdi.
+    """
+
+    def __init__(self, n_features, channels, latent_channels, kernel_size, dilations, pool, dropout):
+        super().__init__()
+        encoder_blocks, decoder_blocks = [], []
+        in_channels = n_features
+        for dilation in dilations:
+            encoder_blocks.append(TemporalBlock(in_channels, channels, kernel_size, dilation, dropout))
+            in_channels = channels
+        in_channels = latent_channels
+        for dilation in dilations:
+            decoder_blocks.append(TemporalBlock(in_channels, channels, kernel_size, dilation, dropout))
+            in_channels = channels
+        self.encoder = nn.Sequential(*encoder_blocks)
+        self.to_latent = nn.Conv1d(channels, latent_channels, 1)
+        self.pool = nn.AvgPool1d(pool)
+        self.upsample = nn.Upsample(scale_factor=pool, mode="nearest")
+        self.decoder = nn.Sequential(*decoder_blocks)
+        self.output = nn.Conv1d(channels, n_features, 1)
+        self.pool_size = pool
+
+    def forward(self, windows):
+        """Girdi: [batch, T, F] (LSTM-AE ile aynı). Çıktı: aynı şekilde yeniden yapılandırma."""
+        if windows.shape[1] % self.pool_size != 0:
+            raise ValueError("Pencere uzunluğu pool değerine tam bölünmeli.")
+        x = windows.transpose(1, 2)                 # Conv1d [batch, F, T] bekler
+        latent = self.pool(self.to_latent(self.encoder(x)))   # [batch, latent, T/pool]
+        decoded = self.decoder(self.upsample(latent))         # [batch, channels, T]
+        return self.output(decoded).transpose(1, 2)           # [batch, T, F]
+
+
+def build_autoencoder(settings):
+    """config ayarlarından AE kurar; `arch` yoksa LSTM (eski A2 checkpoint'leri)."""
+    if settings.get("arch", "lstm") == "tcn":
+        return TCNAutoencoder(1, settings["channels"], settings["latent_channels"],
+                              settings["kernel_size"], settings["dilations"],
+                              settings["pool"], settings["dropout"])
+    return LSTMAutoencoder(1, settings["hidden"], settings["latent"], settings["dropout"])
 
 
 def make_windows(values, window, stride=1):
