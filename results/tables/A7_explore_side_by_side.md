@@ -1,3 +1,5 @@
+# Keşif deneyi (test sonrası, yalnız val) — final sonuç değildir
+
 | method | val_dev_main_event_f1 | val_dev_main_event_recall | val_dev_main_event_precision | val_dev_main_f1 | val_dev_main_pr_auc | val_dev_hard_event_f1 | val_dev_hard_event_recall | val_dev_hard_event_precision | val_dev_hard_f1 | val_dev_hard_pr_auc | val_hold_main_event_f1 | val_hold_main_event_recall | val_hold_main_event_precision | val_hold_main_f1 | val_hold_main_pr_auc | val_hold_hard_event_f1 | val_hold_hard_event_recall | val_hold_hard_event_precision | val_hold_hard_f1 | val_hold_hard_pr_auc |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | A0 | 0.536±0.206 | 0.511±0.270 | 0.613±0.156 | 0.263±0.116 | 0.298±0.111 | 0.302±0.200 | 0.277±0.224 | 0.383±0.223 | 0.132±0.104 | 0.143±0.089 | 0.289±0.122 | 0.251±0.132 | 0.358±0.125 | 0.201±0.090 | 0.276±0.086 | 0.235±0.235 | 0.274±0.320 | 0.247±0.253 | 0.105±0.114 | 0.137±0.085 |
