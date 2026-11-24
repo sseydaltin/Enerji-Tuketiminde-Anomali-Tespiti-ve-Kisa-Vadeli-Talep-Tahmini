@@ -140,3 +140,39 @@ def evaluate_threshold(labels, scores, types, threshold, valid=None):
         result[f"recall_{kind}"] = float(predicted[mask].mean()) if mask.any() else np.nan
     result.update(event_metrics(types, flagged))
     return result
+
+
+def alarm_diagnostics(types, predicted, n_valid_hours):
+    """Kullanım odaklı alarm metrikleri: günlük yanlış alarm ve tespit gecikmesi.
+
+    Girdi: types [N] saat başına anomali tipi ("none" = normal), predicted [N]
+    bool (işaretlenen saatler, TAM zaman ekseninde), n_valid_hours = değerlendirilen
+    (skoru olan, doldurulmamış) saat sayısı.
+    Çıktı: sözlük
+      - false_alarms: hiçbir anomali saatiyle kesişmeyen alarm bloğu sayısı
+        (event_metrics'teki olay precision'ının paydasındaki "yanlış" bloklar),
+      - false_alarms_per_day: false_alarms / (n_valid_hours / 24),
+      - delays: yakalanan her olay için ilk işaretli saat − olay başlangıcı (saat; 0 = ilk saatte),
+      - detection_delay_mean / _median: delays özetleri (yakalanan olay yoksa NaN).
+    Neden: Olay F1 tek başına "günde kaç kez boşuna uyarılırım?" ve "anomaliyi
+    ne kadar geç fark ederim?" sorularını yanıtlamaz. Olay tanımı event_metrics
+    ile aynıdır (aynı tipten ardışık etiketli saatler).
+    """
+    types = np.asarray(types)
+    predicted = np.asarray(predicted, dtype=bool)
+    anomalous = types != "none"
+    false_alarms = sum(not anomalous[start:end].any() for start, end in runs(predicted))
+    delays = []
+    for kind in ANOMALY_TYPES:
+        for start, end in runs(types == kind):
+            hits = np.flatnonzero(predicted[start:end])     # olay içindeki işaretli saatler
+            if hits.size:
+                delays.append(int(hits[0]))                 # ilk işaretli saatin olay başına uzaklığı
+    days = n_valid_hours / 24
+    return {
+        "false_alarms": int(false_alarms),
+        "false_alarms_per_day": false_alarms / days if days else np.nan,
+        "delays": delays,
+        "detection_delay_mean": float(np.mean(delays)) if delays else np.nan,
+        "detection_delay_median": float(np.median(delays)) if delays else np.nan,
+    }
