@@ -303,7 +303,7 @@ Hiçbiri çalıştırılmadı. Test kümesi zaten bir kez kullanıldığı için
 > **Doğrulama notu:** Künyeler 2026-11-09'da OpenAlex/Crossref kayıtlarından (DOI ile) kontrol edildi. "doğrulanmalı" yazan alanlar ya kayıtlarda tutarsız ya da tam metinden teyit edilemedi.
 
 **Veri setleri**
-- [1] G. Hébrail and A. Bérard, "Individual household electric power consumption," UCI Machine Learning Repository, 2012. doi: 10.24432/C58K54.
+- [1] G. Hébrail and A. Bérard, "Individual household electric power consumption," UCI Machine Learning Repository, 2012. doi: 10.24432/C58K54. *(yıl doğrulanmalı (DataCite 2006, UCI sayfası 2012))*
 - [2] A. Trindade, "ElectricityLoadDiagrams20112014," UCI Machine Learning Repository, 2015. doi: 10.24432/C58C86.
 
 **IHEPC üzerinde tahmin**
