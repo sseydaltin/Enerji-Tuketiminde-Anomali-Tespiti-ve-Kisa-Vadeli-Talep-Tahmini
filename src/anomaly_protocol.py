@@ -233,11 +233,20 @@ def side_by_side(summaries):
     return pd.DataFrame(rows)
 
 
-def write_markdown(frame, path):
-    """DataFrame'i basit bir Markdown tablosu olarak yazar."""
+def write_markdown(frame, path, title=None, note=None):
+    """DataFrame'i basit bir Markdown tablosu olarak yazar.
+
+    Girdi: tablo, dosya yolu; isteğe bağlı başlık (# satırı, tablonun üstünde) ve
+    not (> satırı, tablonun altında).
+    Neden: "final sonuç değildir" gibi etiketler betikten verilir; betik yeniden
+    çalışınca elle eklenmiş metin silinmez (A7 tablosu, 2026-11-25).
+    """
     table = frame.astype(str)
-    lines = ["| " + " | ".join(table.columns) + " |", "|" + "---|" * len(table.columns)]
+    lines = [f"# {title}", ""] if title else []
+    lines += ["| " + " | ".join(table.columns) + " |", "|" + "---|" * len(table.columns)]
     lines += ["| " + " | ".join(row) + " |" for row in table.to_numpy()]
+    if note:
+        lines += ["", f"> {note}"]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

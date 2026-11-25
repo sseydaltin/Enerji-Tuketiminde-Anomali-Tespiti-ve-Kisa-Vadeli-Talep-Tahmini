@@ -44,6 +44,11 @@ from src.utils.seed import set_seed
 
 METHODS = ["A0", "A2", "A3-s2s-norm", "A7"]
 EXP_ID = "A7"
+# Markdown tablosunun başlığı ve notu betikten yazılır (yeniden çalışınca silinmesin).
+TABLE_TITLE = "Keşif deneyi (test sonrası, yalnız val) — final sonuç değildir"
+TABLE_NOTE = ("**Not (2026-11-25):** Val-hold sütunları yalnızca bilgi amaçlıdır. "
+              "Geliştirme protokolüne (§1) göre yeni yöntemler val-hold'da ölçülmemeliydi. "
+              "Bu nedenle A7'nin seçimi ve yorumu yalnızca val-dev'e dayanır.")
 
 
 def score_copies_with_a7(splits, config, split, scenario, fitted, device, sigma_table, a7_path):
@@ -143,7 +148,7 @@ def main():
     paired.to_csv(tables_dir / "A7_explore_val_paired.csv", index=False)
     table = side_by_side(summaries)
     table.to_csv(tables_dir / "A7_explore_side_by_side.csv", index=False)
-    write_markdown(table, tables_dir / "A7_explore_side_by_side.md")
+    write_markdown(table, tables_dir / "A7_explore_side_by_side.md", title=TABLE_TITLE, note=TABLE_NOTE)
     save_figure(summary, figures_dir)
 
     parts = []
