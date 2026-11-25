@@ -1,0 +1,16 @@
+ölçü,değer
+ham satır,1749494
+temiz satır,1641841
+bina,200
+ilk saat,2016-01-01 00:00:00
+son saat,2016-12-31 23:00:00
+ızgara saati (bina başına),8784
+bina başına gözlem: min / medyan / maks,3374 / 8610 / 8784
+toplam eksik bina-saat,114959
+"anomali oranı (temiz, saat)",0.02271596336064211
+anomalisi olan bina,200
+bina başına anomali oranı: medyan / maks,0.0199 / 0.1022
+anomali olayı,5811
+tek saatlik olay oranı,0.4784030287385992
+olay uzunluğu medyan / maks (saat),2 / 167
+bina medyan tüketimi: min / medyan / maks (kWh),0.16 / 76.98 / 4130.83

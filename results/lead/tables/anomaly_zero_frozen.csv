@@ -1,0 +1,5 @@
+etiket,n_saat,sifir_orani,sabit_orani,sifir_veya_sabit_orani,anomali_orani
+anomali,37296,0.0,0.6529386529386529,0.6529386529386529,
+normal,1604545,1.5580740957716986e-05,0.06543101003711332,0.06544222817060288,
+sıfır okumalar içinde anomali oranı,25,,,,0.0
+sabit okumalar içinde anomali oranı,129339,,,,0.18828041039438995

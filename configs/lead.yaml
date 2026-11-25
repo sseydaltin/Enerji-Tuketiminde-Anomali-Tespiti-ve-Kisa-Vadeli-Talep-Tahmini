@@ -1,0 +1,21 @@
+# =====================================================================
+# LEAD1.0 – Kaggle "energy-anomaly-detection" train.csv
+# 200 ticari bina, 2016, saatlik elektrik sayacı (meter_reading, kWh), elle konmuş 0/1 anomali etiketi.
+# Ek doğrulama veri seti (docs/veri_seti_lead1_degerlendirme.md). Household ve ELD sonuçlarına dokunmaz;
+# çıktılar ayrı klasörlere yazılır. Veri Kaggle'dan ELLE indirilir (yarışma kuralları kabul edilerek);
+# kodda kimlik bilgisi yoktur.
+# =====================================================================
+seed: 42
+
+paths:
+  raw_file: data/raw/lead/train.csv               # git'e girmez
+  processed_file: data/processed/lead_clean.parquet   # temizlenmiş tablo (git'e girmez)
+  tables_dir: results/lead/tables
+  figures_dir: results/lead/figures
+
+eda:
+  frozen_min_run: 3            # "sabit (donmuş) okuma": aynı değer en az 3 ardışık saat (aynı bina, boşluksuz)
+  review_anomaly_segments: 30  # etiket incelemesi: rastgele anomali segmenti sayısı
+  review_normal_windows: 10    # etiket incelemesi: rastgele normal pencere sayısı
+  review_context_hours: 48     # segmentin/pencerenin iki yanında gösterilen saat
+  normal_window_hours: 24      # normal pencerenin uzunluğu (içinde hiç anomali etiketi yok)
