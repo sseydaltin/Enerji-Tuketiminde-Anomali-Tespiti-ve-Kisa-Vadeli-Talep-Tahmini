@@ -45,3 +45,6 @@ Thumbs.db
 # Kayıtlı val/test tahminleri (yeniden üretilebilir, büyük)
 results/predictions/
 results/eld/predictions/
+
+# Gözetimli anomali dedektörü (sentetik eğitim): python -m src.anomaly_supervised ile yeniden üretilir
+models/anomaly_supervised/

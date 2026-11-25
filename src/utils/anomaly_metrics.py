@@ -25,7 +25,26 @@ def f1_max_threshold(labels, scores):
     return float(thresholds[np.nanargmax(f1)])
 
 
-def event_f1_max_threshold(copies, quantiles):
+def fill_alarm_gaps(flagged, max_gap):
+    """İki alarm bloğu arasındaki en çok `max_gap` saatlik boşluğu doldurur (alarm birleştirme).
+
+    Girdi: flagged [N] bool (TAM zaman ekseni), max_gap ≥ 0 saat. Çıktı: yeni [N] bool dizi.
+    Örnek (max_gap=1): [1, 0, 1, 0, 0, 1] → [1, 1, 1, 0, 0, 1].
+    Neden: Bir olay sırasında skor bir saatliğine eşiğin altına inerse iki ayrı alarm bloğu
+    oluşur; birleştirme gereksiz blok sayısını azaltır. Etiketler ve olay tanımı değişmez.
+    Dizinin başındaki/sonundaki boşluklar doldurulmaz (iki yanında alarm olmalı).
+    """
+    flagged = np.asarray(flagged, dtype=bool).copy()
+    if max_gap <= 0:
+        return flagged
+    blocks = runs(flagged)
+    for (_, end), (next_start, _) in zip(blocks[:-1], blocks[1:]):
+        if next_start - end <= max_gap:
+            flagged[end:next_start] = True
+    return flagged
+
+
+def event_f1_max_threshold(copies, quantiles, max_gap=0):
     """Birleşik (tüm kopyalar) olay F1'ini en büyük yapan eşiği aday ızgarasında arar.
 
     Girdi: copies = [(types [N], scores [N], valid [N]), ...] (her biri TAM zaman
@@ -35,7 +54,8 @@ def event_f1_max_threshold(copies, quantiles):
     Neden: Olay F1 eşiğe göre basamaklıdır ve kapalı bir çözümü yoktur; ızgara
     araması yapılır. Birleşik: yakalanan olaylar / tüm olaylar ve doğru alarm
     blokları / tüm bloklar kopyalar üzerinden toplanır. Eşitlikte YÜKSEK eşik
-    seçilir (daha az alarm).
+    seçilir (daha az alarm). max_gap > 0 ise alarm maskesine fill_alarm_gaps
+    uygulanır (varsayılan 0 = eski davranış aynen).
     """
     pooled = np.concatenate([scores[valid] for _, scores, valid in copies])
     candidates = np.unique(np.quantile(pooled, quantiles))
@@ -45,6 +65,7 @@ def event_f1_max_threshold(copies, quantiles):
         for types, scores, valid in copies:
             with np.errstate(invalid="ignore"):
                 flagged = (scores >= threshold) & valid
+            flagged = fill_alarm_gaps(flagged, max_gap) & valid      # geçersiz saat işaretlenmez
             metrics = event_metrics(types, flagged)
             if metrics["n_events"]:                      # olaysız kopyada recall NaN'dır
                 n_events += metrics["n_events"]
@@ -102,6 +123,32 @@ def event_metrics(types, predicted):
         hits = [hit for (k, _, _), hit in zip(events, detected) if k == kind]
         result[f"event_recall_{kind}"] = float(np.mean(hits)) if hits else np.nan
     return result
+
+
+def event_count_metrics(types, predicted):
+    """Olay SAYIMLI precision/recall/F1 (event_metrics'teki blok-precision'a EK, onun yerine değil).
+
+    Girdi: types [N] ("none" = normal), predicted [N] bool (TAM zaman ekseni).
+    Sayım (birebir alarm–olay eşleştirmesi YAPILMAZ):
+      TP = en az bir saati işaretlenen olay sayısı (event_metrics'teki olay recall'üyle aynı),
+      FN = hiç işaretlenmeyen olay sayısı,
+      FP = hiçbir anomali saatiyle kesişmeyen alarm bloğu (alarm_diagnostics'teki false_alarms).
+      P = TP / (TP + FP), R = TP / (TP + FN).
+    Örnekler: bir alarm iki olayı kapsarsa TP = 2, FP = 0 (birebir eşleştirmede TP 1, FN 1 olurdu);
+    bir olay üç alarm bloğu üretirse TP = 1, FP = 0 (birebir eşleştirmede fazla iki blok FP olurdu).
+    Neden: event_metrics'in precision'ı alarm BLOKLARINI sayar; bir olayın içinde parçalanan
+    alarmlar birden çok "doğru blok" yazar ve precision'ı şişirir. Burada her olay bir kez sayılır.
+    Bu standart ya da tartışmasız doğru bir metrik değildir; block_f1 ile yan yana raporlanır.
+    """
+    base = event_metrics(types, predicted)
+    false_alarms = alarm_diagnostics(types, predicted, 1)["false_alarms"]
+    detected = int(round(base["event_recall"] * base["n_events"])) if base["n_events"] else 0
+    precision = detected / (detected + false_alarms) if detected + false_alarms else 0.0
+    recall = base["event_recall"]
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return {"count_precision": precision, "count_recall": recall, "count_f1": f1,
+            "detected_events": detected, "missed_events": base["n_events"] - detected,
+            "false_alarm_blocks": false_alarms}
 
 
 def evaluate_threshold(labels, scores, types, threshold, valid=None):

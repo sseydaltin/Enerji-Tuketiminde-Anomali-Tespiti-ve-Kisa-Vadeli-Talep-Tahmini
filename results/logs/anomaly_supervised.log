@@ -1,0 +1,29 @@
+00:32:08 [+ 0.0 dk] [1/6] manifest denetimi tamam
+00:32:17 [+ 0.1 dk]    winter_dev: eğitim kopyası 1/8 (seed 7001)
+00:32:17 [+ 0.2 dk]    winter_dev: eğitim kopyası 2/8 (seed 7002)
+00:32:18 [+ 0.2 dk]    winter_dev: eğitim kopyası 3/8 (seed 7003)
+00:32:19 [+ 0.2 dk]    winter_dev: eğitim kopyası 4/8 (seed 7004)
+00:32:20 [+ 0.2 dk]    winter_dev: eğitim kopyası 5/8 (seed 7005)
+00:32:21 [+ 0.2 dk]    winter_dev: eğitim kopyası 6/8 (seed 7006)
+00:32:22 [+ 0.2 dk]    winter_dev: eğitim kopyası 7/8 (seed 7007)
+00:32:23 [+ 0.2 dk]    winter_dev: eğitim kopyası 8/8 (seed 7008)
+00:32:23 [+ 0.2 dk] [2/6] winter_dev: fit satırı 56560, anomali oranı 0.027; veri üretimi 7 s
+00:32:23 [+ 0.3 dk] [3/6] winter_dev LR: fit 0.2 s, iç doğrulama birleşik block_f1 0.594, eşik 0.9456
+00:32:28 [+ 0.3 dk] [3/6] winter_dev RF: fit 4.5 s, iç doğrulama birleşik block_f1 0.923, eşik 0.8632
+00:32:31 [+ 0.4 dk] [3/6] winter_dev HGB: fit 2.1 s, iç doğrulama birleşik block_f1 0.971, eşik 0.9323
+00:32:37 [+ 0.5 dk]    summer_dev: eğitim kopyası 1/8 (seed 7001)
+00:32:38 [+ 0.5 dk]    summer_dev: eğitim kopyası 2/8 (seed 7002)
+00:32:39 [+ 0.5 dk]    summer_dev: eğitim kopyası 3/8 (seed 7003)
+00:32:40 [+ 0.5 dk]    summer_dev: eğitim kopyası 4/8 (seed 7004)
+00:32:40 [+ 0.5 dk]    summer_dev: eğitim kopyası 5/8 (seed 7005)
+00:32:41 [+ 0.6 dk]    summer_dev: eğitim kopyası 6/8 (seed 7006)
+00:32:42 [+ 0.6 dk]    summer_dev: eğitim kopyası 7/8 (seed 7007)
+00:32:42 [+ 0.6 dk]    summer_dev: eğitim kopyası 8/8 (seed 7008)
+00:32:42 [+ 0.6 dk] [2/6] summer_dev: fit satırı 33576, anomali oranı 0.027; veri üretimi 6 s
+00:32:43 [+ 0.6 dk] [3/6] summer_dev LR: fit 0.1 s, iç doğrulama birleşik block_f1 0.505, eşik 0.9369
+00:32:46 [+ 0.6 dk] [3/6] summer_dev RF: fit 2.3 s, iç doğrulama birleşik block_f1 0.560, eşik 0.9646
+00:32:48 [+ 0.7 dk] [3/6] summer_dev HGB: fit 1.8 s, iç doğrulama birleşik block_f1 0.625, eşik 0.9037
+00:32:48 [+ 0.7 dk] [4/6] DONDURULDU: seçilen aile HGB (iç doğrulama ortalaması); dev değerlendirmesi başlıyor
+00:33:14 [+ 1.1 dk] [5/6] dev değerlendirildi: winter_dev
+00:33:38 [+ 1.5 dk] [5/6] dev değerlendirildi: summer_dev
+00:33:38 [+ 1.5 dk] [6/6] bitti; seçilen HGB; kararlar [('SUP-LR', False, False), ('SUP-RF', False, False), ('SUP-HGB', False, False), ('S0+taban', True, False)]

@@ -187,7 +187,9 @@ def verify_against_saved_val(results, config):
         saved = np.load(predictions_dir / f"{exp_id}_val.npz")
         rows.append({
             "exp_id": exp_id,
-            "same_windows": bool(np.array_equal(pd.DatetimeIndex(times).asi8, saved["target_times"])),
+            "same_windows": bool(np.array_equal(
+                pd.DatetimeIndex(times).as_unit("ns").asi8, saved["target_times"]
+            )),
             "max_abs_diff_true": float(np.abs(y_true - saved["y_true"]).max()),
             "max_abs_diff_pred_kw": float(np.abs(y_pred - saved["y_pred"]).max()),
         })
@@ -200,7 +202,7 @@ def summarize_levels(results, mape_min_y, groups=None):
     for group, exp_ids in (GROUPS if groups is None else groups).items():
         for exp_id in exp_ids:
             y_true, y_pred, times = results[exp_id]
-            for level, metrics in level_metrics(y_true, y_pred, pd.DatetimeIndex(times).asi8,
+            for level, metrics in level_metrics(y_true, y_pred, pd.DatetimeIndex(times),
                                                 mape_min_y).items():
                 rows.append({"group": group, "exp_id": exp_id, "level": level, **metrics})
     per_run = pd.DataFrame(rows)

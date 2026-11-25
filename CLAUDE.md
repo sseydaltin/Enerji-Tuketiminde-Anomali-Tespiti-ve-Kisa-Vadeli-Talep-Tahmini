@@ -7,7 +7,7 @@ Bu dosya, bu repoda çalışan Claude Code (ve diğer yapay zekâ asistanları) 
 - **Konu:** Enerji tüketiminde anomali tespiti ve kısa vadeli (24 saat) talep tahmini
 - **Ekip:** Dilara YILDIRIM (veri hattı, tahmin, demo) · Şeyda ALTIN (EDA, literatür, anomali, görselleştirme)
 - **Veri:** UCI Individual Household Electric Power Consumption (dakikalık → saatlik)
-- **Modeller:** LSTM, GRU (tahmin, 168 s → 24 s) · LSTM-Autoencoder + GRU artık dedektörü (anomali)
+- **Modeller:** LSTM, GRU, Seq2Seq-LSTM (tahmin, 24 s ufuk; final F13-ens, lookback 48) · LSTM-Autoencoder + tahmin artığı dedektörü (anomali; final artık F10-opt Seq2Seq'ten, GRU değil)
 - **Referanslar:** Persistence, Seasonal Naive 24/168, Ridge, MLP · Hareketli z-skoru, Isolation Forest
 - **Süre:** 4 gün. Basit, okunabilir ve savunulabilir çözüm > karmaşık çözüm.
 

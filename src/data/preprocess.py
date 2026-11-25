@@ -41,8 +41,11 @@ def fill_missing_hours(df, max_gap, lag, split_boundaries=None):
     protected = np.zeros(len(result), dtype=bool)
 
     for boundary in boundaries:
-        distance = np.abs((result.index - boundary).asi8)
-        protected |= distance <= pd.Timedelta(hours=max_gap).value
+        # Timedelta karşılaştırması birimden bağımsızdır; asi8 (ns/µs) ile
+        # Timedelta.value (her zaman ns) karşılaştırılırsa pandas 3'te koruma
+        # bölgesi ±3 saat yerine ±125 gün olur.
+        distance = np.abs(result.index - boundary)
+        protected |= distance <= pd.Timedelta(hours=max_gap)
 
     segment_starts = [0]
     segment_starts.extend(

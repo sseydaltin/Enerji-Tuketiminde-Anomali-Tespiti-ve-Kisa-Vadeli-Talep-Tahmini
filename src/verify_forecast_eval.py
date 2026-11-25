@@ -136,7 +136,7 @@ def main():
         data = np.load(path)
         rows.append(compare_to_reference(
             f"kayıt: {path.stem}",
-            pd.DatetimeIndex(data["target_times"]),
+            pd.to_datetime(data["target_times"], unit="ns"),   # kayıt sözleşmesi: int64 ns
             data["y_true"],
             ref_times,
             ref_y,

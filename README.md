@@ -47,6 +47,10 @@ F13-ens MAE'de birinci; RMSE, R² ve günlük toplamda XGBoost daha iyi. Proje h
 
 Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomali tespitini kolaylaştırıyor. Şebeke testindeki bozulmanın çoğu Aralık'tan (Noel) geliyor. Protokol: `docs/eld_protokol.md`.
 
+**Test sonrası geliştirme, son durum (2026-11-09; final değil, bağımsız doğrulama yok):** Denenip **kabul edilmeyenler**: Aşama 3 S1–S5, E1, C1/C2, kanal başına OR. **Kabul edilen tek deneysel ek**: S0 + fiziksel taban kanalı (`docs/anomaly_floor_channel.md`, `configs/experimental_s0_floor.yaml`). Kış-dev / yaz-dev block_f1 0,551 / 0,535 → 0,644 / 0,604. Kazancın tamamı, train minimumunun altındaki enjekte tam kesintilerden (0,05 kW) geliyor; drop değeri tabanın üstünde olunca kazanç sıfır. Final anomali yöntemi A3-s2s-norm ve demo değişmedi. **Gözetimli sınıflandırıcı** (sentetik eğitim, HGB; `docs/anomaly_supervised.md`): dev block_f1 0,668 / 0,588, kabul edilmedi (kış spike kaybı). **F1 ≥ 0,70 hedefine hiçbir değerlendirmede ulaşılamadı**; UCI hanede hiç kullanılmamış zaman bölümü olmadığı için bağımsız doğrulama da yapılamıyor.
+
+**Test sonrası geliştirme (final sonuç değildir; yalnız kış-dev + yaz-dev):** Aşama 3 kısa olay sinyalleri (`docs/anomaly_short_event_experiments.md`): hiçbir aday kabul edilmedi, A3-s2s-hmean referansı korundu. Değerlendirme denetimi (`python -m src.anomaly_eval_audit`, `docs/inceleme_ve_iyilestirme_plani_2026-11-08.md`): "olay F1" alarm **bloklarını** sayan precision kullanır (`block_f1`); her olayı bir kez sayan olay sayımlı tanım (`count_f1`) ayrıca raporlanır ve değerler daha düşüktür. Enjeksiyonsuz veride de alarm veren bloklar "etiketsiz arka plan alarmı" olarak ayrıca sayılır.
+
 ---
 
 ## İçindekiler
@@ -72,8 +76,8 @@ Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomal
 |---|---|---|
 | **Veri seti** | **UCI Individual Household Electric Power Consumption** (ana). ElectricityLoadDiagrams20112014 ek deney olarak şebeke düzeyinde (160 müşteri toplamı) aynı ayarlarla değerlendirildi (`docs/eld_protokol.md`). | Tek hane, ~4 yıl, dakikalık ölçüm (~2,07 milyon satır), alt sayaç (sub-metering) bilgisi var. Saatliğe indirgenince (~34 bin saat) CPU/Colab'da 4 günde eğitilebilir. ElectricityLoadDiagrams 370 müşteri × 15 dk ile 4 gün için fazla büyük ve müşteri başlangıçları (sıfır dolgular) ek temizlik gerektirir. |
 | **Zaman çözünürlüğü** | Dakikalık → **saatlik** (ortalama kW = saatlik kWh) | Gürültüyü azaltır, kısa vadeli talep tahmininin pratik ölçeği; eğitim süresi makul. |
-| **Görev 1 – Tahmin** | Geçmiş **168 saat** (1 hafta) → gelecek **24 saat** (çok çıktılı, doğrudan tahmin) | Günlük ve haftalık periyodikliği yakalar; "gün öncesi" talep tahmini pratik bir senaryodur. |
-| **Görev 2 – Anomali** | **LSTM-Autoencoder** (yeniden yapılandırma hatası) + **GRU tahmin artığı** (residual) yaklaşımı | İki görevi tek bir hatta bağlar; özgün değerin bir parçası. |
+| **Görev 1 – Tahmin** | Planda geçmiş 168 saat → gelecek **24 saat** (çok çıktılı, doğrudan tahmin). **Final modellerde (F10-opt, F5-opt, F13-ens) lookback = 48 saat** (F8'de val ile seçildi; checkpoint metadata'sı) | Günlük ve haftalık periyodikliği yakalar; "gün öncesi" talep tahmini pratik bir senaryodur. Haftalık bilgi SN168 karşılaştırmasıyla raporlanır. |
+| **Görev 2 – Anomali** | **LSTM-Autoencoder** (A2, yeniden yapılandırma hatası) + **tahmin artığı** dedektörü (A3). Planda GRU artığı vardı; **final A3 artığı F10-opt Seq2Seq-LSTM'den** gelir, GRU anomalide kullanılmaz. Final yöntem **A3-s2s-norm** (h=1 artığı / OOF std); test sonrası geliştirme referansı **A3-s2s-hmean** (24 ufuk ortalaması) — ikisi farklı yöntemdir | İki görevi tek bir hatta bağlar; özgün değerin bir parçası. |
 | **Anomali etiketi sorunu** | Veri setinde gerçek anomali etiketi **yok** → doğrulama ve test kümelerine **kontrollü sentetik anomali enjeksiyonu** (bilinen etiket) + gerçek veride en yüksek skorlu olayların nitel incelemesi | Precision/Recall/F1/PR-AUC hesaplanabilmesi için zorunlu. Sınırlılık olarak raporlanır. |
 | **Veri bölme** | **Zamansal (kronolojik)** bölme, rastgele karıştırma yok | Zaman serisinde geleceği görmek veri sızıntısıdır (Yönerge §7). |
 | **Ana modeller** | LSTM, GRU (tahmin) · LSTM-Autoencoder (anomali) | Konu başlığında istenen aile; kapı mekanizmaları uzun bağımlılıkları öğrenir. |
@@ -475,6 +479,9 @@ python -m src.models.baselines --split test
 python -m src.models.forecast_baselines # yalnız Ridge, yalnız val
 python -m src.evaluate_forecast --split test
 python -m src.evaluate_anomaly  --split test
+python -m src.anomaly_eval_audit        # iki olay metriği + arka plan alarmları + repro manifestosu (yalnız dev)
+python -m src.anomaly_floor_channel      # DENEYSEL S0 + taban kanalı (yalnız dev; final değil)
+python -m src.anomaly_supervised         # gözetimli sınıflandırıcı (sentetik eğitim; yalnız dev; kabul edilmedi)
 pytest tests/
 python -m streamlit run app/streamlit_app.py
 ```

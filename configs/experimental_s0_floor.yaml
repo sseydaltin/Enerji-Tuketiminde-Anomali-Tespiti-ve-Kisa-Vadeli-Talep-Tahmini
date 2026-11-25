@@ -1,0 +1,16 @@
+# DENEYSEL — geliştirme verisinde (kış-dev + yaz-dev) değerlendirildi; final yöntem DEĞİLDİR.
+# Final anomali yöntemi A3-s2s-norm'dur (configs/config.yaml, results/tables/anomaly_protocol_selection.csv).
+# Kanıt ve sınırlar: docs/anomaly_floor_channel.md. Drop kazancı, enjekte değerin (0,05 kW) taban
+# altında kalmasına bağlıdır; drop değeri tabanın üstünde olunca kazanç sıfırdır. Bağımsız doğrulama yok.
+# Çalıştırma: python -m src.anomaly_floor_channel   (bu değerler src/anomaly_floor_channel.py ile aynıdır)
+experimental_s0_floor:
+  status: "deneysel — geliştirme verisinde değerlendirildi"
+  short_channel:
+    score: A3-s2s-hmean          # 24 ufuk ortalaması |artık| / OOF std(saat × gün), / q99 (train OOF)
+    smoothing_window: 1
+    threshold_scaled: 1.1636431513354957   # Aşama 3 S0 seçimi
+  floor_channel:
+    floor_quantile: 0.005        # taban = train'in doldurulmamış saatlerinin 0,5. yüzdeliği (yalnız train)
+    consecutive_hours: 2         # y_t ve y_{t-1} tabanın altında (yalnız geçmiş)
+  alarm_rule: "short_channel OR floor_channel"
+  sensitivity_drop_quantile: 0.05  # yalnız rapor: drop değeri = train 5. yüzdeliği

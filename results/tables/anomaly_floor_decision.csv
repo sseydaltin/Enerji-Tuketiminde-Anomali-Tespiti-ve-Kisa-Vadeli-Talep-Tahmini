@@ -1,0 +1,2 @@
+method,both_block_f1_diff,both_block_f1_diff_se,both_count_f1_diff,c1_block_f1_gain_beyond_2se,c2_block_f1_gain_both_seasons,c3_false_alarm_increase_le_0.05,c4_level_pattern_loss_le_0.05,c5_count_f1_gain,accepted,c7_spike_loss_le_0.05,c8_sensitivity_no_harm
+S0+taban,0.08102194463182405,0.01747207228895713,0.0839229991552646,True,True,True,True,True,True,True,True

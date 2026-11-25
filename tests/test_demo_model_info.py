@@ -39,7 +39,11 @@ def test_model_info_reads_metadata_safely_without_running_models(monkeypatch):
 
     info = load_model_info()
 
-    assert len(load_calls) == 4
+    # ELD (Şebeke) ağırlıkları isteğe bağlıdır ve repoya girmez (README §4.13); yoksa sayfa
+    # bunu "kullanılamıyor" diye gösterir. Bu yüzden beklenen okuma sayısı yerel dosyalara göre.
+    eld_present = sum((root / f"models/eld/{name}_best.pt").is_file()
+                      for name in ("ELD-F5-opt", "ELD-F10-opt"))
+    assert len(load_calls) == 2 + eld_present
     assert all(call == {"map_location": "cpu", "weights_only": True} for call in load_calls)
     f5 = info["checkpoints"]["F5-opt"]
     f10 = info["checkpoints"]["F10-opt"]

@@ -1,0 +1,5 @@
+method,both_block_f1_diff,both_block_f1_diff_se,both_count_f1_diff,c1_block_f1_gain_beyond_2se,c2_block_f1_gain_both_seasons,c3_false_alarm_increase_le_0.05,c4_level_pattern_loss_le_0.05,c5_count_f1_gain,accepted,c7_spike_loss_le_0.05,target_0.70_both_seasons,chosen_family
+SUP-LR,0.004471834471145192,0.013209406631915659,0.013970635314872588,False,False,True,True,True,False,False,False,False
+SUP-RF,-0.1279661005603134,0.03726770867125181,-0.10384446671186859,False,False,True,False,False,False,False,False,False
+SUP-HGB,0.08483207036855249,0.028704500315730092,0.05420632763777325,True,True,True,True,True,False,False,False,True
+S0+taban,0.08102194463182405,0.01747207228895713,0.0839229991552646,True,True,True,True,True,True,True,False,False

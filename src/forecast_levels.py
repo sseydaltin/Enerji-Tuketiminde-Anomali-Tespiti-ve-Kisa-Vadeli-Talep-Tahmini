@@ -29,12 +29,16 @@ MODELS = {
 def level_metrics(y_true, y_pred, times, mape_min_y):
     """Bir tahmin dosyası için üç seviyenin metrikleri.
 
-    Girdi: y_true, y_pred [N, 24] (kW), ilk hedef saatleri [N], MAPE alt sınırı (kW).
+    Girdi: y_true, y_pred [N, 24] (kW), datetime çözünürlüğü korunmuş ilk hedef
+    saatleri [N] ve MAPE alt sınırı (kW). Birimsiz tamsayı zamanlar kabul edilmez.
     Çıktı: {seviye: metrik sözlüğü} — (c)'de birim kWh, gün sayısı n.
     Neden: Günlük toplamda yalnız gece yarısı başlayan pencereler alınır; her
     takvim günü bir kez sayılır ve tahmin bir önceki günün 23:00'üne kadarki
     veriyle yapılmıştır. Doldurulmuş hedefli pencereler kayıtlı dosyada zaten yoktur.
     """
+    time_values = np.asarray(times)
+    if np.issubdtype(time_values.dtype, np.integer):
+        raise TypeError("times birimleri korunmuş datetime değerleri olmalı.")
     midnight = pd.DatetimeIndex(times).hour == 0
     daily_true, daily_pred = y_true[midnight].sum(axis=1), y_pred[midnight].sum(axis=1)
     return {
@@ -59,7 +63,8 @@ def main():
         for exp_id in exp_ids:
             data = np.load(predictions_dir / f"{exp_id}_val.npz")
             for level, metrics in level_metrics(data["y_true"], data["y_pred"],
-                                                data["target_times"], mape_min_y).items():
+                                                pd.to_datetime(data["target_times"], unit="ns"),
+                                                mape_min_y).items():
                 rows.append({"model": label, "exp_id": exp_id, "level": level, **metrics})
     per_run = pd.DataFrame(rows)
     per_run.to_csv(resolve_path(PROJECT_ROOT, "results/tables/forecast_levels_val_per_seed.csv"),

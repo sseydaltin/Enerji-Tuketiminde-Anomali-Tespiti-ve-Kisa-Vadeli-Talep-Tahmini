@@ -172,7 +172,8 @@ def fit_detectors(splits, config, device, std_source="in_sample"):
     multi_std = {h: residual_std_table(train, train_multi[h], target) for h in train_multi.columns}
     return {"forest": forest, "forecasters": forecasters, "std_tables": std_tables,
             "multi_std": multi_std, "in_sample_std_tables": in_sample_std_tables,
-            "train_predictions": train_predictions, "oof_predictions": oof}
+            "train_predictions": train_predictions, "oof_predictions": oof,
+            "train_multi_predictions": train_multi}   # [T, 24]; OOF'ta kat dışı saatler NaN
 
 
 def residual_scores(full, config, fitted, device):

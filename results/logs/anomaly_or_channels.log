@@ -1,0 +1,11 @@
+00:08:54 [+ 0.0 dk] [1/5] manifest denetimi tamam
+00:09:22 [+ 0.5 dk] [2/5] hazırlandı: winter_dev
+00:09:41 [+ 0.8 dk] [2/5] hazırlandı: summer_dev
+00:09:41 [+ 0.8 dk] değerlendirildi: OR-A (T2 = 7.052)
+00:09:41 [+ 0.8 dk] [3/5] Aşama A kabul: False
+00:09:41 [+ 0.8 dk] [4/5] Aşama B aday ×1.25: birleşik block_f1 0.5607
+00:09:41 [+ 0.8 dk] [4/5] Aşama B aday ×1.5: birleşik block_f1 0.5591
+00:09:41 [+ 0.8 dk] [4/5] Aşama B aday ×2.0: birleşik block_f1 0.5507
+00:09:41 [+ 0.8 dk] değerlendirildi: OR-B (T2 = 8.816)
+00:09:41 [+ 0.8 dk] [4/5] Aşama B (T2 = 8.816) kabul: False
+00:09:41 [+ 0.8 dk] [5/5] tablolar yazıldı; kabul: [('OR-A', False), ('OR-B', False)]
