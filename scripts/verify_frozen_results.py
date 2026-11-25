@@ -69,10 +69,18 @@ HASHED = [
     "docs/final_test_protokolu.md",
     "docs/eld_protokol.md",
     "configs/*.yaml",
+    "experiments/archive/configs/*.yaml",
     "models/*.pt",
     "models/eld/*.pt",
     "data/processed/*.parquet",
 ]
+
+
+# Yeniden yapılandırmada BİLEREK taşınan izlenen dosyalar: eski yol → yeni yol.
+# compare, eski yoldaki özeti yeni yoldaki özetle karşılaştırır (içerik aynı olmalı).
+MOVED_FILES = {
+    "configs/experimental_s0_floor.yaml": "experiments/archive/configs/experimental_s0_floor.yaml",
+}
 
 
 def first_module(*names):
@@ -387,7 +395,8 @@ def compare(ref_dir, new_dir):
     new_manifest = json.loads((new / "manifest.json").read_text(encoding="utf-8"))
     rows = []
 
-    ref_hashes, new_hashes = ref_manifest["hashes"], new_manifest["hashes"]
+    ref_hashes = {MOVED_FILES.get(path, path): digest for path, digest in ref_manifest["hashes"].items()}
+    new_hashes = new_manifest["hashes"]
     for path in sorted(set(ref_hashes) | set(new_hashes)):
         same = ref_hashes.get(path) == new_hashes.get(path)
         rows.append({"grup": "özet", "öğe": path, "durum": "TAMAM" if same else "FARKLI",
