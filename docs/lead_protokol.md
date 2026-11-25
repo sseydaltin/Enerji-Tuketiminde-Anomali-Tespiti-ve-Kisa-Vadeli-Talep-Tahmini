@@ -1,6 +1,6 @@
 # LEAD1.0 protokolü — model eğitiminden ve testten ÖNCE yazıldı
 
-Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi. Güncelleme 2 (2026-11-25, test öncesi; L0, L1, L4, L2 ve IF val sonuçlarından sonra): L3 atlandı, yerine öznitelik mühendisliği aşaması L-FE (§17). Güncelleme 3 (2026-11-25, test öncesi; L-FE ablasyonu ve L1-FE val sonuçlarından sonra): çerçeve, birincil metrik `other` PR-AUC, yeni seçim kuralı (§18). Güncelleme 4 (2026-11-26, test öncesi; val kapanışından sonra): literatür kıyas satırı L1-OFF (offline, §19).
+Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi. Güncelleme 2 (2026-11-25, test öncesi; L0, L1, L4, L2 ve IF val sonuçlarından sonra): L3 atlandı, yerine öznitelik mühendisliği aşaması L-FE (§17). Güncelleme 3 (2026-11-25, test öncesi; L-FE ablasyonu ve L1-FE val sonuçlarından sonra): çerçeve, birincil metrik `other` PR-AUC, yeni seçim kuralı (§18). Güncelleme 4 (2026-11-26, test öncesi; val kapanışından sonra): literatür kıyas satırı L1-OFF (offline, §19). Güncelleme 5 (2026-11-26, test öncesi; val kapanışı ve L1-OFF'tan sonra): `other` odaklı iyileştirme turu (P1, P4, P5, P2; §20).
 
 Bu belge, LEAD1.0 (Kaggle "energy-anomaly-detection" `train.csv`) üzerindeki modelleme ve değerlendirmenin kurallarını **deney yapılmadan önce** sabitler. Bu belgeye aykırı bir seçim yapılırsa sonuç geçersiz sayılır. Kural değişikliği gerekirse tarih ve gerekçeyle `docs/deney_gunlugu.md`'ye yazılır; eski sonuçlar silinmez.
 
@@ -255,3 +255,28 @@ Bütün karşılaştırmalar val'de, bina bölmesinin 3 seed'i üzerinde, bölme
 - **Ablasyon yok.** Ayarlar, negatif alt örnekleme, erken durdurma ve eşik L1-FE ile aynı; val'de 3 seed, bir kez.
 - **Yalıtım:** offline sütunlar `features.OFFLINE_COLS`'ta ayrı tutulur; hiçbir nedensel sette ya da FE grubunda yoktur (pytest). Bu sütunlar CLAUDE.md'nin "gelecek bilgisi yok" kuralının **bilerek ve yalnız bu satır için** yapılan istisnasıdır; istisna günlüğe yazılır.
 - **Raporlama:** özet tabloda genel ROC-AUC sütunu öne alınır; literatür değerleri (Kaggle birincisi 0,9866 [veri_seti_lead1_degerlendirme.md, 2]; kullanıcının verdiği 0,952 — Tech Science yayını, künyesi repoda yok, **doğrulanmalı**) koşul farklarıyla yan yana gösterilir.
+
+## 20. Güncelleme 5 (2026-11-26, test öncesi): davranışsal (`other`) anomali odaklı iyileştirme turu (I-turu)
+
+**Ne zaman yazıldı:** val kapanışından ve L1-OFF'tan **sonra**, test kümesine dokunulmadan. Karar kullanıcının. Val sonuçları görülmüş olduğu için bu tur raporda "val sonrası eklenen iyileştirme turu" olarak yazılır.
+
+### 20.1 Kurallar
+- **Tümü nedensel** (§4, §17.1). Etiketler yalnız eğitimde ve yalnız train binalarından.
+- **Seçim yalnız train binalarında**, binaya göre gruplu **3 katlı CV** (§17 katlarıyla aynı), **her seed ayrı**.
+- **Ana ölçüt `other` PR-AUC, ikincil genel PR-AUC; gürültü kuralı aynı** (kat başına eşleştirilmiş Δ, |ort| ≤ 2·std/√3). Bir adım: `other`'da anlamlı artış → kabul; anlamlı düşüş → ret; `other` gürültüyse genel PR-AUC'de anlamlı artış → kabul, değilse ret.
+- **Val'e en sonda bir kez bakılır.** Bu turun son modelleri val'de erken durdurma yapmaz: ağaç sayısı / epoch sayısı CV katlarındaki en iyi değerlerin ortalamasıdır. Val yalnız son değerlendirmede ve eşik (F1-max) için kullanılır.
+- Adımlar açgözlü ve sırayla: **temel (L1-FE) → P1 → P4 → P5 → (süre kalırsa) P2.** Reddedilen adım sonrakilere taşınmaz.
+
+### 20.2 Adımlar
+- **P1 – alt türe odaklı model.**
+  - **L1-other:** LightGBM, L1-FE'nin (full) o seed'deki seti ve ayarları. Eğitimde `gap_edge` ve `frozen` **pozitif saatleri çıkarılır** (normal saatler aynen kalır); etiket = "`other` anomalisi mi". Negatif alt örnekleme aynı (%20).
+  - **Birleşik skor = max(kalibre L1-FE, kalibre L1-other).** Kalibrasyon **isotonic**, yalnız train CV'sinin katlar dışı (OOF) tahminleriyle fit edilir: L1-FE için hedef "anomali mi", L1-other için "`other` anomalisi mi". CV içinde kalibratör çapraz fit edilir (j. katın skoru, diğer iki katın OOF tahminleriyle fit edilen kalibratörle); val'de bütün OOF ile fit edilen kalibratör.
+  - **L2-other / L2 birleşik:** aynısı GRU ile; Optuna yok, L2-FE'nin o seed/varyant (full) en iyi ayarları; kanal ve öznitelikler L2-FE ile aynı. Birleşik = max(kalibre L2-FE, kalibre L2-other). Ayrı bir model satırıdır (GRU hattı); P4 ve P5 kararları LightGBM hattında alınır, P5 GRU hattına da ayrıca CV'de uygulanır.
+- **P4 – benzer bina sapması.** Her saat t ve bina b için r_b(t) = log1p(x_b(t)) − log1p(medyan_{t−168…t−1} x_b) (G3 ile aynı). Akranlar: **aynı bölme parçasındaki** (train/val/test) aynı `primary_use` binaları, **b hariç**. Öznitelikler: akranların r(t) medyanı ve IQR'si, b'nin robust z'si = (r_b − medyan) / (IQR + 1e-3), ve bayrak. Aynı türde b hariç 3'ten az akran varsa parçadaki bütün binalar (b hariç) kullanılır ve `peer_fallback` = 1. Etiket kullanılmaz; yalnız t ve öncesindeki okumalar. (CV içinde akranlar train parçasıdır; val binalarının akranları val binalarıdır.)
+- **P5 – yumuşatma.** Son skorlara bina içinde **geriye dönük** k saatlik ortalama, k ∈ {1, 3, 6} (k = 1 yumuşatma yok; ızgara saatleri üzerinden, eksik saatler atlanır). k train CV'de `other` PR-AUC ile seçilir (gürültü kuralıyla: en basit = en küçük k tercih edilir).
+- **P2 – sıcaklık (süre kalırsa).** `train_features.csv`'de gözlenen sıcaklık sütunu varsa ve nasıl üretildiği (özellikle boşluk doldurmanın geleceğe bakıp bakmadığı) belgelenebiliyorsa, yalnız t ve öncesindeki değerler L4 tahmin modeline ve LightGBM'e öznitelik olarak eklenir. Üretimi belirsizse **kullanılmaz** ve bildirilir. (§ Güncelleme 1'deki "yalnız site_id ve primary_use" kuralının istisnası olur; kullanılırsa günlüğe yazılır.)
+
+### 20.3 Rapor
+- Her adım için CV tablosu (kat ort. ± std) ve son val tablosu: `other`, genel, frozen, gap_edge; PR-AUC ve ROC-AUC.
+- Davranışsal dilimde (`other`) en önemli 10 öznitelik (SHAP, tutulan katlarda).
+- Sonuçlar §18.2 seçim tablosuna eklenir (yeni satırlar: L1-I, L2-I). Sonra durulur; test yalnız açık onayla.
