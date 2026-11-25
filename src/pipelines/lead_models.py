@@ -24,7 +24,7 @@ from sklearn.model_selection import GroupKFold
 from torch import nn
 
 from src.core.config import PROJECT_ROOT
-from src.core.results_io import resolve_path, upsert_csv
+from src.core.results_io import resolve_path
 from src.core.seed import set_seed
 from src.datasets.lead.eda import backward_run_length, previous_missing
 from src.datasets.lead.evaluate import evaluate, f1_max_threshold
@@ -97,7 +97,11 @@ def record(ctx, model, feature_set, kind, seed, threshold, val_mask, scores, ext
     table = evaluate(ctx.y[val_mask], scores, threshold, ctx.labels[val_mask].reset_index(drop=True))
     rows = [{"model": model, "set": feature_set, "bolme": kind, "seed": seed, "threshold": threshold,
              **row, "extra": json.dumps(extra or {}, ensure_ascii=False)} for row in table.to_dict("records")]
-    upsert_csv(ctx.tables / "val_results.csv", rows, KEYS)
+    # Koşu başına ayrı dosya: farklı modeller aynı anda koşabilir (ortak CSV'ye eşzamanlı yazma yarışı yok).
+    run_dir = ctx.tables / "val_runs"
+    run_dir.mkdir(exist_ok=True)
+    pd.DataFrame(rows).to_csv(run_dir / f"{model}_{feature_set}_{kind}_{seed}.csv", index=False)
+    collect_results(ctx)
     np.save(ctx.scores_dir / f"{kind}_{seed}_{model}_{feature_set}.npy", np.asarray(scores, dtype=np.float32))
     genel = table.set_index("dilim").loc["genel"]
     other = table.set_index("dilim").loc["other"]
@@ -106,9 +110,22 @@ def record(ctx, model, feature_set, kind, seed, threshold, val_mask, scores, ext
     return table
 
 
+def collect_results(ctx):
+    """val_runs/*.csv → val_results.csv (bütün koşular, anahtar başına son kayıt)."""
+    files = sorted((ctx.tables / "val_runs").glob("*.csv"))
+    if files:
+        table = pd.concat([pd.read_csv(f) for f in files], ignore_index=True).drop_duplicates(KEYS, keep="last")
+        table.sort_values(KEYS).to_csv(ctx.tables / "val_results.csv", index=False)
+
+
 def log_run(ctx, row):
-    """Koşu kaydı (süre, seçilen ayarlar) → results/lead/experiments.csv."""
-    upsert_csv(ctx.tables.parent / "experiments.csv", [row], ["model", "set", "bolme", "seed"])
+    """Koşu kaydı (süre, seçilen ayarlar) → results/lead/runs/*.json → results/lead/experiments.csv."""
+    run_dir = ctx.tables.parent / "runs"
+    run_dir.mkdir(exist_ok=True)
+    (run_dir / f"{row['model']}_{row['set']}_{row['bolme']}_{row['seed']}.json").write_text(
+        json.dumps(row, ensure_ascii=False), encoding="utf-8")
+    rows = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(run_dir.glob("*.json"))]
+    pd.DataFrame(rows).to_csv(ctx.tables.parent / "experiments.csv", index=False)
 
 
 # ----------------------------------------------------------------------------- L0
@@ -145,15 +162,18 @@ def run_rules(ctx, kind, seed):
 # ----------------------------------------------------------------------------- L1
 def lgb_model(params, scale_pos_weight, seed, n_estimators):
     """LightGBM sınıflandırıcı (erken durdurma metriği: average precision = PR-AUC)."""
-    return lgb.LGBMClassifier(objective="binary", n_estimators=n_estimators, random_state=seed, verbosity=-1,
-                              scale_pos_weight=scale_pos_weight, subsample_freq=1, **params)
+    # metric yalnız average_precision: varsayılan binary_logloss da izlenirse erken durdurma, scale_pos_weight'in
+    # şişirdiği olasılıklar yüzünden logloss ilk ağaçtan kötüleştiği için 1. ağaçta durur (2026-11-25 hatası).
+    return lgb.LGBMClassifier(objective="binary", metric="average_precision", n_estimators=n_estimators,
+                              random_state=seed, verbosity=-1, scale_pos_weight=scale_pos_weight,
+                              subsample_freq=1, **params)
 
 
 def fit_lgb(X, y, X_stop, y_stop, params, seed, settings):
     """Alt örneklenmiş eğitim kümesiyle eğitir; X_stop'ta PR-AUC ile erken durdurur."""
     model = lgb_model(params, (y == 0).sum() / max((y == 1).sum(), 1), seed, settings["n_estimators"])
-    model.fit(X, y, eval_set=[(X_stop, y_stop)], eval_metric="average_precision",
-              callbacks=[lgb.early_stopping(settings["early_stopping_rounds"], verbose=False)])
+    model.fit(X, y, eval_set=[(X_stop, y_stop)],
+              callbacks=[lgb.early_stopping(settings["early_stopping_rounds"], first_metric_only=True, verbose=False)])
     return model
 
 
@@ -497,3 +517,110 @@ def write_splits(ctx):
     out = pd.concat(tables, ignore_index=True)
     out.to_csv(ctx.tables / "splits.csv", index=False)
     print(out.groupby(["bolme", "seed", "parca"]).size().unstack().to_string())
+
+
+# ----------------------------------------------------------------------------- özet, seçim ve site kontrolü
+def family(model):
+    """Model adından aile: L0-R2 → L0, L4-semi → L4."""
+    return model.split("-")[0]
+
+
+def summary_table(results, kind="bina"):
+    """Seed ortalaması ± std: genel ve dilim metrikleri, model × set satırı başına."""
+    part = results[results["bolme"] == kind]
+    agg = part.groupby(["model", "set", "dilim"]).agg(
+        n_seed=("seed", "nunique"), pr_auc=("pr_auc", "mean"), pr_auc_std=("pr_auc", "std"),
+        roc_auc=("roc_auc", "mean"), f1=("f1", "mean"), precision=("precision", "mean"),
+        recall=("recall", "mean"), event_recall=("event_recall", "mean")).reset_index()
+    wide = agg.pivot_table(index=["model", "set"], columns="dilim",
+                           values=["pr_auc", "pr_auc_std", "roc_auc", "f1", "precision", "recall", "event_recall"])
+    wide.columns = [f"{d}_{m}" for m, d in wide.columns]
+    wide["n_seed"] = agg[agg["dilim"] == "genel"].set_index(["model", "set"])["n_seed"]
+    return wide.reset_index()
+
+
+def select_model(results, kind="bina"):
+    """Protokol §12: val genel PR-AUC; en iyiye karşı eşleştirilmiş fark |ort| ≤ 2·std/√n → gürültü düzeyi;
+    bunlardan en basit aile (L0 < L4 < L1 < L2 < L3 < L5), aynı ailede ortalaması yüksek olan.
+    Isolation Forest yalnız literatür referansıdır; yarışa girmez."""
+    genel = results[(results["bolme"] == kind) & (results["dilim"] == "genel") & (results["model"] != "IF")]
+    pivot = genel.pivot_table(index="seed", columns=["model", "set"], values="pr_auc")
+    pivot = pivot.loc[:, pivot.notna().all()]                       # bütün seed'lerde koşmuş olanlar
+    means = pivot.mean()
+    best = means.idxmax()
+    rows = []
+    for key in pivot.columns:
+        diff = pivot[key] - pivot[best]
+        n = len(diff)
+        se2 = 2 * diff.std(ddof=1) / np.sqrt(n) if n > 1 else 0.0
+        rows.append({"model": key[0], "set": key[1], "pr_auc_mean": means[key], "fark_ort": diff.mean(),
+                     "fark_2se": se2, "gurultu_duzeyinde": abs(diff.mean()) <= se2 + 1e-12,
+                     "aile": family(key[0])})
+    table = pd.DataFrame(rows)
+    table["basitlik"] = table["aile"].map({f: i for i, f in enumerate(SIMPLICITY)})
+    tied = table[table["gurultu_duzeyinde"]].sort_values(["basitlik", "pr_auc_mean"], ascending=[True, False])
+    table["secilen"] = False
+    table.loc[tied.index[0], "secilen"] = True
+    return table.sort_values("pr_auc_mean", ascending=False).reset_index(drop=True)
+
+
+def top_models(results, k=2, kind="bina"):
+    """Site kontrolü için val genel PR-AUC'si en yüksek k öğrenen model (kurallar ve IF hariç)."""
+    table = select_model(results, kind)
+    learned = table[~table["aile"].isin(["L0"])]
+    return list(zip(learned["model"].head(k), learned["set"].head(k)))
+
+
+def summarize(ctx):
+    """val_summary.csv/.md ve val_selection.csv üretir; tabloyu basar."""
+    results = pd.read_csv(ctx.tables / "val_results.csv")
+    summary = summary_table(results)
+    selection = select_model(results)
+    summary.to_csv(ctx.tables / "val_summary.csv", index=False)
+    selection.to_csv(ctx.tables / "val_selection.csv", index=False)
+    if (results["bolme"] == "site").any():
+        summary_table(results, "site").to_csv(ctx.tables / "val_summary_site.csv", index=False)
+    cols = ["model", "set", "n_seed", "genel_pr_auc", "genel_pr_auc_std", "genel_roc_auc", "genel_f1",
+            "genel_precision", "genel_recall", "genel_event_recall", "gap_edge_recall", "frozen_recall",
+            "other_pr_auc", "other_f1", "other_event_recall", "paylasilan_pr_auc", "tekil_pr_auc"]
+    short = summary[[c for c in cols if c in summary.columns]].sort_values("genel_pr_auc", ascending=False)
+    lines = ["| " + " | ".join(short.columns) + " |", "|" + "---|" * len(short.columns)]
+    for row in short.itertuples(index=False):
+        lines.append("| " + " | ".join(f"{v:.4f}" if isinstance(v, float) else str(v) for v in row) + " |")
+    (ctx.tables / "val_summary.md").write_text(
+        "# LEAD val özeti (bina bölmesi, 3 seed ortalaması) — test değil\n\n" + "\n".join(lines) + "\n",
+        encoding="utf-8")
+    pd.set_option("display.width", 250)
+    print(short.round(4).to_string(index=False))
+    print(selection.round(4).to_string(index=False))
+
+
+def run_site_check(ctx, seeds):
+    """Siteye göre bölme (sağlamlık): kurallar + val'de en iyi 2 öğrenen model. Ayarlar bina bölmesinin aynı
+    seed'inden (Optuna tekrarlanmaz); eşik ve erken durdurma site bölmesinin kendi val'inde."""
+    results = pd.read_csv(ctx.tables / "val_results.csv")
+    chosen = top_models(results)
+    runs = pd.read_csv(ctx.tables.parent / "experiments.csv")
+    print("Site kontrolü modelleri:", chosen)
+    for seed in seeds:
+        run_rules(ctx, "site", seed)
+        for model, feature_set in chosen:
+            row = runs[(runs["model"] == model) & (runs["set"] == feature_set) & (runs["bolme"] == "bina")
+                       & (runs["seed"] == seed)]
+            params = json.loads(row["params"].iloc[0]) if len(row) else None
+            if model == "L1":
+                run_lightgbm(ctx, "site", seed, feature_set, params=params)
+            elif model in ("L2", "L3"):
+                run_deep(ctx, model, "site", seed, feature_set, params=params)
+            elif model in ("L4", "L4-semi"):
+                run_a3(ctx, "site", seed, semi=model == "L4-semi")
+            elif model == "L5":
+                for member, member_set in (("L1", feature_set), ("L2", feature_set)):
+                    member_row = runs[(runs["model"] == member) & (runs["set"] == member_set)
+                                      & (runs["bolme"] == "bina") & (runs["seed"] == seed)]
+                    member_params = json.loads(member_row["params"].iloc[0])
+                    if member == "L1":
+                        run_lightgbm(ctx, "site", seed, member_set, params=member_params)
+                    else:
+                        run_deep(ctx, "L2", "site", seed, member_set, params=member_params)
+                run_ensemble(ctx, "site", seed, feature_set)

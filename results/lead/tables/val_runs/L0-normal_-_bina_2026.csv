@@ -1,0 +1,7 @@
+model,set,bolme,seed,threshold,dilim,n_pos,n_neg,roc_auc,pr_auc,precision,recall,f1,event_recall,n_events,extra
+L0-normal,-,bina,2026,inf,genel,7082,326030,0.5,0.0212601167175004,0.0,0.0,0.0,0.0,990,{}
+L0-normal,-,bina,2026,inf,gap_edge,687,326030,0.5,0.0021027372313041,0.0,0.0,0.0,0.0,514,{}
+L0-normal,-,bina,2026,inf,frozen,4027,326030,0.5,0.012200922870898,0.0,0.0,0.0,0.0,239,{}
+L0-normal,-,bina,2026,inf,other,2368,326030,0.5,0.00721076255032,0.0,0.0,0.0,0.0,237,{}
+L0-normal,-,bina,2026,inf,paylasilan,4185,326030,0.5,0.0126735611646957,0.0,0.0,0.0,0.0,661,{}
+L0-normal,-,bina,2026,inf,tekil,2897,326030,0.5,0.008807425355778,0.0,0.0,0.0,0.0,329,{}

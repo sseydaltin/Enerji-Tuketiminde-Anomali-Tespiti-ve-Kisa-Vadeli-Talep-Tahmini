@@ -1,0 +1,1 @@
+{"model": "L1", "set": "behavior", "bolme": "bina", "seed": 7, "params": "{\"learning_rate\": 0.048080738409805944, \"num_leaves\": 17, \"min_child_samples\": 50, \"colsample_bytree\": 0.9547967638598068, \"subsample\": 0.6066926767899578, \"reg_lambda\": 0.06434219125545071}", "best_epoch": 300, "train_time_s": 273.0}

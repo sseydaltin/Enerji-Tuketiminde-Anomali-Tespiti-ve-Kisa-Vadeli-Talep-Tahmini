@@ -50,7 +50,7 @@ lightgbm:
 
 deep:
   window: 48
-  optuna_trials: 20             # bütçe aşılırsa düşürülür ve günlüğe yazılır
+  optuna_trials: 6              # 20'den düşürüldü (bütçe, 2026-11-25; gerekçe ve ölçüm günlükte)
   optuna_max_epochs: 6          # deneme başına epoch sınırı (MedianPruner ile)
   max_epochs: 40                # son eğitim
   patience: 8                   # erken durdurma: val PR-AUC
