@@ -53,3 +53,20 @@ def test_gap_neighbors():
     df = _frame([(1, 0, 1, 0), (1, 1, 1, 0), (1, 3, 1, 0), (1, 4, 1, 0),   # saat 2 eksik
                  (2, 1, 1, 0), (2, 2, 1, 0)])                              # bina 2: saat 0, 3, 4 eksik
     assert list(gap_neighbors(df)) == [False, True, True, False, True, True]
+
+
+def test_causal_definitions_look_only_back():
+    """Geriye dönük sabitlik serinin başında 1'den başlar; önceki saat eksikliği yalnız boşluğun SONRAKİ kenarını işaretler."""
+    from src.datasets.lead.eda import backward_run_length, previous_missing
+    df = _frame([(1, 0, 5, 0), (1, 1, 5, 0), (1, 2, 5, 0), (1, 4, 5, 0), (1, 5, 7, 0)])   # saat 3 eksik
+    assert list(backward_run_length(df)) == [1, 2, 3, 1, 1]
+    assert list(previous_missing(df)) == [False, False, False, True, False]
+
+
+def test_same_start_events():
+    """Aynı başlangıç saatini paylaşan farklı binalar sayılır."""
+    from src.datasets.lead.eda import same_start_events
+    events = pd.DataFrame({"building_id": [1, 2, 3, 1], "start": pd.to_datetime(
+        ["2016-01-01 05:00", "2016-01-01 05:00", "2016-01-02 00:00", "2016-01-03 00:00"]),
+        "end": pd.to_datetime(["2016-01-01 05:00"] * 4), "length_hours": [1, 1, 1, 1]})
+    assert list(same_start_events(events)["n_buildings_same_start"]) == [2, 2, 1, 1]

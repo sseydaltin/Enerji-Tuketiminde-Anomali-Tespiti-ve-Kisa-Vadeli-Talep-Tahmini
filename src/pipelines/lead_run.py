@@ -19,7 +19,8 @@ import pandas as pd
 from src.core.config import PROJECT_ROOT, load_config
 from src.core.console import setup_console
 from src.core.results_io import resolve_path
-from src.datasets.lead.eda import anomaly_events, coverage, gap_neighbors, length_bins, reading_flags
+from src.datasets.lead.eda import (anomaly_events, backward_run_length, constant_run_length, coverage, gap_neighbors,
+                                   length_bins, previous_missing, reading_flags, same_start_events)
 from src.datasets.lead.load import clean, load_raw
 
 CONFIG_FILE = PROJECT_ROOT / "configs/lead.yaml"
@@ -160,6 +161,90 @@ def gap_table(df, events, tables_dir):
     print()
 
 
+def load_sites(path):
+    """İsteğe bağlı ASHRAE GEP III building_metadata.csv → (building_id, site_id, primary_use); yoksa None."""
+    if not path.is_file():
+        return None
+    meta = pd.read_csv(path)
+    return meta[["building_id", "site_id", "primary_use"]].drop_duplicates("building_id")
+
+
+def site_table(df, sites, tables_dir):
+    """LEAD binalarının kaçının metadata ile eşleştiği ve site başına bina sayısı."""
+    lead_buildings = pd.Series(df["building_id"].unique(), name="building_id")
+    if sites is None:
+        pd.DataFrame([{"durum": "building_metadata.csv yok; site eşleşmesi yapılmadı"}]).to_csv(
+            tables_dir / "site_match.csv", index=False)
+        print("Site bilgisi: data/raw/lead/building_metadata.csv yok; eşleşme yapılmadı.\n")
+        return None
+    matched = lead_buildings.to_frame().merge(sites, on="building_id", how="left")
+    per_site = matched.groupby("site_id", dropna=False).agg(n_bina=("building_id", "size")).reset_index()
+    per_site.to_csv(tables_dir / "site_match.csv", index=False)
+    print(f"Site eşleşmesi: {matched['site_id'].notna().sum()} / {len(matched)} bina\n{per_site.to_string(index=False)}\n")
+    return matched
+
+
+def causal_table(df, events, tables_dir, ks=(2, 3, 6)):
+    """Sabit okuma ve boşluk kenarı: iki yönlü (EDA) ve yalnız geçmişe bakan tanım yan yana.
+
+    İki yönlü: sabit = serinin TAMAMI ≥ k saat; boşluk kenarı = önceki VEYA sonraki saat eksik.
+    Nedensel: sabit = son k saat aynı (geriye dönük seri ≥ k); boşluk kenarı = önceki saat eksik.
+    """
+    is_anomaly = df["anomaly"].to_numpy() == 1
+    two_run, back_run = constant_run_length(df), backward_run_length(df)
+    flags = [("boşluk kenarı", "iki yönlü (önceki veya sonraki eksik)", "", gap_neighbors(df)),
+             ("boşluk kenarı", "nedensel (önceki saat eksik) = R1", "", previous_missing(df))]
+    for k in ks:
+        flags += [("sabit okuma", "iki yönlü (seri ≥ k)", k, two_run >= k),
+                  ("sabit okuma", "nedensel (son k saat aynı) = R2", k, back_run >= k)]
+    rows = [{"özellik": name, "tanım": definition, "k": k, "işaretli_saat": int(mask.sum()),
+             "anomali_saatlerinde_oran": float(mask[is_anomaly].mean()),
+             "normal_saatlerde_oran": float(mask[~is_anomaly].mean()),
+             "işaretli_saatlerde_anomali_oranı": float(is_anomaly[mask].mean())}
+            for name, definition, k, mask in flags]
+    table = pd.DataFrame(rows)
+    table.to_csv(tables_dir / "causal_vs_twosided.csv", index=False)
+    print(table.round(4).to_string(index=False))
+    print()
+
+
+def same_start_table(df, events, matched_sites, tables_dir):
+    """Aynı saatte birden çok binada başlayan olaylar; site bilgisi varsa aynı sitede mi."""
+    ev = same_start_events(events)
+    shared = ev["n_buildings_same_start"] >= 2
+    near = gap_neighbors(df)
+    row = pd.Series(np.arange(len(df)), index=pd.MultiIndex.from_frame(df[["building_id", "timestamp"]]))
+    first = row.reindex(pd.MultiIndex.from_frame(ev[["building_id", "start"]])).to_numpy()
+    last = row.reindex(pd.MultiIndex.from_frame(ev[["building_id", "end"]])).to_numpy()
+    gap_event = near[first] | near[last]
+    summary = [
+        ("olay", len(ev)),
+        ("en az bir başka binada aynı saatte başlayan olay", int(shared.sum())),
+        ("oranı", float(shared.mean())),
+        ("bu olayların paylaşıldığı farklı başlangıç saati", int(ev.loc[shared, "start"].nunique())),
+        ("bir saatte olay başlatan en çok bina", int(ev["n_buildings_same_start"].max())),
+        ("paylaşılan olaylarda boşluk kenarı oranı", float(gap_event[shared].mean())),
+        ("paylaşılmayan olaylarda boşluk kenarı oranı", float(gap_event[~shared].mean())),
+        ("paylaşılan olaylarda medyan uzunluk (saat)", float(ev.loc[shared, "length_hours"].median())),
+        ("paylaşılmayan olaylarda medyan uzunluk (saat)", float(ev.loc[~shared, "length_hours"].median())),
+    ]
+    if matched_sites is not None:
+        site = ev["building_id"].map(matched_sites.set_index("building_id")["site_id"])
+        n_sites = ev.assign(site=site).groupby("start")["site"].transform("nunique")
+        summary.append(("paylaşılan olaylarda tüm binaların tek sitede olduğu oran",
+                        float((n_sites[shared] == 1).mean())))
+    else:
+        summary.append(("site kontrolü", "yapılmadı (building_metadata.csv yok)"))
+    pd.DataFrame(summary, columns=["ölçü", "değer"]).to_csv(tables_dir / "same_start_events.csv", index=False)
+    top = (ev[shared].groupby("start").agg(n_bina=("building_id", "nunique"),
+                                           medyan_uzunluk=("length_hours", "median"))
+           .sort_values("n_bina", ascending=False).head(15).reset_index())
+    top.to_csv(tables_dir / "same_start_top_hours.csv", index=False)
+    print(pd.DataFrame(summary, columns=["ölçü", "değer"]).to_string(index=False))
+    print(top.to_string(index=False))
+    print()
+
+
 def summary_figures(building, dist, zero_frozen, figures_dir):
     """Gözlem/eksik saat, anomali oranı, olay uzunluğu, sıfır/sabit ve ölçek dağılımı figürleri."""
     figure, axes = plt.subplots(1, 2, figsize=(11, 4))
@@ -276,6 +361,9 @@ def stage_eda(config):
     events.to_csv(p["tables_dir"] / "anomaly_events.csv", index=False)
     frozen_sensitivity(df, flags["run_length"].to_numpy(), p["tables_dir"])
     gap_table(df, events, p["tables_dir"])
+    matched = site_table(df, load_sites(p["metadata_file"]), p["tables_dir"])
+    causal_table(df, events, p["tables_dir"])
+    same_start_table(df, events, matched, p["tables_dir"])
     summary_figures(building, dist, zero_frozen, p["figures_dir"])
     sample = sample_review(df, events, config)
     sample.to_csv(p["tables_dir"] / "label_review_sample.csv", index=False)

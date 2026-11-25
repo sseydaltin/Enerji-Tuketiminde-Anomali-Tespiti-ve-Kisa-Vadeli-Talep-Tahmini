@@ -9,6 +9,7 @@ seed: 42
 
 paths:
   raw_file: data/raw/lead/train.csv               # git'e girmez
+  metadata_file: data/raw/lead/building_metadata.csv  # isteğe bağlı (ASHRAE GEP III): building_id → site_id, primary_use
   processed_file: data/processed/lead_clean.parquet   # temizlenmiş tablo (git'e girmez)
   tables_dir: results/lead/tables
   figures_dir: results/lead/figures

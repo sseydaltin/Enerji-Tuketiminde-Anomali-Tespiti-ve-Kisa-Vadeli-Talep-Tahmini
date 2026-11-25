@@ -100,3 +100,34 @@ def gap_neighbors(df):
     prev_ok = (same_building_prev & df["timestamp"].diff().eq(HOUR)) | df["timestamp"].eq(start)
     next_ok = (same_building_next & (-df["timestamp"].diff(-1)).eq(HOUR)) | df["timestamp"].eq(end)
     return (~prev_ok | ~next_ok).to_numpy()
+
+
+def backward_run_length(df):
+    """Nedensel sabitlik süresi: bu saat dahil, geriye doğru kaç ardışık saat aynı değer? [N] int.
+
+    Yalnız geçmişe bakar (t, t−1, ...): "son k saat aynı" ⇔ backward_run_length ≥ k.
+    İki yönlü tanımdan (constant_run_length, serinin tamamı) farkı: serinin ilk k−1 saati
+    henüz "sabit" sayılmaz, çünkü o anda gelecekteki saatlerin aynı kalacağı bilinmez.
+    """
+    values = df["meter_reading"].to_numpy()
+    same_as_previous = _continues(df) & (values == np.r_[np.nan, values[:-1]])
+    run_id = np.cumsum(~same_as_previous)
+    return pd.Series(np.ones(len(df), dtype=int)).groupby(run_id).cumsum().to_numpy()
+
+
+def previous_missing(df):
+    """Nedensel boşluk kenarı: bir önceki saat (aynı binada) eksik mi? [N] bool.
+
+    Verinin genel ilk saati eksik sayılmaz (öncesi ızgarada yok). Yalnız geçmişe bakar.
+    """
+    start = df["timestamp"].min()
+    return ~(_continues(df) | df["timestamp"].eq(start).to_numpy())
+
+
+def same_start_events(events):
+    """Aynı saatte birden çok binada başlayan olaylar.
+
+    Çıktı: olay tablosuna n_buildings_same_start sütunu (o saatte olay başlatan bina sayısı, kendisi dahil).
+    """
+    counts = events.groupby("start")["building_id"].transform("nunique")
+    return events.assign(n_buildings_same_start=counts.to_numpy())
