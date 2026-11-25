@@ -96,3 +96,87 @@ def test_evaluation_labels_and_metrics():
     table = evaluate(y, y.astype(float), f1_max_threshold(y, y.astype(float)), labels)
     assert set(table["dilim"]) == {"genel", "gap_edge", "frozen", "other", "paylasilan", "tekil"}
     assert np.isclose(table.set_index("dilim").loc["genel", "f1"], 1.0)
+
+
+# ----------------------------------------------------------------------------- L-FE grupları (§17)
+from src.datasets.lead.features import (FE_BEHAVIOR_DROP, FE_GROUPS, fe_columns, fe_group,  # noqa: E402
+                                        normalized_residual)
+
+FE_CAUSAL_GROUPS = ("G0", "G1", "G2", "G3", "G4", "G5")
+
+
+def _fe_inputs(clean):
+    """G6 için bina → kod, G7 için yapay skor (ızgara sırasında)."""
+    grid = full_grid(clean)
+    return grid, {1: 0, 2: 3}, np.arange(len(grid), dtype=float)
+
+
+def test_fe_group_columns_match_lists():
+    """Her grubun ürettiği sütunlar listeyle aynı; mutlak tarih ve site_id yok; behavior'da kısayollar yok."""
+    grid, use, stacked = _fe_inputs(_clean())
+    for variant in ("full", "behavior"):
+        for group in ("G0",) + tuple(FE_GROUPS):
+            X = fe_group(grid, group, variant, primary_use=use, stacked=stacked)
+            assert list(X.columns) == fe_columns([group], variant), (group, variant)
+            for column in X.columns:
+                assert not any(part in column.lower() for part in FORBIDDEN_NAME_PARTS), column
+                assert "site" not in column.lower(), column
+            if variant == "behavior":
+                assert not set(X.columns) & set(FE_BEHAVIOR_DROP)
+
+
+def test_fe_groups_are_causal():
+    """Her grup ve varyant için: t'den sonraki okumaları (ve eksikliği) değiştirmek ≤ t özniteliklerini değiştirmez."""
+    clean = _clean(n_hours=500)
+    cut = pd.Timestamp("2016-01-01") + pd.Timedelta(hours=300)
+    changed = clean.copy()
+    later = changed["timestamp"] > cut
+    changed.loc[later, "meter_reading"] *= 3.0
+    changed = changed.drop(changed[later].index[::7])            # gelecekte yeni eksik saatler de
+    keep = (full_grid(clean)["timestamp"] <= cut).to_numpy()
+    for variant in ("full", "behavior"):
+        for group in FE_CAUSAL_GROUPS:
+            a = fe_group(full_grid(clean), group, variant)
+            b = fe_group(full_grid(changed).reindex(full_grid(clean).index), group, variant) \
+                if False else fe_group(_regrid(changed, clean), group, variant)
+            pd.testing.assert_frame_equal(a[keep], b[keep], obj=f"{group}/{variant}")
+
+
+def _regrid(changed, clean):
+    """changed'in ızgarasını clean'in saat aralığına hizalar (son saat silinmişse ızgara kısalmasın)."""
+    grid = full_grid(clean)[["building_id", "timestamp"]]
+    return grid.merge(changed, on=["building_id", "timestamp"], how="left").assign(
+        observed=lambda d: d["meter_reading"].notna().astype("int8"))
+
+
+def test_g5_missing_context_values():
+    """Saat 100 eksik (bina 1): 101'de son boşluktan beri 1 saat, boşluk uzunluğu 1, son 24 saatte 1 eksik."""
+    grid = full_grid(_clean())
+    X = fe_group(grid, "G5", "full")
+    b1 = (grid["building_id"] == 1).to_numpy()
+    hour = ((grid["timestamp"] - pd.Timestamp("2016-01-01")) / pd.Timedelta(hours=1)).to_numpy()
+    row = X[b1 & (hour == 101)].iloc[0]
+    assert row["gap_age_h"] == 1 and row["last_gap_len"] == 1 and row["missing_24h"] == 1
+    assert np.isnan(X[b1 & (hour == 50)].iloc[0]["gap_age_h"])     # öncesinde boşluk yok
+
+
+def test_g1_unchanged_and_profile_flag():
+    """Sabit seri (200–202) değişmeden geçen süreyi 1, 2, 3 yapar; profil ilk haftalarda kısa bayraklı."""
+    grid = full_grid(_clean())
+    X = fe_group(grid, "G1", "full")
+    b1 = (grid["building_id"] == 1).to_numpy()
+    hour = ((grid["timestamp"] - pd.Timestamp("2016-01-01")) / pd.Timedelta(hours=1)).to_numpy()
+    assert [X.loc[b1 & (hour == h), "unchanged_h"].item() for h in (200, 201, 202)] == [1, 2, 3]
+    P = fe_group(grid, "G4", "full")
+    assert P.loc[b1 & (hour == 10), "profile_short"].item() == 1
+    assert np.isnan(P.loc[b1 & (hour == 10), "profile_z"].item())
+
+
+def test_normalized_residual_is_causal():
+    """G7 ölçeği yalnız geçmiş hatalardan: t'den sonraki hataları değiştirmek ≤ t skorunu değiştirmez."""
+    rng = np.random.default_rng(0)
+    errors = rng.random((400, 3))
+    changed = errors.copy()
+    changed[251:] *= 10
+    a, b = normalized_residual(errors, 168), normalized_residual(changed, 168)
+    pd.testing.assert_frame_equal(a.iloc[:251], b.iloc[:251])

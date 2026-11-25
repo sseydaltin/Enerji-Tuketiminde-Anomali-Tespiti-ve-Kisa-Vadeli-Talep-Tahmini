@@ -28,7 +28,8 @@ from src.core.results_io import resolve_path
 from src.core.seed import set_seed
 from src.datasets.lead.eda import backward_run_length, previous_missing
 from src.datasets.lead.evaluate import evaluate, f1_max_threshold
-from src.datasets.lead.features import FEATURE_SETS, calendar, evaluation_labels, full_grid, tabular_features
+from src.datasets.lead.features import (FEATURE_SETS, calendar, evaluation_labels, full_grid, normalized_residual,
+                                        tabular_features)
 from src.datasets.lead.splits import building_split, site_split, split_table
 from src.models.anomaly_baselines import rolling_zscore
 from src.models.lead_classifiers import CNNGRUClassifier, GRUClassifier
@@ -169,10 +170,13 @@ def lgb_model(params, scale_pos_weight, seed, n_estimators):
                               subsample_freq=1, **params)
 
 
-def fit_lgb(X, y, X_stop, y_stop, params, seed, settings):
-    """Alt örneklenmiş eğitim kümesiyle eğitir; X_stop'ta PR-AUC ile erken durdurur."""
+def fit_lgb(X, y, X_stop, y_stop, params, seed, settings, categorical="auto"):
+    """Alt örneklenmiş eğitim kümesiyle eğitir; X_stop'ta PR-AUC ile erken durdurur.
+
+    categorical: kategorik sütunların indeksleri (L-FE G6 primary_use); varsayılan "auto" = yok (L1).
+    """
     model = lgb_model(params, (y == 0).sum() / max((y == 1).sum(), 1), seed, settings["n_estimators"])
-    model.fit(X, y, eval_set=[(X_stop, y_stop)],
+    model.fit(X, y, eval_set=[(X_stop, y_stop)], categorical_feature=categorical,
               callbacks=[lgb.early_stopping(settings["early_stopping_rounds"], first_metric_only=True, verbose=False)])
     return model
 
@@ -382,19 +386,18 @@ def run_deep(ctx, architecture, kind, seed, feature_set, params=None, n_trials=N
 
 
 # ----------------------------------------------------------------------------- L4
-def run_a3(ctx, kind, seed, semi=False):
-    """L4 (A3): Seq2Seq tahmin modeli train binalarının saatleriyle; skor = |h=1 hatası| / son 168 saatin medyanı.
+def train_a3(ctx, train_buildings, seed, semi=False, stop_buildings=None, fixed_epochs=None):
+    """L4 (A3) Seq2Seq tahmin modelini eğitir. Çıktı: (model, array [B,H,9], en iyi epoch, en iyi kayıp).
 
-    semi=True (L4-semi): train binalarının etiketli anomali saatleri kaybın hedeflerinden çıkarılır.
-    Girdi kanalları: ölçekli log okuma (ileri doldurulmuş), eksiklik maskesi, takvim. Decoder: hedef saatlerin
-    takvimi (önceden bilinir). Kayıp yalnız gözlenen hedef saatlerde (L1, hanedeki F10-opt gibi).
+    train_buildings: eğitim binaları (ölçek de yalnız bunlardan). semi=True: bu binaların etiketli anomali saatleri
+    kaybın hedeflerinden çıkarılır. stop_buildings verilirse erken durdurma ve ReduceLROnPlateau onların tahmin
+    MAE'si ile (L4/L4-semi, val binaları); verilmezse (G7 OOF, §17.2) `fixed_epochs` epoch eğitilir, LR
+    planlayıcısı eğitim kaybıyla çalışır ve hiçbir tutulan bina kullanılmaz.
     """
-    started = time.time()
     cfg = ctx.config["a3"]
     set_seed(seed)
     dev = device()
-    split = ctx.split(kind, seed)
-    array = sequence_array(ctx, split["train"], "full")             # [B, H, 9]
+    array = sequence_array(ctx, train_buildings, "full")            # [B, H, 9]
     B, H = len(ctx.buildings), ctx.n_hours
     L, horizon = ctx.config["deep"]["window"], cfg["horizon"]
     observed = torch.tensor(ctx.grid["observed"].to_numpy().reshape(B, H) == 1, device=dev)
@@ -404,8 +407,7 @@ def run_a3(ctx, kind, seed, semi=False):
         target_ok &= ~torch.tensor(labels, device=dev)
     x = array[..., 0]
     cal = array[..., 2:]                                           # [B, H, 7]
-    train_b = np.flatnonzero(np.isin(ctx.buildings, split["train"]))
-    val_b = np.flatnonzero(np.isin(ctx.buildings, split["val"]))
+    train_b = np.flatnonzero(np.isin(ctx.buildings, train_buildings))
     rng = np.random.default_rng(seed)
 
     def sample(buildings, n):
@@ -422,17 +424,25 @@ def run_a3(ctx, kind, seed, semi=False):
     model = Seq2SeqForecaster(array.shape[2], 7, cfg["hidden"], cfg["layers"], cfg["dropout"]).to(dev)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=3)
-    vb, vt = sample(val_b, cfg["val_windows"])
+    if stop_buildings is not None:
+        vb, vt = sample(np.flatnonzero(np.isin(ctx.buildings, stop_buildings)), cfg["val_windows"])
+    max_epochs = cfg["max_epochs"] if fixed_epochs is None else fixed_epochs
     best, best_state, best_epoch, wait = np.inf, None, 0, 0
-    for epoch in range(1, cfg["max_epochs"] + 1):
+    for epoch in range(1, max_epochs + 1):
         model.train()
         b, t = sample(train_b, cfg["windows_per_epoch"])
+        train_losses = []
         for i in range(0, len(b), cfg["batch_size"]):
             optimizer.zero_grad()
             loss = batch_loss(model, b[i:i + cfg["batch_size"]], t[i:i + cfg["batch_size"]])
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            train_losses.append(loss.item())
+        if stop_buildings is None:                                  # G7 OOF: sabit epoch, tutulan bina yok
+            scheduler.step(float(np.mean(train_losses)))
+            best, best_epoch = float(np.mean(train_losses)), epoch
+            continue
         model.eval()
         with torch.no_grad():
             val_loss = float(np.mean([batch_loss(model, vb[i:i + 4096], vt[i:i + 4096]).item()
@@ -445,13 +455,27 @@ def run_a3(ctx, kind, seed, semi=False):
             wait += 1
             if wait >= cfg["patience"]:
                 break
-    model.load_state_dict(best_state)
+    if best_state is not None:
+        model.load_state_dict(best_state)
     model.eval()
+    return model, array, best_epoch, best
 
-    # Val binalarının her saati için 1 adım ileri hata: t-1'de biten pencere, t için tahmin.
-    errors = np.full((len(val_b), H), np.nan, dtype=np.float32)
+
+def a3_score_grid(ctx, model, array, buildings):
+    """Verilen binaların her saati için normalize 1 adım hatası. Çıktı: [len(buildings), H] (ilk 48 saat NaN).
+
+    t saatinin tahmini t-1'de biten pencereden; hata eksik saatlerde NaN; ölçek son 168 saatin medyan hatası.
+    """
+    cfg = ctx.config["a3"]
+    dev = array.device
+    H, L = ctx.n_hours, ctx.config["deep"]["window"]
+    B = len(ctx.buildings)
+    observed = torch.tensor(ctx.grid["observed"].to_numpy().reshape(B, H) == 1, device=dev)
+    x, cal = array[..., 0], array[..., 2:]
+    rows = np.flatnonzero(np.isin(ctx.buildings, buildings))
+    errors = np.full((len(rows), H), np.nan, dtype=np.float32)
     with torch.no_grad():
-        for row, building in enumerate(val_b):
+        for row, building in enumerate(rows):
             t = torch.arange(L - 1, H - 1, device=dev)
             b = torch.full_like(t, int(building))
             preds = []
@@ -462,17 +486,28 @@ def run_a3(ctx, kind, seed, semi=False):
             err = (pred - x[building, L:]).abs()
             err[~observed[building, L:]] = float("nan")
             errors[row, L:] = err.cpu().numpy()
-    window_hours = cfg["residual_scale_hours"]
-    frame = pd.DataFrame(errors.T)
-    scale = frame.shift(1).rolling(window_hours, min_periods=24).median()   # yalnız geçmiş saatlerin hatası
-    score_grid = (frame / (scale + 1e-3)).to_numpy().T                       # [val bina, H]
+    return normalized_residual(errors.T, cfg["residual_scale_hours"]).to_numpy().T, rows
+
+
+def run_a3(ctx, kind, seed, semi=False):
+    """L4 (A3): Seq2Seq tahmin modeli train binalarının saatleriyle; skor = |h=1 hatası| / son 168 saatin medyanı.
+
+    semi=True (L4-semi): train binalarının etiketli anomali saatleri kaybın hedeflerinden çıkarılır.
+    Girdi kanalları: ölçekli log okuma (ileri doldurulmuş), eksiklik maskesi, takvim. Decoder: hedef saatlerin
+    takvimi (önceden bilinir). Kayıp yalnız gözlenen hedef saatlerde (L1, hanedeki F10-opt gibi).
+    Erken durdurma val binalarının tahmin MAE'si ile.
+    """
+    started = time.time()
+    split = ctx.split(kind, seed)
+    model, array, best_epoch, best = train_a3(ctx, split["train"], seed, semi, stop_buildings=split["val"])
+    score_grid, val_b = a3_score_grid(ctx, model, array, split["val"])     # [val bina, H]
     val = ctx.rows(split["val"])
     rows_b = np.searchsorted(val_b, ctx.b_pos[val])
     scores = score_grid[rows_b, ctx.t_pos[val]]
     name = "L4-semi" if semi else "L4"
     record(ctx, name, "-", kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores,
            {"best_epoch": best_epoch, "val_mae": best})
-    log_run(ctx, {"model": name, "set": "-", "bolme": kind, "seed": seed, "params": json.dumps(cfg),
+    log_run(ctx, {"model": name, "set": "-", "bolme": kind, "seed": seed, "params": json.dumps(ctx.config["a3"]),
                   "best_epoch": best_epoch, "train_time_s": round(time.time() - started, 1)})
 
 
