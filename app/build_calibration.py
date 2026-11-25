@@ -12,9 +12,9 @@ kümesi kullanılmaz; std yalnız eğitimden, referans yalnız enjeksiyonsuz val
 import pandas as pd
 import torch
 
-from src.anomaly_protocol import protocol_splits
+from src.pipelines.anomaly_protocol import protocol_splits
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_anomaly import fit_combination, fit_detectors
+from src.pipelines.evaluate_anomaly import fit_combination, fit_detectors
 from src.core.console import setup_console
 from src.core.results_io import resolve_path
 

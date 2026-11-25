@@ -23,7 +23,7 @@ from app.pages.anomaly import _make_figure
 from src.core.anomaly_metrics import event_metrics
 from app.services import load_f13_models, load_household_data, valid_test_days
 from app.ui import METHOD_LABELS
-from src.anomaly_protocol import scenario_settings
+from src.pipelines.anomaly_protocol import scenario_settings
 from src.core.inject_anomalies import inject_anomalies
 
 

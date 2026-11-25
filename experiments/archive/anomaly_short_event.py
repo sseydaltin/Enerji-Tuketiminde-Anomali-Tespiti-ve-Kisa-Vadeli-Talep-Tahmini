@@ -27,7 +27,12 @@ from sklearn.metrics import average_precision_score
 from experiments.archive.anomaly_dev import SCENARIOS, SET_KEYS, dev_scenario_settings, prepare_set
 from src.core.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_anomaly import make_runs, multi_horizon_scores, valid_hours, with_context
+from src.pipelines.evaluate_anomaly import (
+    make_runs,
+    multi_horizon_scores,
+    valid_hours,
+    with_context,
+)
 from src.models.residual_detector import multi_step_predictions, normalized_scores
 from src.core.anomaly_metrics import (
     alarm_diagnostics,

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.anomaly_dual import (
+from src.pipelines.anomaly_dual import (
     DUAL,
     DUAL_FLOOR,
     STAGES,

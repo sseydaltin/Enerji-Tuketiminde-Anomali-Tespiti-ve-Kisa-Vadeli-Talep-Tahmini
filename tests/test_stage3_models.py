@@ -10,7 +10,7 @@ import torch
 from src.models.cnn_lstm import CNNLSTMForecaster
 from src.models.seq2seq import Seq2SeqForecaster
 from src.models.xgb_forecast import run_xgboost, xgboost_lags
-from src.train_forecast import prepare_forecast_data
+from src.pipelines.train_forecast import prepare_forecast_data
 from tests.test_eval_consistency import make_long_frame_and_config
 
 
@@ -99,7 +99,7 @@ def test_xgboost_runs_on_val_only_and_logs(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("model_name", ["seq2seq", "cnn_lstm"])
 def test_new_architectures_train_with_shared_loop(tmp_path, monkeypatch, model_name):
-    import src.train_forecast as trainer
+    import src.pipelines.train_forecast as trainer
 
     monkeypatch.setattr(trainer, "PROJECT_ROOT", tmp_path)
     frame, config = stage3_config()

@@ -10,8 +10,15 @@ import streamlit as st
 from app.build_calibration import REFERENCE_FILE, STD_FILE
 from app.services import demo_paths
 from app.ui import ANOMALY_LABELS
-from src.anomaly_dual import BASE_METHOD, DUAL, DUAL_FLOOR, SELECTION_FILE, dual_alarm, floor_alarm
-from src.anomaly_protocol import protocol_splits, scenario_settings
+from src.pipelines.anomaly_dual import (
+    BASE_METHOD,
+    DUAL,
+    DUAL_FLOOR,
+    SELECTION_FILE,
+    dual_alarm,
+    floor_alarm,
+)
+from src.pipelines.anomaly_protocol import protocol_splits, scenario_settings
 from src.core.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for, train_sigma_table
 from src.models.anomaly_baselines import rolling_zscore
 from src.models.residual_detector import (
@@ -21,7 +28,7 @@ from src.models.residual_detector import (
 )
 from src.core.anomaly_metrics import runs
 from src.core.results_io import resolve_path
-from src.evaluate_anomaly import add_combinations, smooth_scores
+from src.pipelines.evaluate_anomaly import add_combinations, smooth_scores
 
 METHODS = ("A0", "A3-s2s-norm", "A5-mean-z")
 SCENARIO_SEEDS = {"main": "main", "hard": "hard"}

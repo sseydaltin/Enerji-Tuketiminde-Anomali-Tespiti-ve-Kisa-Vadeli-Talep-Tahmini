@@ -7,13 +7,13 @@ import torch
 
 from src.core.inject_anomalies import ANOMALY_TYPES, inject_anomalies
 from src.core.config import load_config
-from src.evaluate_anomaly import evaluate_split
+from src.pipelines.evaluate_anomaly import evaluate_split
 from src.models.anomaly_baselines import rolling_zscore, window_features
 from src.models.autoencoder import (
     LSTMAutoencoder, TCNAutoencoder, TemporalBlock, build_autoencoder, make_windows, point_scores,
     receptive_field,
 )
-from src.train_autoencoder import clean_windows
+from src.pipelines.train_autoencoder import clean_windows
 from src.core.anomaly_metrics import evaluate_threshold, event_metrics, f1_max_threshold, runs
 
 
@@ -231,7 +231,7 @@ def test_event_metrics_count_an_event_if_any_hour_is_flagged():
 
 from copy import deepcopy
 
-from src.evaluate_anomaly import choose_smoothing, smooth_scores
+from src.pipelines.evaluate_anomaly import choose_smoothing, smooth_scores
 from src.models.residual_detector import normalized_scores, one_step_predictions, residual_std_table
 from src.models.seq2seq import Seq2SeqForecaster
 
@@ -315,7 +315,7 @@ def test_severity_change_keeps_event_positions(injection_settings):
 
 # ---------------------------------------------------------------- A-5
 
-from src.evaluate_anomaly import add_combinations, paired_differences, to_common_scale
+from src.pipelines.evaluate_anomaly import add_combinations, paired_differences, to_common_scale
 from src.models.residual_detector import multi_step_predictions
 
 
@@ -362,9 +362,9 @@ def test_paired_differences_per_seed():
 
 # ---------------------------------------------------------------- Final protokol
 
-from src.anomaly_protocol import choose_final, protocol_splits, scenario_settings
+from src.pipelines.anomaly_protocol import choose_final, protocol_splits, scenario_settings
 from src.core.inject_anomalies import sigma_for, train_sigma_table
-from src.evaluate_anomaly import with_context
+from src.pipelines.evaluate_anomaly import with_context
 from src.models.residual_detector import load_forecaster, out_of_fold_predictions
 from src.core.anomaly_metrics import event_f1_max_threshold
 

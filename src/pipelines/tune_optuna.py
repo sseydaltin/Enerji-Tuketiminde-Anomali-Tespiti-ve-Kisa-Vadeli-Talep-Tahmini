@@ -11,7 +11,7 @@ import pandas as pd
 import yaml
 
 from src.core.config import PROJECT_ROOT, load_config
-from src.train_forecast import MODEL_LABELS, fit_forecaster, train_model
+from src.pipelines.train_forecast import MODEL_LABELS, fit_forecaster, train_model
 from src.core.console import setup_console
 from src.core.results_io import resolve_path, upsert_csv
 
@@ -218,7 +218,7 @@ def main():
     config_path = PROJECT_ROOT / "configs" / f"optuna_{args.model}_best.yaml"
     with open(config_path, "w", encoding="utf-8") as handle:
         handle.write(
-            f"# Otomatik üretildi: src/tune_optuna.py --model {args.model} "
+            f"# Otomatik üretildi: src/pipelines/tune_optuna.py --model {args.model} "
             f"(en iyi CV denemesi {study.best_trial.number}). Elle düzenlemeyin.\n"
         )
         yaml.safe_dump(best_config, handle, allow_unicode=True, sort_keys=False)

@@ -5,7 +5,7 @@ import pytest
 from src.core.split import chronological_split
 from src.models.baselines import naive_forecasts
 from src.models.forecast_baselines import build_train_val_windows
-from src.train_forecast import prepare_forecast_data
+from src.pipelines.train_forecast import prepare_forecast_data
 from src.core.results_io import load_predictions, record_forecast_results, upsert_csv
 from tests.test_forecast_models import make_config
 

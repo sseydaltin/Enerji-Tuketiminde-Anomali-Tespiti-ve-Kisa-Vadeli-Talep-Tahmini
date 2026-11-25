@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_forecast import GROUPS
+from src.pipelines.evaluate_forecast import GROUPS
 from src.core.metrics import calculate_metrics
 from src.core.results_io import load_predictions, resolve_path
 

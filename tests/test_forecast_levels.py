@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.forecast_levels import level_metrics
+from src.pipelines.forecast_levels import level_metrics
 
 
 def test_levels_use_first_hour_and_midnight_windows_only():

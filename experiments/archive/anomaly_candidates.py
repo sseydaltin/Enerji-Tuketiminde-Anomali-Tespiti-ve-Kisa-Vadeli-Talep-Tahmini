@@ -20,7 +20,7 @@ from experiments.archive.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_m
 from experiments.archive.anomaly_eval_audit import sha256
 from src.core.inject_anomalies import ANOMALY_TYPES
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_anomaly import score_frame, smooth_scores, with_context
+from src.pipelines.evaluate_anomaly import score_frame, smooth_scores, with_context
 from src.core.anomaly_metrics import event_f1_max_threshold, event_metrics
 from src.core.console import setup_console
 from src.core.results_io import resolve_path, upsert_csv

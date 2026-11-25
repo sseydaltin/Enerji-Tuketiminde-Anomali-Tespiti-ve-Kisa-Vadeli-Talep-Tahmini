@@ -119,7 +119,7 @@ def out_of_fold_predictions(train, fold_paths, device, multi=False):
     """OOF tahminleri: her CV katının saatleri, YALNIZ o kattan önceki veriyle eğitilmiş modelle.
 
     Girdi: train tablosu, kat checkpoint yolları (her biri "oof_fold" = {start,
-    end} taşır; seyda/model-fixes src/train_oof.py), cihaz, multi=True ise 24 ufuk.
+    end} taşır; seyda/model-fixes src/pipelines/train_oof.py), cihaz, multi=True ise 24 ufuk.
     Çıktı: train indeksli Series (h=1) veya [T, 24] DataFrame; kat dışı saatler NaN.
     Neden: Tüm train ile eğitilmiş modelin train artıkları iyimserdir (model bu
     saatleri görmüştür) → std küçük, val skoru şişer. OOF artıkları modelin

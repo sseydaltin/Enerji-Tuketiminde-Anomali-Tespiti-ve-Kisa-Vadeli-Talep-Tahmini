@@ -25,7 +25,7 @@ import torch
 from src.core.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for, train_sigma_table
 from src.core.config import PROJECT_ROOT, load_config
 from src.core.split import chronological_split
-from src.evaluate_anomaly import (
+from src.pipelines.evaluate_anomaly import (
     METHOD_LABELS,
     add_combinations,
     fit_combination,

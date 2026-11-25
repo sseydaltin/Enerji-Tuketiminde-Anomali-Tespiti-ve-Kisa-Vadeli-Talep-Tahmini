@@ -116,7 +116,7 @@ def prepare_forecast_data(df, config, eval_split="val"):
     hedefte y_SN168, değilse 0), isteğe bağlı gelecek öznitelikleri
     F [örnek, ufuk, k], ölçekleyiciler ve özellik adları.
     Neden: Val girdisi train sonundaki geçmişi kullanabilir; val hedefleri val'de
-    kalır. eval_split="test" YALNIZ final değerlendirmede (src/evaluate_forecast.py)
+    kalır. eval_split="test" YALNIZ final değerlendirmede (src/pipelines/evaluate_forecast.py)
     kullanılır: "val_*" anahtarları o zaman test pencerelerini taşır, girdi geçmişi
     val'in sonundan gelir; ölçekleyiciler yine yalnız train'e fit edilir.
     """

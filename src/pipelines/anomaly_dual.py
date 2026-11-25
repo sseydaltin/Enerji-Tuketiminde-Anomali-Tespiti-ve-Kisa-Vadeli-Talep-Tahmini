@@ -17,10 +17,10 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.anomaly_protocol import protocol_splits, score_copies
+from src.pipelines.anomaly_protocol import protocol_splits, score_copies
 from src.core.inject_anomalies import ANOMALY_TYPES, train_sigma_table
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_anomaly import fit_combination, fit_detectors, make_runs, valid_hours
+from src.pipelines.evaluate_anomaly import fit_combination, fit_detectors, make_runs, valid_hours
 from src.core.anomaly_metrics import event_metrics
 from src.core.console import setup_console
 from src.core.results_io import resolve_path

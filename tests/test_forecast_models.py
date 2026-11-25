@@ -6,7 +6,7 @@ import torch
 from src.models.gru import GRUForecaster
 from src.models.lstm import LSTMForecaster
 from src.models.mlp import MLPForecaster
-from src.train_forecast import _forecast_device, prepare_forecast_data
+from src.pipelines.train_forecast import _forecast_device, prepare_forecast_data
 
 
 def make_hourly_data():
@@ -165,7 +165,7 @@ def test_train_model_saves_validation_outputs_only(
     model_name,
     exp_id,
 ):
-    import src.train_forecast as trainer
+    import src.pipelines.train_forecast as trainer
 
     monkeypatch.setattr(trainer, "PROJECT_ROOT", tmp_path)
     scores, history = trainer.train_model(

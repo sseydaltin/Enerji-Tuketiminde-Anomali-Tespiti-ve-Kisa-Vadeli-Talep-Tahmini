@@ -11,7 +11,7 @@ from src.core.split import chronological_split
 from src.core.windows import make_windows
 from src.models.baselines import naive_forecasts
 from src.models.forecast_baselines import build_train_val_windows
-from src.train_forecast import prepare_forecast_data
+from src.pipelines.train_forecast import prepare_forecast_data
 from src.core.console import setup_console
 from src.core.results_io import resolve_path
 

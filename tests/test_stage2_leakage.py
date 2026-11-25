@@ -8,7 +8,7 @@ import pytest
 
 from src.core.split import chronological_split
 from src.models.forecast_baselines import build_train_val_windows, ridge_design_matrix
-from src.train_forecast import prepare_forecast_data
+from src.pipelines.train_forecast import prepare_forecast_data
 from tests.test_eval_consistency import make_long_frame_and_config
 
 
@@ -131,7 +131,7 @@ def test_ridge_calendar_comes_from_last_observed_hour():
 
 
 def test_shuffle_is_reproducible_with_same_seed(tmp_path, monkeypatch):
-    import src.train_forecast as trainer
+    import src.pipelines.train_forecast as trainer
 
     monkeypatch.setattr(trainer, "PROJECT_ROOT", tmp_path)
     frame, config = make_long_frame_and_config()
@@ -147,7 +147,7 @@ def test_shuffle_is_reproducible_with_same_seed(tmp_path, monkeypatch):
 def test_models_train_with_future_features_and_residual_target(
     tmp_path, monkeypatch, model_name,
 ):
-    import src.train_forecast as trainer
+    import src.pipelines.train_forecast as trainer
 
     monkeypatch.setattr(trainer, "PROJECT_ROOT", tmp_path)
     frame, config = make_long_frame_and_config()

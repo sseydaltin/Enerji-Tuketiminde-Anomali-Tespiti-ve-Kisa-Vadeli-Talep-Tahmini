@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.anomaly_protocol import (
+from src.pipelines.anomaly_protocol import (
     RULE,
     apply_fixed,
     protocol_splits,
@@ -30,7 +30,7 @@ from src.anomaly_protocol import (
 )
 from src.core.inject_anomalies import inject_anomalies, sigma_for, train_sigma_table
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_anomaly import (
+from src.pipelines.evaluate_anomaly import (
     autoencoder_scores,
     fit_detectors,
     paired_differences,
@@ -112,7 +112,7 @@ def main():
     figures_dir = resolve_path(PROJECT_ROOT, config["paths"]["figures_dir"])
     a7_path = resolve_path(PROJECT_ROOT, config["paths"]["models_dir"]) / f"{EXP_ID}_best.pt"
     if not a7_path.exists():
-        raise FileNotFoundError(f"{a7_path} yok; önce: python -m src.train_autoencoder --arch tcn --exp A7")
+        raise FileNotFoundError(f"{a7_path} yok; önce: python -m src.pipelines.train_autoencoder --arch tcn --exp A7")
 
     # select_on_dev yöntem listesini config'ten okur; kopyada yalnız kıyas yöntemleri.
     config = deepcopy(config)

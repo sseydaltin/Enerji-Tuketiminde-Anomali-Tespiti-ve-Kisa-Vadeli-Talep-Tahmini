@@ -22,10 +22,17 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.anomaly_protocol import protocol_splits, score_copies
+from src.pipelines.anomaly_protocol import protocol_splits, score_copies
 from src.core.inject_anomalies import ANOMALY_TYPES, train_sigma_table
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_anomaly import fit_combination, fit_detectors, make_runs, score_frame, valid_hours, with_context
+from src.pipelines.evaluate_anomaly import (
+    fit_combination,
+    fit_detectors,
+    make_runs,
+    score_frame,
+    valid_hours,
+    with_context,
+)
 from src.core.anomaly_metrics import alarm_diagnostics, event_metrics, runs
 from src.core.console import setup_console
 from src.core.results_io import resolve_path
@@ -121,7 +128,7 @@ def summary_table(per_seed, events):
 
 def clean_score_by_hour(splits, config, fitted, device, combination, method):
     """Enjeksiyonsuz kış-dev'de bir yöntemin (yumuşatılmamış) skorunun saate göre yüzdelikleri."""
-    from src.evaluate_anomaly import add_combinations
+    from src.pipelines.evaluate_anomaly import add_combinations
     clean = splits[SPLIT]
     scores = score_frame(with_context(splits, SPLIT, clean, config), config, fitted, device)
     add_combinations(scores, combination)

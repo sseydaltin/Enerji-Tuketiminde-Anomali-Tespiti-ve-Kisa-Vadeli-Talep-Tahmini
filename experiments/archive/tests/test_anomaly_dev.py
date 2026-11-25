@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from experiments.archive.anomaly_dev import dev_scenario_settings, dev_splits, set_config
-from src.anomaly_protocol import scenario_settings
+from src.pipelines.anomaly_protocol import scenario_settings
 from src.core.config import load_config
 
 

@@ -20,7 +20,7 @@ from experiments.archive.anomaly_eval_audit import sha256
 from experiments.archive.anomaly_short_event import change_table, score_copies, signal_frame
 from src.core.inject_anomalies import ANOMALY_TYPES
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_anomaly import with_context
+from src.pipelines.evaluate_anomaly import with_context
 from src.models.residual_detector import multi_step_predictions
 from src.core.console import setup_console
 from src.core.results_io import resolve_path, upsert_csv

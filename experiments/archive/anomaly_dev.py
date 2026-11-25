@@ -24,10 +24,10 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.anomaly_protocol import protocol_splits
+from src.pipelines.anomaly_protocol import protocol_splits
 from src.core.inject_anomalies import inject_anomalies, sigma_for, train_sigma_table
 from src.core.config import PROJECT_ROOT, load_config
-from src.evaluate_anomaly import (
+from src.pipelines.evaluate_anomaly import (
     add_combinations,
     fit_combination,
     fit_detectors,

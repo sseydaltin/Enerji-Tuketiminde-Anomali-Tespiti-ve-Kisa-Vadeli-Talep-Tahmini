@@ -3,7 +3,7 @@
 import pandas as pd
 
 from experiments.archive.explore_tcn_ae import TABLE_NOTE, TABLE_TITLE
-from src.anomaly_protocol import write_markdown
+from src.pipelines.anomaly_protocol import write_markdown
 from src.core.config import PROJECT_ROOT
 
 

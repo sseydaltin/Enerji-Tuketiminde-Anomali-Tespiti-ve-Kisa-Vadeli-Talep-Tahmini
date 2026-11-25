@@ -12,20 +12,20 @@ from datetime import date
 import pandas as pd
 import torch
 
-from src.anomaly_protocol import (
-    RULE,
-    apply_fixed,
-    score_copies,
-    select_on_dev,
-)
+from src.pipelines.anomaly_protocol import RULE, apply_fixed, score_copies, select_on_dev
 from src.datasets.eld.eld import eld_config
 from src.core.inject_anomalies import train_sigma_table
 from src.core.config import PROJECT_ROOT
 from src.core.split import chronological_split
-from src.evaluate_anomaly import fit_combination, fit_detectors, paired_differences, summarize
-from src.evaluate_forecast import all_predictions, save_error_figures, summarize_levels
-from src.train_forecast import train_model
-from src.train_oof import train_oof_models
+from src.pipelines.evaluate_anomaly import (
+    fit_combination,
+    fit_detectors,
+    paired_differences,
+    summarize,
+)
+from src.pipelines.evaluate_forecast import all_predictions, save_error_figures, summarize_levels
+from src.pipelines.train_forecast import train_model
+from src.pipelines.train_oof import train_oof_models
 from src.core.console import setup_console
 from src.core.results_io import record_forecast_results, resolve_path, upsert_csv
 from src.core.seed import get_device
