@@ -17,6 +17,12 @@ L1,behavior,bina,7,"{""learning_rate"": 0.048080738409805944, ""num_leaves"": 17
 L1,full,bina,2026,"{""learning_rate"": 0.08397451186564674, ""num_leaves"": 109, ""min_child_samples"": 37, ""colsample_bytree"": 0.5906256948911066, ""subsample"": 0.9533331928338895, ""reg_lambda"": 0.26510998327398555}",38.0,254.0
 L1,full,bina,42,"{""learning_rate"": 0.05407232133324004, ""num_leaves"": 27, ""min_child_samples"": 142, ""colsample_bytree"": 0.569746930326021, ""subsample"": 0.6460723242676091, ""reg_lambda"": 0.029204338471814112}",61.0,176.3
 L1,full,bina,7,"{""learning_rate"": 0.039531201086154655, ""num_leaves"": 83, ""min_child_samples"": 356, ""colsample_bytree"": 0.5738699260585355, ""subsample"": 0.9678827093077063, ""reg_lambda"": 0.0011965238683786232}",7.0,542.8
+L2-FE,behavior,bina,2026,"{""hidden"": 128, ""layers"": 1, ""dropout"": 0.14378695790405446, ""lr"": 0.0029152227800481154, ""batch_size"": 512}",2.0,454.2
+L2-FE,behavior,bina,42,"{""hidden"": 128, ""layers"": 2, ""dropout"": 0.28184968246925673, ""lr"": 0.002354770601447807, ""batch_size"": 512}",1.0,694.6
+L2-FE,behavior,bina,7,"{""hidden"": 128, ""layers"": 1, ""dropout"": 0.18016467523923677, ""lr"": 0.002674550208194454, ""batch_size"": 512}",2.0,509.5
+L2-FE,full,bina,2026,"{""hidden"": 64, ""layers"": 1, ""dropout"": 0.08879019440712688, ""lr"": 0.002350767705090538, ""batch_size"": 512}",2.0,315.0
+L2-FE,full,bina,42,"{""hidden"": 64, ""layers"": 2, ""dropout"": 0.07763399448000508, ""lr"": 0.001379251735419649, ""batch_size"": 512}",1.0,457.6
+L2-FE,full,bina,7,"{""hidden"": 64, ""layers"": 2, ""dropout"": 0.29339685359898077, ""lr"": 0.001036614131801362, ""batch_size"": 256}",1.0,417.1
 L2,behavior,bina,2026,"{""hidden"": 128, ""layers"": 1, ""dropout"": 0.14378695790405446, ""lr"": 0.0029152227800481154, ""batch_size"": 512}",3.0,226.2
 L2,behavior,bina,42,"{""hidden"": 64, ""layers"": 2, ""dropout"": 0.07763399448000508, ""lr"": 0.001379251735419649, ""batch_size"": 512}",27.0,581.7
 L2,behavior,bina,7,"{""hidden"": 128, ""layers"": 1, ""dropout"": 0.18016467523923677, ""lr"": 0.002674550208194454, ""batch_size"": 512}",13.0,504.9
