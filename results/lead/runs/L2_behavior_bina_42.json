@@ -1,0 +1,1 @@
+{"model": "L2", "set": "behavior", "bolme": "bina", "seed": 42, "params": "{\"hidden\": 64, \"layers\": 2, \"dropout\": 0.07763399448000508, \"lr\": 0.001379251735419649, \"batch_size\": 512}", "best_epoch": 27, "train_time_s": 581.7}
