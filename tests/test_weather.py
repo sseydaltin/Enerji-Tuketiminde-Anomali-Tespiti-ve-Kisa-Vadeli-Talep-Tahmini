@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from src.core.config import load_config
-from src.data.weather import add_weather_features, align_weather, local_to_utc
+from src.datasets.household.weather import add_weather_features, align_weather, local_to_utc
 from src.train_forecast import prepare_forecast_data
 from tests.test_eval_consistency import make_long_frame_and_config
 

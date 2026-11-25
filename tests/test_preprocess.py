@@ -2,11 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.preprocess import (
-    MEAN_COLUMNS,
-    SUM_COLUMNS,
-    fill_missing_hours,
-)
+from src.datasets.household.preprocess import MEAN_COLUMNS, SUM_COLUMNS, fill_missing_hours
 
 
 def make_hourly_data():

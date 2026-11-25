@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from src.core.config import PROJECT_ROOT, load_config
-from src.data.preprocess import add_calendar_features
+from src.datasets.household.preprocess import add_calendar_features
 from src.core.console import setup_console
 from src.core.results_io import resolve_path
 

@@ -36,7 +36,7 @@ def test_find_project_root_fails_loudly(tmp_path):
 
 def test_single_definition_is_reexported_everywhere():
     """Veri modülleri kendi kopyalarını değil, core'daki tek tanımı kullanır."""
-    import src.data.load as household_load
+    import src.datasets.household.load as household_load
     assert household_load.PROJECT_ROOT is PROJECT_ROOT
     assert household_load.load_config is core_config.load_config
     assert load_config()["seed"] == 42

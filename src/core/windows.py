@@ -25,7 +25,7 @@ def get_feature_columns(config, feature_set=None):
             + config["features"]["extra"]
         )
     if choice in ("W1", "W2"):
-        # Hava sütunları src/data/weather.py ile tabloya eklenmiş olmalı.
+        # Hava sütunları src/datasets/household/weather.py ile tabloya eklenmiş olmalı.
         # W2'nin encoder girdisi W1 ile aynıdır; fark seq2seq decoder'ındadır.
         return (
             [target]

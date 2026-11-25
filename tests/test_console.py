@@ -34,8 +34,8 @@ def test_setup_console_switches_cp1252_to_utf8(monkeypatch):
 @pytest.mark.parametrize(
     "module_name",
     [
-        "src.data.load",
-        "src.data.preprocess",
+        "src.datasets.household.load",
+        "src.datasets.household.preprocess",
         "src.core.split",
         "src.core.windows",
         "src.models.baselines",

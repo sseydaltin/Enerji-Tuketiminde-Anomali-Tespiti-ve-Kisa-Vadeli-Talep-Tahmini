@@ -18,7 +18,7 @@ from src.anomaly_protocol import (
     score_copies,
     select_on_dev,
 )
-from src.data.eld import eld_config
+from src.datasets.eld.eld import eld_config
 from src.core.inject_anomalies import train_sigma_table
 from src.core.config import PROJECT_ROOT
 from src.core.split import chronological_split

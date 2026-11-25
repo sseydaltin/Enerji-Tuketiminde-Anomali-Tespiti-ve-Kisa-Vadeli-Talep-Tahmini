@@ -371,7 +371,7 @@ def event_outcomes(result, method):
 
     Girdi: analyze_test_range çıktısı ve yöntem kodu.
     Çıktı: (olay tablosu, yanlış alarm blok sayısı).
-    Neden: Tanımlar src/utils/anomaly_metrics.event_metrics ile aynıdır. Olayın en az
+    Neden: Tanımlar src/core/anomaly_metrics.event_metrics ile aynıdır. Olayın en az
     bir saati işaretlenince yakalanmış sayılır; hiçbir etiketli saatle kesişmeyen alarm
     bloğu yanlış alarmdır. Ham skor yalnız bilgi içindir; eşik yumuşatılmış skora uygulanır.
     """

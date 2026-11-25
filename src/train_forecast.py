@@ -16,7 +16,7 @@ from torch import nn
 
 from src.core.config import PROJECT_ROOT, load_config
 from src.core.split import chronological_split
-from src.data.weather import load_weather_frame
+from src.datasets.household.weather import load_weather_frame
 from src.core.windows import get_feature_columns, make_windows
 from src.models.cnn_lstm import CNNLSTMForecaster
 from src.models.forecast_baselines import run_ridge

@@ -10,7 +10,7 @@ import pandas as pd
 
 from src.core.config import PROJECT_ROOT, load_config
 from src.core.split import chronological_split
-from src.data.weather import load_weather_frame
+from src.datasets.household.weather import load_weather_frame
 from src.core.console import setup_console
 from src.core.results_io import resolve_path
 
