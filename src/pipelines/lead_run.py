@@ -21,7 +21,7 @@ from src.core.console import setup_console
 from src.core.results_io import resolve_path
 from src.datasets.lead.eda import (anomaly_events, backward_run_length, constant_run_length, coverage, gap_neighbors,
                                    length_bins, previous_missing, reading_flags, same_start_events)
-from src.datasets.lead.load import clean, load_raw
+from src.datasets.lead.load import clean, extract_sites, load_raw
 
 CONFIG_FILE = PROJECT_ROOT / "configs/lead.yaml"
 SCOPE = "LEAD train.csv, tüm etiketli veri (200 bina, 2016)"   # figür başlıklarında küme bilgisi
@@ -162,23 +162,24 @@ def gap_table(df, events, tables_dir):
 
 
 def load_sites(path):
-    """İsteğe bağlı ASHRAE GEP III building_metadata.csv → (building_id, site_id, primary_use); yoksa None."""
+    """building_sites.csv → (building_id, site_id, primary_use); yoksa None (--stage sites ile üretilir)."""
     if not path.is_file():
         return None
-    meta = pd.read_csv(path)
-    return meta[["building_id", "site_id", "primary_use"]].drop_duplicates("building_id")
+    return pd.read_csv(path)
 
 
 def site_table(df, sites, tables_dir):
-    """LEAD binalarının kaçının metadata ile eşleştiği ve site başına bina sayısı."""
+    """LEAD binalarının kaçının site bilgisiyle eşleştiği ve site başına bina sayısı."""
     lead_buildings = pd.Series(df["building_id"].unique(), name="building_id")
     if sites is None:
-        pd.DataFrame([{"durum": "building_metadata.csv yok; site eşleşmesi yapılmadı"}]).to_csv(
+        pd.DataFrame([{"durum": "building_sites.csv yok; site eşleşmesi yapılmadı (--stage sites)"}]).to_csv(
             tables_dir / "site_match.csv", index=False)
-        print("Site bilgisi: data/raw/lead/building_metadata.csv yok; eşleşme yapılmadı.\n")
+        print("Site bilgisi yok; eşleşme yapılmadı (--stage sites).")
         return None
     matched = lead_buildings.to_frame().merge(sites, on="building_id", how="left")
-    per_site = matched.groupby("site_id", dropna=False).agg(n_bina=("building_id", "size")).reset_index()
+    per_site = matched.groupby("site_id", dropna=False).agg(
+        n_bina=("building_id", "size"),
+        kullanim_turleri=("primary_use", lambda s: ", ".join(sorted(s.dropna().unique())))).reset_index()
     per_site.to_csv(tables_dir / "site_match.csv", index=False)
     print(f"Site eşleşmesi: {matched['site_id'].notna().sum()} / {len(matched)} bina\n{per_site.to_string(index=False)}\n")
     return matched
@@ -233,8 +234,11 @@ def same_start_table(df, events, matched_sites, tables_dir):
         n_sites = ev.assign(site=site).groupby("start")["site"].transform("nunique")
         summary.append(("paylaşılan olaylarda tüm binaların tek sitede olduğu oran",
                         float((n_sites[shared] == 1).mean())))
+        same_site_peers = ev.assign(site=site).groupby(["start", "site"])["building_id"].transform("nunique")
+        summary.append(("paylaşılan olaylarda en az bir başka binanın aynı sitede olduğu oran",
+                        float((same_site_peers[shared] >= 2).mean())))
     else:
-        summary.append(("site kontrolü", "yapılmadı (building_metadata.csv yok)"))
+        summary.append(("site kontrolü", "yapılmadı (site bilgisi yok)"))
     pd.DataFrame(summary, columns=["ölçü", "değer"]).to_csv(tables_dir / "same_start_events.csv", index=False)
     top = (ev[shared].groupby("start").agg(n_bina=("building_id", "nunique"),
                                            medyan_uzunluk=("length_hours", "median"))
@@ -361,7 +365,7 @@ def stage_eda(config):
     events.to_csv(p["tables_dir"] / "anomaly_events.csv", index=False)
     frozen_sensitivity(df, flags["run_length"].to_numpy(), p["tables_dir"])
     gap_table(df, events, p["tables_dir"])
-    matched = site_table(df, load_sites(p["metadata_file"]), p["tables_dir"])
+    matched = site_table(df, load_sites(p["sites_file"]), p["tables_dir"])
     causal_table(df, events, p["tables_dir"])
     same_start_table(df, events, matched, p["tables_dir"])
     summary_figures(building, dist, zero_frozen, p["figures_dir"])
@@ -372,16 +376,28 @@ def stage_eda(config):
         print(table.to_string(index=False), "\n")
 
 
+def stage_sites(config, features_path):
+    """train_features.csv (veya zip) → data/raw/lead/building_sites.csv (yalnız site_id, primary_use)."""
+    p = paths(config)
+    sites = extract_sites(features_path)
+    sites.to_csv(p["sites_file"], index=False)
+    print(f"{len(sites)} bina → {p['sites_file']}")
+
+
 def main():
     """--stage clean | eda."""
     setup_console()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--stage", choices=("clean", "eda"), required=True)
+    parser.add_argument("--stage", choices=("clean", "eda", "sites"), required=True)
+    parser.add_argument("--features", default=None,
+                        help="--stage sites: Kaggle train_features.csv ya da energy-anomaly-detection.zip yolu")
     parser.add_argument("--config", default=str(CONFIG_FILE))
     args = parser.parse_args()
     config = load_config(args.config)
     if args.stage == "clean":
         stage_clean(config)
+    elif args.stage == "sites":
+        stage_sites(config, args.features)
     else:
         stage_eda(config)
 

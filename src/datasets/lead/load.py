@@ -78,3 +78,28 @@ def clean(raw):
 
     log.append({"İşlem": "Toplam", "Önce": initial, "Sonra": len(df), "Silinen satır": initial - len(df)})
     return df, pd.DataFrame(log)
+
+
+SITE_COLUMNS = ["building_id", "site_id", "primary_use"]
+
+
+def extract_sites(features_path):
+    """Kaggle train_features.csv'den (veya onu içeren zip'ten) YALNIZ building_id → site_id, primary_use.
+
+    Girdi: train_features.csv ya da energy-anomaly-detection.zip yolu.
+    Çıktı: DataFrame [bina] (building_id, site_id, primary_use).
+    Neden: Site, bölme (siteye göre sağlamlık kontrolü) ve olay analizi için gerekir. Dosyanın diğer
+    sütunları (hava, hedef kodlamaları vb.) model girdisi DEĞİLDİR ve okunmaz (bkz. deney günlüğü).
+    Her binanın tek bir site ve kullanım türü olduğu denetlenir.
+    """
+    import zipfile
+    path = Path(features_path)
+    if path.suffix == ".zip":
+        with zipfile.ZipFile(path) as archive, archive.open("train_features.csv") as handle:
+            frame = pd.read_csv(handle, usecols=SITE_COLUMNS)
+    else:
+        frame = pd.read_csv(path, usecols=SITE_COLUMNS)
+    sites = frame.drop_duplicates()
+    if sites["building_id"].duplicated().any():
+        raise ValueError("Bir binaya birden fazla site_id/primary_use eşlenmiş.")
+    return sites.sort_values("building_id").reset_index(drop=True)

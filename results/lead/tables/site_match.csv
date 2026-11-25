@@ -1,2 +1,15 @@
-durum
-building_metadata.csv yok; site eşleşmesi yapılmadı
+site_id,n_bina,kullanim_turleri
+0,8,"Education, Office, Parking"
+1,16,"Education, Entertainment/public assembly, Lodging/residential, Office, Public services"
+2,21,"Education, Entertainment/public assembly, Lodging/residential, Office"
+3,11,"Education, Entertainment/public assembly, Lodging/residential, Office, Public services"
+4,2,Education
+5,24,"Education, Entertainment/public assembly, Manufacturing/industrial, Office, Public services"
+7,1,Education
+8,3,"Entertainment/public assembly, Office"
+9,52,"Education, Entertainment/public assembly, Lodging/residential, Office, Services"
+10,2,"Office, Other"
+12,1,Education
+13,11,"Entertainment/public assembly, Manufacturing/industrial, Office, Parking, Services"
+14,47,"Education, Entertainment/public assembly, Food sales and service, Healthcare, Lodging/residential, Office, Public services"
+15,1,Religious worship

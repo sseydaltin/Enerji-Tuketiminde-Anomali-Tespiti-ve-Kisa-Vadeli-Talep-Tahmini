@@ -1,11 +1,12 @@
 ölçü,değer
-olay,5811
-en az bir başka binada aynı saatte başlayan olay,4302
+olay,5811.0
+en az bir başka binada aynı saatte başlayan olay,4302.0
 oranı,0.7403200826019618
-bu olayların paylaşıldığı farklı başlangıç saati,559
-bir saatte olay başlatan en çok bina,50
+bu olayların paylaşıldığı farklı başlangıç saati,559.0
+bir saatte olay başlatan en çok bina,50.0
 paylaşılan olaylarda boşluk kenarı oranı,0.795908879590888
 paylaşılmayan olaylarda boşluk kenarı oranı,0.43074884029158383
 paylaşılan olaylarda medyan uzunluk (saat),1.0
 paylaşılmayan olaylarda medyan uzunluk (saat),4.0
-site kontrolü,yapılmadı (building_metadata.csv yok)
+paylaşılan olaylarda tüm binaların tek sitede olduğu oran,0.700604370060437
+paylaşılan olaylarda en az bir başka binanın aynı sitede olduğu oran,0.8928405392840539
