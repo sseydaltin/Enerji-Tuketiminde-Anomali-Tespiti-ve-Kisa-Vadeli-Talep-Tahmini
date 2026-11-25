@@ -630,15 +630,121 @@ def top_models(results, k=2, kind="bina"):
     return list(zip(learned["model"].head(k), learned["set"].head(k)))
 
 
+NEURAL_FAMILIES = {"L2", "L3", "L4", "L5"}                     # sinir ağı içeren aileler (§18.2)
+SIMPLICITY_V2 = ["L0", "L4", "L1", "L2", "L3", "L5"]            # §18.2; aile içinde FE'siz < FE
+FINAL_SLICES = ["other", "genel", "gap_edge", "frozen", "paylasilan", "tekil"]   # "other" başta (§18.1)
+MODEL_NOTES = {
+    "IF": "yalnız literatür referansı; seçime girmez",
+    "L4-semi": "val erken durdurması val etiketli saatleri kayıptan çıkarır (val etiketini görür)",
+    "L1-FE": "G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den)",
+    "L2-FE": "G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den)",
+    "L5-FE": "L1-FE + L2-FE; ağırlık val genel PR-AUC ile",
+}
+
+
+def paired_ties(pivot, best, candidates):
+    """Eşleştirilmiş fark (aday − en iyi), seed başına. Çıktı: {aday: (ort, 2·std/√n, gürültü düzeyinde mi)}."""
+    out = {}
+    for key in candidates:
+        diff = pivot[key] - pivot[best]
+        bound = 2 * diff.std(ddof=1) / np.sqrt(len(diff))
+        out[key] = (float(diff.mean()), float(bound), bool(abs(diff.mean()) <= bound + 1e-12))
+    return out
+
+
+def select_model_v2(results, kind="bina"):
+    """§18.2: `other` PR-AUC → (gürültüyse) genel PR-AUC → (gürültüyse) sinir ağı tercihi → basitlik.
+
+    Yalnız bütün seed'lerde koşmuş modeller; IF hariç. Çıktı: aday tablosu (seçilen = True olan satır).
+    """
+    part = results[(results["bolme"] == kind) & (results["model"] != "IF")]
+
+    def pivot(dilim):
+        table = part[part["dilim"] == dilim].pivot_table(index="seed", columns=["model", "set"], values="pr_auc")
+        return table.loc[:, table.notna().all()]
+
+    other, genel = pivot("other"), pivot("genel")
+    keys = [k for k in other.columns if k in genel.columns]
+    other, genel = other[keys], genel[keys]
+    best_other = other.mean().idxmax()
+    t_other = paired_ties(other, best_other, keys)
+    c1 = [k for k in keys if t_other[k][2]]
+    best_genel = genel[c1].mean().idxmax()
+    t_genel = paired_ties(genel, best_genel, c1)
+    c2 = [k for k in c1 if t_genel[k][2]]
+    neural = [k for k in c2 if family(k[0]) in NEURAL_FAMILIES]
+    pool = neural or c2
+
+    def rank(key):
+        return (SIMPLICITY_V2.index(family(key[0])), key[0].endswith("-FE"), -other[key].mean())
+
+    chosen = min(pool, key=rank)
+    rows = []
+    for k in keys:
+        rows.append({"model": k[0], "set": k[1], "other_pr_auc": other[k].mean(), "genel_pr_auc": genel[k].mean(),
+                     "other_fark": t_other[k][0], "other_2se": t_other[k][1], "C1_other_gurultu": k in c1,
+                     "genel_fark": t_genel[k][0] if k in t_genel else np.nan,
+                     "genel_2se": t_genel[k][1] if k in t_genel else np.nan, "C2_genel_gurultu": k in c2,
+                     "sinir_agi": family(k[0]) in NEURAL_FAMILIES, "secilen": k == chosen})
+    return pd.DataFrame(rows).sort_values("other_pr_auc", ascending=False).reset_index(drop=True)
+
+
+def final_summary(results, kind="bina"):
+    """Final özet (§18.3): model × set × dilim; ROC-AUC, PR-AUC, F1, olay recall (seed ort. ± std) ve dilimin
+    PR-AUC taban değeri (pozitif oranı = rastgele skorun beklenen PR-AUC'si). Uzun biçim tablo."""
+    part = results[results["bolme"] == kind].copy()
+    part["taban"] = part["n_pos"] / (part["n_pos"] + part["n_neg"])
+    agg = part.groupby(["model", "set", "dilim"]).agg(
+        n_seed=("seed", "nunique"), roc_auc=("roc_auc", "mean"), roc_auc_std=("roc_auc", "std"),
+        pr_auc=("pr_auc", "mean"), pr_auc_std=("pr_auc", "std"), f1=("f1", "mean"), f1_std=("f1", "std"),
+        event_recall=("event_recall", "mean"), event_recall_std=("event_recall", "std"),
+        pr_auc_taban=("taban", "mean")).reset_index()
+    agg["aciklama"] = agg["model"].map(MODEL_NOTES).fillna("")
+    agg["dilim"] = pd.Categorical(agg["dilim"], FINAL_SLICES, ordered=True)
+    return agg.sort_values(["dilim", "pr_auc"], ascending=[True, False]).reset_index(drop=True)
+
+
+def final_markdown(table, selection_v2, selection_v1, path, kind="bina"):
+    """Dilim başına bir tablo ("other" önce); başlık ve notlar betikten."""
+    def pm(m, s):
+        return f"{m:.3f} ± {s:.3f}" if pd.notna(m) else "—"
+
+    lines = [f"# LEAD final val özeti ({kind} bölmesi, 3 seed ort. ± std) — test DEĞİL", "",
+             "Birincil metrik: `other` (davranışsal) dilimi PR-AUC (protokol §18). Taban = dilimin pozitif oranı "
+             "(rastgele skorun beklenen PR-AUC'si). L3 eğitilmedi (§17). Kaynak: results/lead/tables/val_results.csv.", ""]
+    for dilim in FINAL_SLICES:
+        part = table[table["dilim"] == dilim]
+        lines += [f"## {dilim} (PR-AUC taban ≈ {part['pr_auc_taban'].mean():.4f})", "",
+                  "| model | set | n seed | ROC-AUC | PR-AUC | F1 | olay recall | açıklama |", "|---|---|---|---|---|---|---|---|"]
+        for r in part.itertuples():
+            lines.append(f"| {r.model} | {r.set} | {r.n_seed} | {pm(r.roc_auc, r.roc_auc_std)} | "
+                         f"{pm(r.pr_auc, r.pr_auc_std)} | {pm(r.f1, r.f1_std)} | "
+                         f"{pm(r.event_recall, r.event_recall_std)} | {r.aciklama} |")
+        lines.append("")
+    chosen = selection_v2[selection_v2["secilen"]].iloc[0]
+    old = selection_v1[selection_v1["secilen"]].iloc[0]
+    lines += ["## Seçim", "",
+              f"- §18.2 kuralı (geçerli): **{chosen['model']} / {chosen['set']}**",
+              f"- §12 kuralı (eski, tarihçe için): {old['model']} / {old['set']}", ""]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def summarize(ctx):
-    """val_summary.csv/.md ve val_selection.csv üretir; tabloyu basar."""
+    """val_summary.csv/.md, val_selection.csv (§12), val_selection_v2.csv (§18.2) ve val_final_summary.csv/.md."""
     results = pd.read_csv(ctx.tables / "val_results.csv")
     summary = summary_table(results)
     selection = select_model(results)
+    selection_v2 = select_model_v2(results)
     summary.to_csv(ctx.tables / "val_summary.csv", index=False)
     selection.to_csv(ctx.tables / "val_selection.csv", index=False)
+    selection_v2.to_csv(ctx.tables / "val_selection_v2.csv", index=False)
+    final = final_summary(results)
+    final.to_csv(ctx.tables / "val_final_summary.csv", index=False)
+    final_markdown(final, selection_v2, selection, ctx.tables / "val_final_summary.md")
     if (results["bolme"] == "site").any():
         summary_table(results, "site").to_csv(ctx.tables / "val_summary_site.csv", index=False)
+        site = final_summary(results, "site")
+        site.to_csv(ctx.tables / "val_final_summary_site.csv", index=False)
     cols = ["model", "set", "n_seed", "genel_pr_auc", "genel_pr_auc_std", "genel_roc_auc", "genel_f1",
             "genel_precision", "genel_recall", "genel_event_recall", "gap_edge_recall", "frozen_recall",
             "other_pr_auc", "other_f1", "other_event_recall", "paylasilan_pr_auc", "tekil_pr_auc"]
@@ -650,8 +756,7 @@ def summarize(ctx):
         "# LEAD val özeti (bina bölmesi, 3 seed ortalaması) — test değil\n\n" + "\n".join(lines) + "\n",
         encoding="utf-8")
     pd.set_option("display.width", 250)
-    print(short.round(4).to_string(index=False))
-    print(selection.round(4).to_string(index=False))
+    print(selection_v2.round(4).to_string(index=False))
 
 
 def run_site_check(ctx, seeds):
