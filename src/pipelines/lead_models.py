@@ -650,6 +650,8 @@ MODEL_NOTES = {
     "L1-FE": "G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den)",
     "L2-FE": "G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den)",
     "L5-FE": "L1-FE + L2-FE; ağırlık val genel PR-AUC ile",
+    "L1-I": "I-turu (§20): LightGBM hattı, adımlar train CV'de; val'de ES yok",
+    "L2-I": "I-turu (§20): GRU hattı, adımlar train CV'de; val'de ES yok",
 }
 
 
