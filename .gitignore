@@ -28,6 +28,8 @@ models/anomaly_supervised/
 # --- Kayıtlı val/test tahminleri (yeniden üretilebilir, büyük) ---
 results/predictions/
 results/eld/predictions/
+results/lead/scores/
+models/lead/
 
 # --- Arşiv dosyaları (model yedekleri vb. repoya girmez) ---
 *.zip

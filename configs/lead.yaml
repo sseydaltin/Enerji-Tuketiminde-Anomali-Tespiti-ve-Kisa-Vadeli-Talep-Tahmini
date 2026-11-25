@@ -20,3 +20,57 @@ eda:
   review_normal_windows: 10    # etiket incelemesi: rastgele normal pencere sayısı
   review_context_hours: 48     # segmentin/pencerenin iki yanında gösterilen saat
   normal_window_hours: 24      # normal pencerenin uzunluğu (içinde hiç anomali etiketi yok)
+
+# ---------------------------------------------------------------------
+# Modelleme (docs/lead_protokol.md). Yalnız val; test ayrı onayla.
+# ---------------------------------------------------------------------
+split:
+  seeds: [42, 7, 2026]          # bina bölmesi 120/40/40 ve site bölmesi tekrarları
+  n_val: 40
+  n_test: 40
+  site_fractions: [0.6, 0.2, 0.2]
+
+evaluation:
+  frozen_min_run: 3             # alt tür "frozen" tanımı (§3)
+
+rules:
+  r2_k_values: [2, 3, 6]        # R2/R3: son k saat aynı; k val F1 ile seçilir
+  a0_window: 168                # A0: önceki 7 günün aynı saatleri (hanedeki tanım), log1p ölçekte
+  a0_min_std: 0.05              # log1p birimi
+
+budget:
+  negative_fraction: 0.2        # Optuna ve son eğitimde: tüm pozitifler + negatiflerin %20'si (seed'li)
+  cv_folds: 3                   # train binalarında binaya göre gruplu CV
+  gpu_hours_limit: 4.0
+
+lightgbm:
+  optuna_trials: 20
+  n_estimators: 2000
+  early_stopping_rounds: 50
+
+deep:
+  window: 48
+  optuna_trials: 20             # bütçe aşılırsa düşürülür ve günlüğe yazılır
+  optuna_max_epochs: 6          # deneme başına epoch sınırı (MedianPruner ile)
+  max_epochs: 40                # son eğitim
+  patience: 8                   # erken durdurma: val PR-AUC
+  grad_clip: 1.0
+
+a3:                             # L4: hanedeki F10-opt ayarları (configs/optuna_seq2seq_best.yaml)
+  horizon: 24
+  hidden: 128
+  layers: 1
+  dropout: 0.3552602990767793
+  lr: 0.001780071422797252
+  weight_decay: 5.6635422301858856e-05
+  batch_size: 64
+  max_epochs: 30
+  patience: 8
+  windows_per_epoch: 100000     # eğitim binalarından rastgele pencere (bütçe)
+  val_windows: 30000
+  residual_scale_hours: 168     # skor = |hata| / son 168 saatin medyan |hata|'sı (yalnız geçmiş)
+
+isolation_forest:
+  n_estimators: 200
+  max_samples: 256
+  train_rows: 200000

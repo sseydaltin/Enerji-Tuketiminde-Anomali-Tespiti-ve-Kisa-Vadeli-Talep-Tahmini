@@ -388,12 +388,46 @@ def main():
     """--stage clean | eda."""
     setup_console()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--stage", choices=("clean", "eda", "sites"), required=True)
+    parser.add_argument("--stage", choices=("clean", "eda", "sites", "splits", "l0", "l1", "l4", "deep", "l5",
+                                            "if", "site", "summary"), required=True)
+    parser.add_argument("--model", choices=("L2", "L3"), default="L2", help="--stage deep")
+    parser.add_argument("--sets", default="full,behavior", help="öznitelik setleri (virgülle)")
+    parser.add_argument("--seeds", default=None, help="bölme seed'leri (virgülle); varsayılan config")
+    parser.add_argument("--trials", type=int, default=None, help="Optuna deneme sayısı (bütçe)")
     parser.add_argument("--features", default=None,
                         help="--stage sites: Kaggle train_features.csv ya da energy-anomaly-detection.zip yolu")
     parser.add_argument("--config", default=str(CONFIG_FILE))
     args = parser.parse_args()
     config = load_config(args.config)
+    if args.stage in ("splits", "l0", "l1", "l4", "deep", "l5", "if", "site", "summary"):
+        from src.pipelines import lead_models as lm      # model kütüphaneleri yalnız gerektiğinde yüklenir
+        ctx = lm.LeadData(config)
+        seeds = [int(s) for s in args.seeds.split(",")] if args.seeds else config["split"]["seeds"]
+        sets = args.sets.split(",")
+        if args.stage == "splits":
+            lm.write_splits(ctx)
+        for seed in seeds if args.stage not in ("splits", "site", "summary") else []:
+            if args.stage == "l0":
+                lm.run_rules(ctx, "bina", seed)
+            elif args.stage == "l1":
+                for s in sets:
+                    lm.run_lightgbm(ctx, "bina", seed, s)
+            elif args.stage == "l4":
+                lm.run_a3(ctx, "bina", seed)
+                lm.run_a3(ctx, "bina", seed, semi=True)
+            elif args.stage == "deep":
+                for s in sets:
+                    lm.run_deep(ctx, args.model, "bina", seed, s, n_trials=args.trials)
+            elif args.stage == "l5":
+                for s in sets:
+                    lm.run_ensemble(ctx, "bina", seed, s)
+            elif args.stage == "if":
+                lm.run_isolation_forest(ctx, "bina", seed)
+        if args.stage == "site":
+            lm.run_site_check(ctx, seeds)
+        if args.stage == "summary":
+            lm.summarize(ctx)
+        return
     if args.stage == "clean":
         stage_clean(config)
     elif args.stage == "sites":

@@ -1,0 +1,499 @@
+"""LEAD model hatları (docs/lead_protokol.md): L0 kurallar, L1 LightGBM, L2 GRU, L3 CNN+GRU, L4 A3, L5 topluluk,
+Isolation Forest. YALNIZ VAL: test binaları bu modülde hiçbir zaman skorlanmaz (test ayrı onayla yapılır).
+
+Ortak kurallar:
+- Bölme bina düzeyinde; ölçek istatistikleri ve modeller yalnız TRAIN binalarına fit edilir.
+- Optuna yalnız train binalarında, binaya göre gruplu CV ile; val binaları yalnız erken durdurma, eşik ve
+  topluluk ağırlığı için (protokol §9–§10).
+- Eğitimde negatif alt örnekleme (bütün pozitifler + negatiflerin %20'si, seed'li); değerlendirme tam veri.
+- Sonuçlar results/lead/tables/val_results.csv (anahtar: model, set, bölme, seed, dilim); val skorları
+  results/lead/scores/ (git dışı) altında topluluk için saklanır.
+"""
+
+import json
+import time
+
+import lightgbm as lgb
+import numpy as np
+import optuna
+import pandas as pd
+import torch
+from sklearn.ensemble import IsolationForest
+from sklearn.metrics import average_precision_score
+from sklearn.model_selection import GroupKFold
+from torch import nn
+
+from src.core.config import PROJECT_ROOT
+from src.core.results_io import resolve_path, upsert_csv
+from src.core.seed import set_seed
+from src.datasets.lead.eda import backward_run_length, previous_missing
+from src.datasets.lead.evaluate import evaluate, f1_max_threshold
+from src.datasets.lead.features import FEATURE_SETS, calendar, evaluation_labels, full_grid, tabular_features
+from src.datasets.lead.splits import building_split, site_split, split_table
+from src.models.anomaly_baselines import rolling_zscore
+from src.models.lead_classifiers import CNNGRUClassifier, GRUClassifier
+from src.models.seq2seq import Seq2SeqForecaster
+
+KEYS = ["model", "set", "bolme", "seed", "dilim"]
+SIMPLICITY = ["L0", "L4", "L1", "L2", "L3", "L5"]          # protokol §12 (küçük = basit)
+optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+
+# ----------------------------------------------------------------------------- ortak veri
+class LeadData:
+    """Bütün aşamaların ortak verisi: temiz tablo, saat ızgarası, değerlendirme etiketleri, bölmeler."""
+
+    def __init__(self, config):
+        self.config = config
+        self.paths = {k: resolve_path(PROJECT_ROOT, v) for k, v in config["paths"].items()}
+        self.tables = self.paths["tables_dir"]
+        self.scores_dir = self.tables.parent / "scores"
+        self.scores_dir.mkdir(parents=True, exist_ok=True)
+        clean = pd.read_parquet(self.paths["processed_file"])
+        self.clean = clean.sort_values(["building_id", "timestamp"]).reset_index(drop=True)
+        self.grid = full_grid(self.clean)
+        self.obs = np.flatnonzero(self.grid["observed"].to_numpy() == 1)   # temiz satırların ızgara konumu
+        assert len(self.obs) == len(self.clean)
+        self.labels = evaluation_labels(self.clean, config["evaluation"]["frozen_min_run"])
+        self.y = self.clean["anomaly"].to_numpy().astype(int)
+        self.building = self.clean["building_id"].to_numpy()
+        self.buildings = np.sort(self.clean["building_id"].unique())
+        self.n_hours = len(self.grid) // len(self.buildings)
+        self.b_pos = np.searchsorted(self.buildings, self.building)        # [N] bina sırası
+        self.t_pos = self.obs - self.b_pos * self.n_hours                  # [N] saat sırası
+        sites_file = self.paths["sites_file"]
+        self.sites = pd.read_csv(sites_file) if sites_file.is_file() else None
+        self._tabular = {}
+
+    def tabular(self, feature_set):
+        """Gözlenen satırlar için tablo öznitelikleri [N, F] (önbellekli)."""
+        if feature_set not in self._tabular:
+            X = tabular_features(self.grid, feature_set).iloc[self.obs].reset_index(drop=True)
+            self._tabular[feature_set] = X
+        return self._tabular[feature_set]
+
+    def split(self, kind, seed):
+        """kind: "bina" (ana) veya "site" (sağlamlık)."""
+        s = self.config["split"]
+        if kind == "bina":
+            return building_split(self.buildings, seed, s["n_val"], s["n_test"])
+        return site_split(self.sites, seed, tuple(s["site_fractions"]))
+
+    def rows(self, building_ids):
+        """Verilen binaların gözlenen satırları (bool maske [N])."""
+        return np.isin(self.building, building_ids)
+
+
+def negative_subsample(index, y, fraction, seed):
+    """Bütün pozitifler + negatiflerin `fraction` kadarı (seed'li). Girdi/çıktı: satır indeksleri."""
+    rng = np.random.default_rng(seed)
+    pos, neg = index[y[index] == 1], index[y[index] == 0]
+    keep = rng.choice(neg, size=int(round(fraction * len(neg))), replace=False)
+    return np.sort(np.concatenate([pos, keep]))
+
+
+def record(ctx, model, feature_set, kind, seed, threshold, val_mask, scores, extra=None):
+    """Val metriklerini hesaplar, val_results.csv'ye yazar, val skorlarını saklar. Çıktı: metrik tablosu."""
+    table = evaluate(ctx.y[val_mask], scores, threshold, ctx.labels[val_mask].reset_index(drop=True))
+    rows = [{"model": model, "set": feature_set, "bolme": kind, "seed": seed, "threshold": threshold,
+             **row, "extra": json.dumps(extra or {}, ensure_ascii=False)} for row in table.to_dict("records")]
+    upsert_csv(ctx.tables / "val_results.csv", rows, KEYS)
+    np.save(ctx.scores_dir / f"{kind}_{seed}_{model}_{feature_set}.npy", np.asarray(scores, dtype=np.float32))
+    genel = table.set_index("dilim").loc["genel"]
+    other = table.set_index("dilim").loc["other"]
+    print(f"  {model:10s} {feature_set:9s} {kind}/{seed}: PR-AUC {genel.pr_auc:.4f} ROC {genel.roc_auc:.4f} "
+          f"F1 {genel.f1:.4f} | other PR-AUC {other.pr_auc:.4f} F1 {other.f1:.4f}", flush=True)
+    return table
+
+
+def log_run(ctx, row):
+    """Koşu kaydı (süre, seçilen ayarlar) → results/lead/experiments.csv."""
+    upsert_csv(ctx.tables.parent / "experiments.csv", [row], ["model", "set", "bolme", "seed"])
+
+
+# ----------------------------------------------------------------------------- L0
+def run_rules(ctx, kind, seed):
+    """L0: (a) hepsi normal, (b) R1, (c) R2 (k val'de), (d) R3 = R1 ∨ R2 (k val'de), (e) A0 z-skoru."""
+    split = ctx.split(kind, seed)
+    val = ctx.rows(split["val"])
+    y = ctx.y[val]
+    prev = previous_missing(ctx.clean)[val].astype(float)
+    run = backward_run_length(ctx.clean)[val].astype(float)
+    ks = ctx.config["rules"]["r2_k_values"]
+
+    record(ctx, "L0-normal", "-", kind, seed, np.inf, val, np.zeros(val.sum()))
+    record(ctx, "L0-R1", "-", kind, seed, 0.5, val, prev)
+
+    def f1(pred):
+        tp = (pred & (y == 1)).sum()
+        return 2 * tp / (pred.sum() + (y == 1).sum())
+
+    k2 = max(ks, key=lambda k: f1(run >= k))                      # R2: k val F1 ile
+    record(ctx, "L0-R2", "-", kind, seed, float(k2), val, run, {"k": k2})
+    k3 = max(ks, key=lambda k: f1((prev > 0) | (run >= k)))       # R3: k val F1 ile
+    r3 = ((prev > 0) | (run >= k3)).astype(float)
+    record(ctx, "L0-R3", "-", kind, seed, 0.5, val, r3, {"k": k3})
+
+    rules = ctx.config["rules"]
+    log_reading = np.log1p(ctx.grid["meter_reading"])
+    z = log_reading.groupby(ctx.grid["building_id"], sort=False).transform(
+        lambda s: rolling_zscore(s, rules["a0_window"], rules["a0_min_std"]))
+    a0 = z.to_numpy()[ctx.obs][val]
+    record(ctx, "L0-A0", "-", kind, seed, f1_max_threshold(y, a0), val, a0)
+
+
+# ----------------------------------------------------------------------------- L1
+def lgb_model(params, scale_pos_weight, seed, n_estimators):
+    """LightGBM sınıflandırıcı (erken durdurma metriği: average precision = PR-AUC)."""
+    return lgb.LGBMClassifier(objective="binary", n_estimators=n_estimators, random_state=seed, verbosity=-1,
+                              scale_pos_weight=scale_pos_weight, subsample_freq=1, **params)
+
+
+def fit_lgb(X, y, X_stop, y_stop, params, seed, settings):
+    """Alt örneklenmiş eğitim kümesiyle eğitir; X_stop'ta PR-AUC ile erken durdurur."""
+    model = lgb_model(params, (y == 0).sum() / max((y == 1).sum(), 1), seed, settings["n_estimators"])
+    model.fit(X, y, eval_set=[(X_stop, y_stop)], eval_metric="average_precision",
+              callbacks=[lgb.early_stopping(settings["early_stopping_rounds"], verbose=False)])
+    return model
+
+
+def lgb_space(trial):
+    """L1 arama uzayı."""
+    return {"learning_rate": trial.suggest_float("learning_rate", 0.02, 0.2, log=True),
+            "num_leaves": trial.suggest_int("num_leaves", 15, 127, log=True),
+            "min_child_samples": trial.suggest_int("min_child_samples", 20, 500, log=True),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 10.0, log=True)}
+
+
+def run_lightgbm(ctx, kind, seed, feature_set, params=None):
+    """L1: Optuna (train binalarında gruplu CV) → train binalarında son eğitim, val'de erken durdurma ve eşik.
+
+    params verilirse (site bölmesi) Optuna atlanır.
+    """
+    started = time.time()
+    split = ctx.split(kind, seed)
+    X = ctx.tabular(feature_set).to_numpy()
+    train_idx = np.flatnonzero(ctx.rows(split["train"]))
+    val = ctx.rows(split["val"])
+    settings, budget = ctx.config["lightgbm"], ctx.config["budget"]
+
+    if params is None:
+        folds = list(GroupKFold(budget["cv_folds"]).split(train_idx, groups=ctx.building[train_idx]))
+
+        def objective(trial):
+            p = lgb_space(trial)
+            scores = []
+            for f, (a, b) in enumerate(folds):
+                fit_rows = negative_subsample(train_idx[a], ctx.y, budget["negative_fraction"], seed + f)
+                hold = train_idx[b]
+                m = fit_lgb(X[fit_rows], ctx.y[fit_rows], X[hold], ctx.y[hold], p, seed, settings)
+                scores.append(average_precision_score(ctx.y[hold], m.predict_proba(X[hold])[:, 1]))
+                trial.report(float(np.mean(scores)), f)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
+            return float(np.mean(scores))
+
+        study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=seed),
+                                    pruner=optuna.pruners.MedianPruner(n_startup_trials=5))
+        study.optimize(objective, n_trials=settings["optuna_trials"])
+        params = study.best_params
+
+    fit_rows = negative_subsample(train_idx, ctx.y, budget["negative_fraction"], seed)
+    model = fit_lgb(X[fit_rows], ctx.y[fit_rows], X[val], ctx.y[val], params, seed, settings)
+    scores = model.predict_proba(X[val])[:, 1]
+    record(ctx, "L1", feature_set, kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores,
+           {"best_iteration": int(model.best_iteration_ or 0)})
+    log_run(ctx, {"model": "L1", "set": feature_set, "bolme": kind, "seed": seed,
+                  "params": json.dumps(params), "best_epoch": int(model.best_iteration_ or 0),
+                  "train_time_s": round(time.time() - started, 1)})
+    return params
+
+
+# ----------------------------------------------------------------------------- derin modeller: ortak tensörler
+def device():
+    """CUDA varsa GPU."""
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def sequence_array(ctx, train_buildings, feature_set):
+    """[bina, saat, kanal] tensörü (GPU). Kanallar: ölçekli log okuma (ileri doldurulmuş), [maske], takvim (7).
+
+    Ölçek (ortalama/std) yalnız TRAIN binalarının gözlenen log okumalarından. Eksik okuma bina bazında son
+    geçerli değerle doldurulur (yalnız geçmiş); binanın ilk gözleminden önceki saatler 0 (train ortalaması).
+    full setinde eksiklik maskesi kanalı vardır; behavior setinde yoktur (§7).
+    """
+    B, H = len(ctx.buildings), ctx.n_hours
+    logs = np.log1p(ctx.grid["meter_reading"].to_numpy()).reshape(B, H)
+    train = np.isin(ctx.buildings, train_buildings)
+    mean, std = np.nanmean(logs[train]), np.nanstd(logs[train])
+    x = (logs - mean) / std
+    missing = np.isnan(x)
+    last = np.where(~missing, np.arange(H)[None, :], 0)
+    np.maximum.accumulate(last, axis=1, out=last)                  # son geçerli saatin indeksi (geçmiş)
+    x = np.nan_to_num(np.take_along_axis(x, last, axis=1), nan=0.0)
+    cal = np.broadcast_to(calendar(ctx.grid["timestamp"].iloc[:H]).to_numpy(np.float32), (B, H, 7))
+    parts = [x[..., None]] + ([missing[..., None].astype(np.float32)] if feature_set == "full" else []) + [cal]
+    return torch.tensor(np.concatenate(parts, axis=2), dtype=torch.float32, device=device())
+
+
+def windows(array, b, t, length):
+    """[B,H,C] tensöründen (b, t) çiftleri için son `length` saat [n, length, C] (t dahil, yalnız geçmiş)."""
+    offsets = torch.arange(-length + 1, 1, device=array.device)
+    idx = (t[:, None] + offsets[None, :]).clamp(min=0)             # binanın başından önce: ilk saat tekrar
+    return array[b[:, None], idx]
+
+
+def predict_logits(model, array, b, t, length, batch=8192):
+    """Gradyansız, parça parça logit."""
+    model.eval()
+    out = []
+    with torch.no_grad():
+        for i in range(0, len(b), batch):
+            out.append(model(windows(array, b[i:i + batch], t[i:i + batch], length)).float().cpu())
+    return torch.cat(out).numpy()
+
+
+def train_classifier(make_model, array, fit_rows, stop_rows, ctx, params, max_epochs, patience, seed,
+                     trial=None, step=0):
+    """Ağırlıklı BCE ile eğitir; stop_rows'ta PR-AUC ile erken durdurur. Çıktı: (en iyi PR-AUC, durum, epoch)."""
+    set_seed(seed)
+    dev = device()
+    model = make_model().to(dev)
+    L = ctx.config["deep"]["window"]
+    b_fit = torch.tensor(ctx.b_pos[fit_rows], device=dev); t_fit = torch.tensor(ctx.t_pos[fit_rows], device=dev)
+    y_fit = torch.tensor(ctx.y[fit_rows], dtype=torch.float32, device=dev)
+    b_stop = torch.tensor(ctx.b_pos[stop_rows], device=dev); t_stop = torch.tensor(ctx.t_pos[stop_rows], device=dev)
+    pos_weight = torch.tensor((y_fit == 0).sum().item() / max((y_fit == 1).sum().item(), 1), device=dev)
+    loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"], weight_decay=1e-5)
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    best, best_state, best_epoch, wait = -1.0, None, 0, 0
+    for epoch in range(1, max_epochs + 1):
+        model.train()
+        order = torch.randperm(len(y_fit), generator=generator).to(dev)
+        for i in range(0, len(order), params["batch_size"]):
+            batch = order[i:i + params["batch_size"]]
+            optimizer.zero_grad()
+            loss = loss_fn(model(windows(array, b_fit[batch], t_fit[batch], L)), y_fit[batch])
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), ctx.config["deep"]["grad_clip"])
+            optimizer.step()
+        score = average_precision_score(ctx.y[stop_rows], predict_logits(model, array, b_stop, t_stop, L))
+        if trial is not None:
+            trial.report(score, step + epoch)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+        if score > best:
+            best, best_epoch, wait = score, epoch, 0
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        else:
+            wait += 1
+            if wait >= patience:
+                break
+    return best, best_state, best_epoch
+
+
+def deep_space(trial, architecture):
+    """L2/L3 arama uzayı."""
+    p = {"hidden": trial.suggest_categorical("hidden", [32, 64, 128]),
+         "layers": trial.suggest_int("layers", 1, 2),
+         "dropout": trial.suggest_float("dropout", 0.0, 0.3),
+         "lr": trial.suggest_float("lr", 3e-4, 3e-3, log=True),
+         "batch_size": trial.suggest_categorical("batch_size", [256, 512])}
+    if architecture == "L3":
+        p["filters"] = trial.suggest_categorical("filters", [16, 32, 64])
+        p["kernel"] = trial.suggest_categorical("kernel", [3, 5])
+    return p
+
+
+def model_factory(architecture, channels, p):
+    """L2 → GRUClassifier, L3 → CNNGRUClassifier."""
+    if architecture == "L2":
+        return lambda: GRUClassifier(channels, p["hidden"], p["layers"], p["dropout"])
+    return lambda: CNNGRUClassifier(channels, p["hidden"], p["layers"], p["dropout"], p["filters"], p["kernel"])
+
+
+def run_deep(ctx, architecture, kind, seed, feature_set, params=None, n_trials=None):
+    """L2 / L3: Optuna (train binalarında gruplu CV, MedianPruner, epoch sınırı) → son eğitim → val."""
+    started = time.time()
+    split = ctx.split(kind, seed)
+    array = sequence_array(ctx, split["train"], feature_set)
+    channels = array.shape[2]
+    deep, budget = ctx.config["deep"], ctx.config["budget"]
+    train_idx = np.flatnonzero(ctx.rows(split["train"]))
+    val_idx = np.flatnonzero(ctx.rows(split["val"]))
+
+    if params is None:
+        folds = list(GroupKFold(budget["cv_folds"]).split(train_idx, groups=ctx.building[train_idx]))
+
+        def objective(trial):
+            p = deep_space(trial, architecture)
+            scores = []
+            for f, (a, b) in enumerate(folds):
+                fit_rows = negative_subsample(train_idx[a], ctx.y, budget["negative_fraction"], seed + f)
+                best, _, _ = train_classifier(model_factory(architecture, channels, p), array, fit_rows,
+                                              train_idx[b], ctx, p, deep["optuna_max_epochs"], 2, seed,
+                                              trial=trial, step=f * deep["optuna_max_epochs"])
+                scores.append(best)
+            return float(np.mean(scores))
+
+        study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=seed),
+                                    pruner=optuna.pruners.MedianPruner(n_startup_trials=2, n_warmup_steps=2))
+        study.optimize(objective, n_trials=n_trials or deep["optuna_trials"])
+        params = study.best_params
+
+    fit_rows = negative_subsample(train_idx, ctx.y, budget["negative_fraction"], seed)
+    _, state, epoch = train_classifier(model_factory(architecture, channels, params), array, fit_rows, val_idx,
+                                       ctx, params, deep["max_epochs"], deep["patience"], seed)
+    model = model_factory(architecture, channels, params)().to(device())
+    model.load_state_dict(state)
+    dev = device()
+    logits = predict_logits(model, array, torch.tensor(ctx.b_pos[val_idx], device=dev),
+                            torch.tensor(ctx.t_pos[val_idx], device=dev), deep["window"])
+    scores = 1 / (1 + np.exp(-logits))
+    val = ctx.rows(split["val"])
+    record(ctx, architecture, feature_set, kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores,
+           {"best_epoch": epoch})
+    log_run(ctx, {"model": architecture, "set": feature_set, "bolme": kind, "seed": seed,
+                  "params": json.dumps(params), "best_epoch": epoch, "train_time_s": round(time.time() - started, 1)})
+    return params
+
+
+# ----------------------------------------------------------------------------- L4
+def run_a3(ctx, kind, seed, semi=False):
+    """L4 (A3): Seq2Seq tahmin modeli train binalarının saatleriyle; skor = |h=1 hatası| / son 168 saatin medyanı.
+
+    semi=True (L4-semi): train binalarının etiketli anomali saatleri kaybın hedeflerinden çıkarılır.
+    Girdi kanalları: ölçekli log okuma (ileri doldurulmuş), eksiklik maskesi, takvim. Decoder: hedef saatlerin
+    takvimi (önceden bilinir). Kayıp yalnız gözlenen hedef saatlerde (L1, hanedeki F10-opt gibi).
+    """
+    started = time.time()
+    cfg = ctx.config["a3"]
+    set_seed(seed)
+    dev = device()
+    split = ctx.split(kind, seed)
+    array = sequence_array(ctx, split["train"], "full")             # [B, H, 9]
+    B, H = len(ctx.buildings), ctx.n_hours
+    L, horizon = ctx.config["deep"]["window"], cfg["horizon"]
+    observed = torch.tensor(ctx.grid["observed"].to_numpy().reshape(B, H) == 1, device=dev)
+    target_ok = observed.clone()
+    if semi:
+        labels = ctx.grid["anomaly"].fillna(0).to_numpy().reshape(B, H) == 1
+        target_ok &= ~torch.tensor(labels, device=dev)
+    x = array[..., 0]
+    cal = array[..., 2:]                                           # [B, H, 7]
+    train_b = np.flatnonzero(np.isin(ctx.buildings, split["train"]))
+    val_b = np.flatnonzero(np.isin(ctx.buildings, split["val"]))
+    rng = np.random.default_rng(seed)
+
+    def sample(buildings, n):
+        return (torch.tensor(rng.choice(buildings, n), device=dev),
+                torch.tensor(rng.integers(L - 1, H - horizon, n), device=dev))
+
+    def batch_loss(model, b, t):
+        steps = torch.arange(1, horizon + 1, device=dev)
+        future_t = t[:, None] + steps[None, :]
+        pred = model(windows(array, b, t, L), cal[b[:, None], future_t])
+        target, ok = x[b[:, None], future_t], target_ok[b[:, None], future_t]
+        return ((pred - target).abs() * ok).sum() / ok.sum().clamp(min=1)
+
+    model = Seq2SeqForecaster(array.shape[2], 7, cfg["hidden"], cfg["layers"], cfg["dropout"]).to(dev)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=3)
+    vb, vt = sample(val_b, cfg["val_windows"])
+    best, best_state, best_epoch, wait = np.inf, None, 0, 0
+    for epoch in range(1, cfg["max_epochs"] + 1):
+        model.train()
+        b, t = sample(train_b, cfg["windows_per_epoch"])
+        for i in range(0, len(b), cfg["batch_size"]):
+            optimizer.zero_grad()
+            loss = batch_loss(model, b[i:i + cfg["batch_size"]], t[i:i + cfg["batch_size"]])
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+        model.eval()
+        with torch.no_grad():
+            val_loss = float(np.mean([batch_loss(model, vb[i:i + 4096], vt[i:i + 4096]).item()
+                                      for i in range(0, len(vb), 4096)]))
+        scheduler.step(val_loss)
+        if val_loss < best:
+            best, best_epoch, wait = val_loss, epoch, 0
+            best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        else:
+            wait += 1
+            if wait >= cfg["patience"]:
+                break
+    model.load_state_dict(best_state)
+    model.eval()
+
+    # Val binalarının her saati için 1 adım ileri hata: t-1'de biten pencere, t için tahmin.
+    errors = np.full((len(val_b), H), np.nan, dtype=np.float32)
+    with torch.no_grad():
+        for row, building in enumerate(val_b):
+            t = torch.arange(L - 1, H - 1, device=dev)
+            b = torch.full_like(t, int(building))
+            preds = []
+            for i in range(0, len(t), 4096):
+                bb, tt = b[i:i + 4096], t[i:i + 4096]
+                preds.append(model(windows(array, bb, tt, L), cal[bb[:, None], tt[:, None] + 1])[:, 0])
+            pred = torch.cat(preds)
+            err = (pred - x[building, L:]).abs()
+            err[~observed[building, L:]] = float("nan")
+            errors[row, L:] = err.cpu().numpy()
+    window_hours = cfg["residual_scale_hours"]
+    frame = pd.DataFrame(errors.T)
+    scale = frame.shift(1).rolling(window_hours, min_periods=24).median()   # yalnız geçmiş saatlerin hatası
+    score_grid = (frame / (scale + 1e-3)).to_numpy().T                       # [val bina, H]
+    val = ctx.rows(split["val"])
+    rows_b = np.searchsorted(val_b, ctx.b_pos[val])
+    scores = score_grid[rows_b, ctx.t_pos[val]]
+    name = "L4-semi" if semi else "L4"
+    record(ctx, name, "-", kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores,
+           {"best_epoch": best_epoch, "val_mae": best})
+    log_run(ctx, {"model": name, "set": "-", "bolme": kind, "seed": seed, "params": json.dumps(cfg),
+                  "best_epoch": best_epoch, "train_time_s": round(time.time() - started, 1)})
+
+
+# ----------------------------------------------------------------------------- L5 ve Isolation Forest
+def run_ensemble(ctx, kind, seed, feature_set):
+    """L5: w·L1 + (1−w)·L2 (aynı öznitelik seti); w val PR-AUC ile {0, 0,1, …, 1} ızgarasından."""
+    val = ctx.rows(ctx.split(kind, seed)["val"])
+    l1 = np.load(ctx.scores_dir / f"{kind}_{seed}_L1_{feature_set}.npy")
+    l2 = np.load(ctx.scores_dir / f"{kind}_{seed}_L2_{feature_set}.npy")
+    grid = np.round(np.arange(0, 1.01, 0.1), 1)
+    w = max(grid, key=lambda w: average_precision_score(ctx.y[val], w * l1 + (1 - w) * l2))
+    scores = w * l1 + (1 - w) * l2
+    record(ctx, "L5", feature_set, kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores, {"w_L1": float(w)})
+
+
+def run_isolation_forest(ctx, kind, seed):
+    """Ek: Isolation Forest (etiketsiz) behavior öznitelikleriyle; train binalarında fit, eşik val'de.
+
+    Eksik öznitelikler (ilk 168 saat) train medyanıyla doldurulur. Yalnız literatür referansı.
+    """
+    cfg = ctx.config["isolation_forest"]
+    split = ctx.split(kind, seed)
+    X = ctx.tabular("behavior")
+    train = ctx.rows(split["train"])
+    medians = X[train].median()
+    X = X.fillna(medians).to_numpy()
+    rng = np.random.default_rng(seed)
+    fit_rows = rng.choice(np.flatnonzero(train), size=min(cfg["train_rows"], train.sum()), replace=False)
+    forest = IsolationForest(n_estimators=cfg["n_estimators"], max_samples=cfg["max_samples"], random_state=seed,
+                             n_jobs=-1).fit(X[fit_rows])
+    val = ctx.rows(split["val"])
+    scores = -forest.score_samples(X[val])
+    record(ctx, "IF", "behavior", kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores)
+
+
+def write_splits(ctx):
+    """Bütün bölmeleri results/lead/tables/splits.csv'ye yazar (protokol §5)."""
+    tables = []
+    for kind in (["bina"] + (["site"] if ctx.sites is not None else [])):
+        for seed in ctx.config["split"]["seeds"]:
+            tables.append(split_table(ctx.split(kind, seed), kind, seed))
+    out = pd.concat(tables, ignore_index=True)
+    out.to_csv(ctx.tables / "splits.csv", index=False)
+    print(out.groupby(["bolme", "seed", "parca"]).size().unstack().to_string())
