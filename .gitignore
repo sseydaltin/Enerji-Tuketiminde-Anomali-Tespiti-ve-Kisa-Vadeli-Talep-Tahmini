@@ -48,3 +48,8 @@ results/eld/predictions/
 
 # Gözetimli anomali dedektörü (sentetik eğitim): python -m src.anomaly_supervised ile yeniden üretilir
 models/anomaly_supervised/
+
+# Yerel araç ayarları ve model arşivi (git dışı)
+models_release.zip
+.mcp.json
+.claude/
