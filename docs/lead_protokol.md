@@ -1,6 +1,6 @@
 # LEAD1.0 protokolü — model eğitiminden ve testten ÖNCE yazıldı
 
-Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi. Güncelleme 2 (2026-11-25, test öncesi; L0, L1, L4, L2 ve IF val sonuçlarından sonra): L3 atlandı, yerine öznitelik mühendisliği aşaması L-FE (§17).
+Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi. Güncelleme 2 (2026-11-25, test öncesi; L0, L1, L4, L2 ve IF val sonuçlarından sonra): L3 atlandı, yerine öznitelik mühendisliği aşaması L-FE (§17). Güncelleme 3 (2026-11-25, test öncesi; L-FE ablasyonu ve L1-FE val sonuçlarından sonra): çerçeve, birincil metrik `other` PR-AUC, yeni seçim kuralı (§18).
 
 Bu belge, LEAD1.0 (Kaggle "energy-anomaly-detection" `train.csv`) üzerindeki modelleme ve değerlendirmenin kurallarını **deney yapılmadan önce** sabitler. Bu belgeye aykırı bir seçim yapılırsa sonuç geçersiz sayılır. Kural değişikliği gerekirse tarih ve gerekçeyle `docs/deney_gunlugu.md`'ye yazılır; eski sonuçlar silinmez.
 
@@ -128,6 +128,8 @@ Hepsi genel ve alt tür bazında (§3), 3 bölme seed'inin ortalaması ± std ol
 
 ## 12. Seçim kuralı
 
+> **Güncelleme 3 ile değişti:** geçerli kural §18.2'dedir. Aşağıdaki ilk kural tarihçe için korunur.
+
 - **Ölçüt: val PR-AUC (genel)**, 3 bölmenin ortalaması.
 - En yüksek modele karşı, bölme başına eşleştirilmiş farkın |ortalaması| ≤ 2·std/√n (n = 3) olan modeller gürültü düzeyinde sayılır. Bunların arasından en basiti seçilir.
 - **Basitlik sırası:** L0 < L4 < L1 < L2 < L3 < L5.
@@ -214,3 +216,28 @@ Hepsi genel ve alt tür bazında (§3), 3 bölme seed'inin ortalaması ± std ol
 - Sonra **L2-FE:** L2 GRU aynı öznitelikleri zaman adımı başına girdi olarak alır. Optuna 8 deneme. Bellek önlemleri: float32, pencereler DataLoader'da üretilir, `num_workers=0`, başta tahmini bellek yazdırılır.
 - **L5-FE:** L1-FE + L2-FE topluluğu (§8 L5 kuralı).
 - Seçim kuralı (§12) değişmez; basitlik sırasında L1-FE L1'in, L2-FE L2'nin hemen arkasına girer.
+
+## 18. Güncelleme 3 (2026-11-25, test öncesi): çerçeve ve seçim kuralı
+
+**Ne zaman yazıldı:** L0, L1, L2, L4/L4-semi, IF, L-FE ablasyonu ve L1-FE val sonuçlarından **sonra**, test kümesine hiç dokunulmadan. Yeni kural val sonuçları görüldükten sonra konduğu için raporda "sonradan değiştirilen seçim kuralı" olarak açıkça yazılır; eski kurala (§12) göre seçilecek model de ayrıca raporlanır.
+
+### 18.1 Çerçeve
+- Projenin ana veri setleri, dersin belirlediği **hane (UCI IHEPC) ve şebeke (ELD)** setleridir. LEAD, ana yaklaşımı **gerçek etiketlerle sınayan ek doğrulamadır**; hane/ELD sonuçlarının yerine geçmez.
+- Proje konusu "olağandışı tüketim davranışları" olduğu için LEAD'de **birincil metrik `other` (davranışsal) dilimindeki val PR-AUC'dir.** `gap_edge` ve `frozen` dilimleri veri kalitesi olaylarıdır; genel ROC-AUC ve genel PR-AUC **ikincildir** ve literatür (Kaggle) kıyası için raporlanır.
+- **Ana senaryo çevrimiçidir (nedensel):** bütün öznitelikler ve skorlar yalnız t ve öncesine bakar (§4, §17.1).
+- **G8 / G9 ek öznitelik grupları yapılmayacak** (kullanıcı kararı). L-FE G0–G7 ile kapanır.
+
+### 18.2 Seçim kuralı (§12'nin yerine)
+Bütün karşılaştırmalar val'de, bina bölmesinin 3 seed'i üzerinde, bölme başına **eşleştirilmiş fark** ile yapılır; gürültü düzeyi |ort(Δ)| ≤ 2·std(Δ)/√n (n = 3). Isolation Forest yarışa girmez.
+1. **`other` PR-AUC:** ortalaması en yüksek model bulunur; ona göre farkı gürültü düzeyinde olan modeller aday kümesi C1'dir.
+2. **Genel PR-AUC:** C1 içinde genel PR-AUC ortalaması en yüksek model bulunur; ona göre farkı gürültü düzeyinde olan C1 modelleri C2'dir.
+3. **Sinir ağı tercihi:** C2'de sinir ağı içeren bir model (L2 ailesi: L2, L2-FE; L4 ailesi: L4, L4-semi; L5 ailesi: L5, L5-FE) varsa seçim yalnız bunlar arasından yapılır. Gerekçe: ders "Uygulamalı Sinir Ağları"dır; sinir ağı, ağaç modeliyle istatistiksel olarak ayırt edilemeyen bir sonuç veriyorsa ders kapsamı için tercih edilir. Bu tercih yalnız gürültü düzeyindeki farklarda geçerlidir; anlamlı biçimde kötü bir sinir ağı seçilmez.
+4. **Basitlik sırası:** kalan adaylardan basitlik sırasına göre en basiti (L0 < L4 < L1 < L2 < L5; aile içinde FE'siz < FE). Eşitlikte `other` PR-AUC ortalaması yüksek olan.
+
+### 18.3 Kalan işler (hepsi yalnız val)
+- **L2-FE (GRU):** her seed ve varyant, ablasyonda **kendi seçtiği** öznitelikleri zaman adımı başına ek kanal olarak alır (L2'nin kanallarına eklenir; takvim tekrarlanmaz). Ölçek (ortalama/std) yalnız train binalarının gözlenen saatlerinden; NaN → 0 (train ortalaması). G7 kanalı §17.2'deki OOF skorudur. Optuna **8 deneme**, train binalarında 3 katlı gruplu CV; amaç **(`other` PR-AUC + genel PR-AUC) / 2**. Son eğitimin val erken durdurması da aynı bileşik ölçütle yapılır. Süre sınırı **1,5 saat**; ölçülen epoch süresiyle aşacağı öngörülürse **5 deneme**. Başta tahmini bellek yazdırılır; **6 GB'ı aşarsa pencere 24 saat**. Bellek önlemleri: float32, pencereler eğitim sırasında DataLoader'dan gelen indekslerle parça parça üretilir, `num_workers=0`.
+- **L5-FE:** L1-FE + L2-FE olasılık ortalaması, aynı varyant; ağırlık val'de (§8 L5 kuralı).
+- **Siteye göre bölme kontrolü:** A0 (L0 kurallarıyla birlikte), L4, L1-FE, L2-FE, L5-FE. Ayarlar ve öznitelik grupları bina bölmesinin aynı seed'inden; G7 için siteye göre bölmenin kendi train binalarında OOF L4-semi ve val için siteye göre bölmenin L4-semi'si.
+- **L4-semi erken durdurma kontrolü:** L4-semi'nin val erken durdurmasının val etiketlerini kullanıp kullanmadığı kodda kontrol edilir; kullanıyorsa tabloya not düşülür.
+- **Final özet tablosu:** val, 3 seed ort. ± std; bütün modeller × dilimler (genel, gap_edge, frozen, other, paylaşılan, tekil) × ROC-AUC, PR-AUC, F1, olay recall; her dilim için PR-AUC taban değeri (pozitif oranı). `other` dilimi tablonun başında.
+- **Final model önerisi** (§18.2) ve **test kontrol listesi**. Sonra durulur; test yalnız kullanıcının açık onayıyla.
