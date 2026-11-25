@@ -6,6 +6,7 @@ Birincil metrik: `other` (davranışsal) dilimi PR-AUC (protokol §18). Taban = 
 
 | model | set | genel ROC-AUC | genel PR-AUC | other PR-AUC | other F1 | other olay recall | açıklama |
 |---|---|---|---|---|---|---|---|
+| L1-OFF | full | 0.938 ± 0.035 | 0.707 ± 0.109 | 0.057 ± 0.032 | 0.069 ± 0.060 | 0.240 ± 0.142 | OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez |
 | L5-FE | full | 0.914 ± 0.036 | 0.668 ± 0.101 | 0.053 ± 0.031 | 0.083 ± 0.101 | 0.210 ± 0.193 | L1-FE + L2-FE; ağırlık val genel PR-AUC ile |
 | L1-FE | full | 0.912 ± 0.033 | 0.667 ± 0.099 | 0.053 ± 0.030 | 0.080 ± 0.096 | 0.214 ± 0.200 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
 | L2-FE | full | 0.903 ± 0.037 | 0.594 ± 0.086 | 0.045 ± 0.019 | 0.076 ± 0.064 | 0.172 ± 0.103 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
@@ -43,6 +44,7 @@ Kıyas yalnız bu farklar yazılarak yapılır; "daha iyi / daha kötü" doğrud
 | L2-FE | behavior | 3 | 0.735 ± 0.081 | 0.075 ± 0.062 | 0.120 ± 0.116 | 0.212 ± 0.115 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
 | L5-FE | behavior | 3 | 0.763 ± 0.061 | 0.074 ± 0.057 | 0.114 ± 0.111 | 0.236 ± 0.211 | L1-FE + L2-FE; ağırlık val genel PR-AUC ile |
 | L1 | behavior | 3 | 0.745 ± 0.024 | 0.058 ± 0.011 | 0.104 ± 0.025 | 0.178 ± 0.049 |  |
+| L1-OFF | full | 3 | 0.823 ± 0.086 | 0.057 ± 0.032 | 0.069 ± 0.060 | 0.240 ± 0.142 | OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez |
 | L0-A0 | - | 3 | 0.625 ± 0.045 | 0.057 ± 0.006 | 0.151 ± 0.009 | 0.339 ± 0.010 |  |
 | L1-FE | behavior | 3 | 0.742 ± 0.049 | 0.055 ± 0.039 | 0.083 ± 0.085 | 0.190 ± 0.188 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
 | L4 | - | 3 | 0.640 ± 0.046 | 0.055 ± 0.022 | 0.135 ± 0.046 | 0.539 ± 0.089 |  |
@@ -63,6 +65,7 @@ Kıyas yalnız bu farklar yazılarak yapılır; "daha iyi / daha kötü" doğrud
 
 | model | set | n seed | ROC-AUC | PR-AUC | F1 | olay recall | açıklama |
 |---|---|---|---|---|---|---|---|
+| L1-OFF | full | 3 | 0.938 ± 0.035 | 0.707 ± 0.109 | 0.680 ± 0.095 | 0.665 ± 0.158 | OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez |
 | L5-FE | full | 3 | 0.914 ± 0.036 | 0.668 ± 0.101 | 0.649 ± 0.075 | 0.504 ± 0.133 | L1-FE + L2-FE; ağırlık val genel PR-AUC ile |
 | L1-FE | full | 3 | 0.912 ± 0.033 | 0.667 ± 0.099 | 0.649 ± 0.076 | 0.507 ± 0.138 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
 | L1 | full | 3 | 0.898 ± 0.028 | 0.627 ± 0.089 | 0.645 ± 0.061 | 0.525 ± 0.088 |  |
@@ -86,6 +89,7 @@ Kıyas yalnız bu farklar yazılarak yapılır; "daha iyi / daha kötü" doğrud
 
 | model | set | n seed | ROC-AUC | PR-AUC | F1 | olay recall | açıklama |
 |---|---|---|---|---|---|---|---|
+| L1-OFF | full | 3 | 0.997 ± 0.002 | 0.605 ± 0.250 | 0.523 ± 0.180 | 0.769 ± 0.172 | OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez |
 | L1-FE | full | 3 | 0.945 ± 0.012 | 0.505 ± 0.089 | 0.456 ± 0.082 | 0.486 ± 0.150 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
 | L1 | full | 3 | 0.903 ± 0.001 | 0.502 ± 0.049 | 0.476 ± 0.125 | 0.532 ± 0.078 |  |
 | L5-FE | full | 3 | 0.944 ± 0.011 | 0.485 ± 0.068 | 0.445 ± 0.090 | 0.481 ± 0.143 | L1-FE + L2-FE; ağırlık val genel PR-AUC ile |
@@ -109,6 +113,7 @@ Kıyas yalnız bu farklar yazılarak yapılır; "daha iyi / daha kötü" doğrud
 
 | model | set | n seed | ROC-AUC | PR-AUC | F1 | olay recall | açıklama |
 |---|---|---|---|---|---|---|---|
+| L1-OFF | full | 3 | 0.995 ± 0.002 | 0.903 ± 0.037 | 0.808 ± 0.052 | 0.914 ± 0.043 | OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez |
 | L5-FE | full | 3 | 0.991 ± 0.004 | 0.884 ± 0.054 | 0.803 ± 0.048 | 0.921 ± 0.049 | L1-FE + L2-FE; ağırlık val genel PR-AUC ile |
 | L1-FE | full | 3 | 0.990 ± 0.005 | 0.882 ± 0.054 | 0.806 ± 0.047 | 0.918 ± 0.043 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
 | L1 | full | 3 | 0.989 ± 0.005 | 0.859 ± 0.067 | 0.804 ± 0.034 | 0.951 ± 0.055 |  |
@@ -132,6 +137,7 @@ Kıyas yalnız bu farklar yazılarak yapılır; "daha iyi / daha kötü" doğrud
 
 | model | set | n seed | ROC-AUC | PR-AUC | F1 | olay recall | açıklama |
 |---|---|---|---|---|---|---|---|
+| L1-OFF | full | 3 | 0.968 ± 0.014 | 0.790 ± 0.075 | 0.738 ± 0.081 | 0.756 ± 0.136 | OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez |
 | L1-FE | full | 3 | 0.948 ± 0.017 | 0.749 ± 0.073 | 0.718 ± 0.044 | 0.560 ± 0.140 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
 | L5-FE | full | 3 | 0.949 ± 0.018 | 0.748 ± 0.070 | 0.714 ± 0.038 | 0.557 ± 0.135 | L1-FE + L2-FE; ağırlık val genel PR-AUC ile |
 | L1 | full | 3 | 0.929 ± 0.011 | 0.690 ± 0.064 | 0.692 ± 0.017 | 0.575 ± 0.086 |  |
@@ -155,6 +161,7 @@ Kıyas yalnız bu farklar yazılarak yapılır; "daha iyi / daha kötü" doğrud
 
 | model | set | n seed | ROC-AUC | PR-AUC | F1 | olay recall | açıklama |
 |---|---|---|---|---|---|---|---|
+| L1-OFF | full | 3 | 0.892 ± 0.063 | 0.416 ± 0.137 | 0.429 ± 0.124 | 0.477 ± 0.156 | OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez |
 | L5-FE | full | 3 | 0.862 ± 0.060 | 0.390 ± 0.099 | 0.408 ± 0.058 | 0.392 ± 0.106 | L1-FE + L2-FE; ağırlık val genel PR-AUC ile |
 | L1-FE | full | 3 | 0.857 ± 0.053 | 0.387 ± 0.094 | 0.407 ± 0.055 | 0.394 ± 0.110 | G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den) |
 | L1 | full | 3 | 0.852 ± 0.050 | 0.380 ± 0.067 | 0.439 ± 0.034 | 0.415 ± 0.064 |  |
