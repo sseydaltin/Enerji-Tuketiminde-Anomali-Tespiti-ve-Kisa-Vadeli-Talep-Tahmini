@@ -1,0 +1,1 @@
+{"model": "L2-FE", "set": "behavior", "bolme": "site", "seed": 42, "params": "{\"hidden\": 128, \"layers\": 2, \"dropout\": 0.28184968246925673, \"lr\": 0.002354770601447807, \"batch_size\": 512}", "best_epoch": 8, "train_time_s": 214.7}

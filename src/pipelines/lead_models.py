@@ -281,18 +281,20 @@ def predict_logits(model, array, b, t, length, batch=8192):
 
 
 def train_classifier(make_model, array, fit_rows, stop_rows, ctx, params, max_epochs, patience, seed,
-                     trial=None, step=0, metric=None, use_loader=False):
+                     trial=None, step=0, metric=None, use_loader=False, target=None):
     """Ağırlıklı BCE ile eğitir; stop_rows'ta ölçütle erken durdurur. Çıktı: (en iyi ölçüt, durum, epoch).
 
     metric(rows, scores): erken durdurma ölçütü; None → genel PR-AUC (L2). use_loader=True (L2-FE): karışık
     satır indeksleri DataLoader'dan (num_workers=0) gelir, pencereler her parti için ayrı üretilir.
+    target: eğitim etiketi [N] (I-turu L2-other: "other anomalisi mi"); None → ctx.y.
     """
     set_seed(seed)
     dev = device()
     model = make_model().to(dev)
     L = ctx.config["deep"]["window"]
     b_fit = torch.tensor(ctx.b_pos[fit_rows], device=dev); t_fit = torch.tensor(ctx.t_pos[fit_rows], device=dev)
-    y_fit = torch.tensor(ctx.y[fit_rows], dtype=torch.float32, device=dev)
+    labels = ctx.y if target is None else target
+    y_fit = torch.tensor(labels[fit_rows], dtype=torch.float32, device=dev)
     b_stop = torch.tensor(ctx.b_pos[stop_rows], device=dev); t_stop = torch.tensor(ctx.t_pos[stop_rows], device=dev)
     pos_weight = torch.tensor((y_fit == 0).sum().item() / max((y_fit == 1).sum().item(), 1), device=dev)
     loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
@@ -315,7 +317,7 @@ def train_classifier(make_model, array, fit_rows, stop_rows, ctx, params, max_ep
             nn.utils.clip_grad_norm_(model.parameters(), ctx.config["deep"]["grad_clip"])
             optimizer.step()
         logits = predict_logits(model, array, b_stop, t_stop, L)
-        score = metric(stop_rows, logits) if metric else average_precision_score(ctx.y[stop_rows], logits)
+        score = metric(stop_rows, logits) if metric else average_precision_score(labels[stop_rows], logits)
         if trial is not None:
             trial.report(score, step + epoch)
             if trial.should_prune():
@@ -602,7 +604,7 @@ def select_model(results, kind="bina"):
     """Protokol §12: val genel PR-AUC; en iyiye karşı eşleştirilmiş fark |ort| ≤ 2·std/√n → gürültü düzeyi;
     bunlardan en basit aile (L0 < L4 < L1 < L2 < L3 < L5), aynı ailede ortalaması yüksek olan.
     Isolation Forest yalnız literatür referansıdır; yarışa girmez."""
-    genel = results[(results["bolme"] == kind) & (results["dilim"] == "genel") & (results["model"] != "IF")]
+    genel = results[(results["bolme"] == kind) & (results["dilim"] == "genel") & ~results["model"].isin(OUT_OF_RACE)]
     pivot = genel.pivot_table(index="seed", columns=["model", "set"], values="pr_auc")
     pivot = pivot.loc[:, pivot.notna().all()]                       # bütün seed'lerde koşmuş olanlar
     means = pivot.mean()
@@ -630,11 +632,20 @@ def top_models(results, k=2, kind="bina"):
     return list(zip(learned["model"].head(k), learned["set"].head(k)))
 
 
+LITERATURE = [
+    ("Kaggle LEAD birincisi (Fu, Arjunan & Miller 2022 [2])", "0,9866",
+     "206 görülmemiş bina, etiketleri gizli Kaggle testi (biz: 200 etiketli binayı 120/40/40 bölüyoruz, val); "
+     "nedensel kısıt yok, iki yönlü öznitelik serbest (biz: ana sonuç nedensel); private LB; yalnız ROC-AUC"),
+    ("Tech Science yayını (kullanıcının verdiği değer)", "0,952",
+     "künye, bölme ve öznitelik koşulları repoda kayıtlı değil — DOĞRULANMALI"),
+]
+OUT_OF_RACE = ("IF", "L1-OFF")                                  # seçime girmeyen referans satırları
 NEURAL_FAMILIES = {"L2", "L3", "L4", "L5"}                     # sinir ağı içeren aileler (§18.2)
 SIMPLICITY_V2 = ["L0", "L4", "L1", "L2", "L3", "L5"]            # §18.2; aile içinde FE'siz < FE
 FINAL_SLICES = ["other", "genel", "gap_edge", "frozen", "paylasilan", "tekil"]   # "other" başta (§18.1)
 MODEL_NOTES = {
     "IF": "yalnız literatür referansı; seçime girmez",
+    "L1-OFF": "OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez",
     "L4-semi": "val erken durdurması val etiketli saatleri kayıptan çıkarır (val etiketini görür)",
     "L1-FE": "G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den)",
     "L2-FE": "G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den)",
@@ -657,7 +668,7 @@ def select_model_v2(results, kind="bina"):
 
     Yalnız bütün seed'lerde koşmuş modeller; IF hariç. Çıktı: aday tablosu (seçilen = True olan satır).
     """
-    part = results[(results["bolme"] == kind) & (results["model"] != "IF")]
+    part = results[(results["bolme"] == kind) & ~results["model"].isin(OUT_OF_RACE)]
 
     def pivot(dilim):
         table = part[part["dilim"] == dilim].pivot_table(index="seed", columns=["model", "set"], values="pr_auc")
@@ -712,6 +723,22 @@ def final_markdown(table, selection_v2, selection_v1, path, kind="bina"):
     lines = [f"# LEAD final val özeti ({kind} bölmesi, 3 seed ort. ± std) — test DEĞİL", "",
              "Birincil metrik: `other` (davranışsal) dilimi PR-AUC (protokol §18). Taban = dilimin pozitif oranı "
              "(rastgele skorun beklenen PR-AUC'si). L3 eğitilmedi (§17). Kaynak: results/lead/tables/val_results.csv.", ""]
+    genel, other = table[table["dilim"] == "genel"], table[table["dilim"] == "other"]
+    merged = genel.merge(other, on=["model", "set"], suffixes=("_g", "_o")).sort_values("roc_auc_g", ascending=False)
+    lines += ["## Ana tablo (genel ROC-AUC önde; literatür kıyası için)", "",
+              "| model | set | genel ROC-AUC | genel PR-AUC | other PR-AUC | other F1 | other olay recall | açıklama |",
+              "|---|---|---|---|---|---|---|---|"]
+    for r in merged.itertuples():
+        lines.append(f"| {r.model} | {r.set} | {pm(r.roc_auc_g, r.roc_auc_std_g)} | {pm(r.pr_auc_g, r.pr_auc_std_g)} | "
+                     f"{pm(r.pr_auc_o, r.pr_auc_std_o)} | {pm(r.f1_o, r.f1_std_o)} | "
+                     f"{pm(r.event_recall_o, r.event_recall_std_o)} | {r.aciklama_g} |")
+    lines += ["", f"Taban (genel PR-AUC) ≈ {genel['pr_auc_taban'].mean():.4f}; taban (other PR-AUC) ≈ "
+              f"{other['pr_auc_taban'].mean():.4f}.", "", "## Literatür değerleri (yan yana; koşullar farklı)", "",
+              "| kaynak | genel ROC-AUC | koşul farkları (bizim protokolümüze göre) |", "|---|---|---|"]
+    lines += [f"| {name} | {value} | {cond} |" for name, value, cond in LITERATURE]
+    lines += ["", "Kıyas yalnız bu farklar yazılarak yapılır; \"daha iyi / daha kötü\" doğrudan söylenmez (§14). "
+              "Bizim satırlarımızdan literatürle en yakın koşuldaki L1-OFF'tur (iki yönlü öznitelik, §19); ana sonuç "
+              "çevrimiçidir (nedensel).", ""]
     for dilim in FINAL_SLICES:
         part = table[table["dilim"] == dilim]
         lines += [f"## {dilim} (PR-AUC taban ≈ {part['pr_auc_taban'].mean():.4f})", "",

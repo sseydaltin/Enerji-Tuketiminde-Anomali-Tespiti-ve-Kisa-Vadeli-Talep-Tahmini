@@ -1,0 +1,1 @@
+{"model": "L1-FE", "set": "full", "bolme": "site", "seed": 7, "params": "{\"gruplar\": [\"G0\", \"G4\", \"G5\", \"G6\", \"G7\"], \"learning_rate\": 0.039531201086154655, \"num_leaves\": 83, \"min_child_samples\": 356, \"colsample_bytree\": 0.5738699260585355, \"subsample\": 0.9678827093077063, \"reg_lambda\": 0.0011965238683786232}", "best_epoch": 109, "train_time_s": 9.0}
