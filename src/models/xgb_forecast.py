@@ -33,6 +33,9 @@ def make_xgboost(settings, seed):
         tree_method="hist",
         device="cpu",
         random_state=seed,
+        # İş parçacığı sayısı: config'te yoksa None = XGBoost varsayılanı (eski davranış).
+        # Doğrulama betiği (scripts/verify_frozen_results.py) iki koşuda aynı sayıyı verir.
+        n_jobs=settings.get("n_jobs"),
     )
 
 
