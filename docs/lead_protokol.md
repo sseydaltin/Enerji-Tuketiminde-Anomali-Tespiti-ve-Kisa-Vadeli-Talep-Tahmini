@@ -1,6 +1,6 @@
 # LEAD1.0 protokolü — model eğitiminden ve testten ÖNCE yazıldı
 
-Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası).
+Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi.
 
 Bu belge, LEAD1.0 (Kaggle "energy-anomaly-detection" `train.csv`) üzerindeki modelleme ve değerlendirmenin kurallarını **deney yapılmadan önce** sabitler. Bu belgeye aykırı bir seçim yapılırsa sonuç geçersiz sayılır. Kural değişikliği gerekirse tarih ve gerekçeyle `docs/deney_gunlugu.md`'ye yazılır; eski sonuçlar silinmez.
 
@@ -18,7 +18,7 @@ Bu belge, LEAD1.0 (Kaggle "energy-anomaly-detection" `train.csv`) üzerindeki mo
   - Anomali saatlerinin %65,3'ü sabit okumanın içinde.
   - Olayların %74'ü en az bir başka binada **aynı saatte** başlıyor; bunların %79,6'sı boşluk kenarında.
 - Kaynak tablolar: `results/lead/tables/` (`dataset_summary.csv`, `gap_adjacency.csv`, `causal_vs_twosided.csv`, `same_start_events.csv`). Ayrıntı: `docs/deney_gunlugu.md` (2026-11-25, LEAD L1 satırları).
-- **Site bilgisi:** `data/raw/lead/building_metadata.csv` (ASHRAE GEP III) şu an yok. Site eşleşmesi gerektiren her madde "site bilgisi varsa" koşuluna bağlıdır.
+- **Site bilgisi (güncelleme 1):** Kaggle `train_features.csv`'den **yalnız** `site_id` ve `primary_use` alındı (`--stage sites` → `data/raw/lead/building_sites.csv`). 200 / 200 bina eşleşti, 14 site. Dosyanın diğer sütunları model girdisi değildir; sütun listesi ve geleceğe bakıyor olabilecekler günlükte. Paylaşılan olayların %70,1'inde aynı saatte başlayan bütün binalar tek sitede; %89,3'ünde en az bir başka bina aynı sitede.
 
 ## 2. Ana bilimsel soru
 
@@ -40,12 +40,14 @@ Her **anomali saati** aşağıdaki öncelik sırasıyla tek bir alt türe atanı
 
 - **Olay alt türü:** olayın saatlerinin çoğunluk alt türü. Eşitlikte yukarıdaki öncelik sırası uygulanır.
 - **Alt tür bazında metrik:** pozitifler yalnız o alt türün anomali saatleridir. Negatifler **bütün normal saatlerdir**. Diğer alt türlerin anomali saatleri o hesaptan çıkarılır. Böylece her alt türde ROC-AUC, PR-AUC ve P/R/F1 ayrı hesaplanır. Olay recall'ü alt türün olaylarıyla hesaplanır.
-- **Raporlama:** bütün metrikler **genel** ve **`gap_edge` / `frozen` / `other`** olarak ayrı ayrı raporlanır.
+- **Paylaşılan / tekil dilimi (güncelleme 1):** bir anomali olayı, **başka bir binada aynı saatte başlayan bir olay varsa "paylaşılan"**, yoksa "tekil"dir (`eda.same_start_events`; L1'de olayların %74'ü paylaşılan). Bir anomali saati, ait olduğu olayın dilimini alır. Bu da yalnız değerlendirme etiketidir; model girdisi değildir. Dilim metrikleri alt türlerle aynı kuralla hesaplanır: pozitifler o dilimin anomali saatleri, negatifler bütün normal saatler.
+- **Raporlama:** bütün metrikler **genel**, **`gap_edge` / `frozen` / `other`** ve **paylaşılan / tekil** olarak ayrı ayrı raporlanır.
 
 ## 4. Nedensellik
 
 - **Bütün öznitelikler ve kurallar yalnız geçmişe bakar.** t saatindeki skor, yalnızca t ve öncesindeki okumalar, eksiklik bilgisi ve takvimle hesaplanır.
 - Bina başına normalizasyon da yalnız geçmişten yapılır: bir binanın tüm yılına ait istatistik kullanılmaz.
+- **Mutlak tarih öznitelikleri yasaktır (güncelleme 1):** yılın günü, tarih sırası (örneğin yılın başından beri geçen saat), zaman damgasının kendisi veya ondan türetilen sıra/yıl bilgisi kullanılmaz. Yalnız **döngüsel takvim** kullanılır: saat, haftanın günü ve ay (sin/cos), hafta sonu. Neden: tek yıllık veride mutlak tarih, ortak veri olaylarının tarihini ezberlemeye (örneğin 50 binada aynı saatte başlayan olaylar) izin verir. Bu kural, öznitelik listelerini kontrol eden bir testle güvenceye alınır (§15).
 - Sonraki saatleri kullanan bir varyant denenirse (ör. iki yönlü boşluk kenarı veya merkezli pencere) adı **"offline"** ile etiketlenir, ayrı satırda raporlanır ve **ana sonuç olmaz**.
 - L1'deki karşılaştırma (`causal_vs_twosided.csv`):
   - Nedensel boşluk kenarı (önceki saat eksik) anomali saatlerinin %6,4'ünü işaretliyor; iki yönlü tanım %12,3'ünü.
@@ -58,7 +60,7 @@ Her **anomali saati** aşağıdaki öncelik sırasıyla tek bir alt türe atanı
   - Oranlar Colab denemesiyle aynı: önce %20 test, kalanın %25'i val.
   - Bina listeleri `results/lead/tables/splits_seed{s}.csv` dosyasına yazılır ve değişmez.
   - Her binada en az bir anomali olduğu için her parçada iki sınıf da bulunur; bu bir testle denetlenir.
-- **Site bilgisi varsa ek bölme: siteye göre gruplu.** Bu bir sağlamlık kontrolüdür. Yalnız val'de seçilen **en iyi 2 model + kurallar (L0)** için yapılır. Site bilgisi yoksa yapılmaz ve "yapılmadı" diye raporlanır.
+- **Ek bölme: siteye göre gruplu (güncelleme 1).** Bu bir sağlamlık kontrolüdür. 3 tekrar (seed 42, 7, 2026): siteler karıştırılır ve train / val / test'e, bina sayıları yaklaşık %60 / %20 / %20 olacak şekilde bütün olarak atanır (bir sitenin bütün binaları tek parçadadır). Her parçada iki sınıfın da bulunduğu denetlenir. Siteler çok dengesiz olduğu için (site 9: 52 bina, site 14: 47 bina, üç sitede tek bina) parça büyüklükleri tekrardan tekrara değişir; gerçekleşen sayılar raporlanır. Yalnız **kurallar (L0) ve val'de seçilen en iyi 2 model** için yapılır; ayarlar ve eşik bina bölmesinin aynı seed'inden değil, bu bölmenin kendi val'inden seçilir (Optuna tekrarlanmaz, bina bölmesinde bulunan ayarlar kullanılır).
 - Pencereler bina sınırını geçmez. Bir binanın bütün saatleri aynı parçadadır.
 
 ## 6. Ön işleme ve sızıntı önlemleri
@@ -75,8 +77,8 @@ Her **anomali saati** aşağıdaki öncelik sırasıyla tek bir alt türe atanı
 | **full** | Colab öznitelikleri: `meter_reading`, `log_reading`, `is_zero`, `hour`, `day_of_week`, `month`, `is_weekend`, `hour_sin/cos`, `lag_{1,24,168}h`, `log_diff_{1,24,168}h`, `lag_{1,24,168}h_missing` + **eksiklik bayrakları** (önceki saat eksik = R1 sinyali) + **geriye dönük sabitlik süresi** (`eda.backward_run_length`, R2 sinyali). Derin modellerde ek olarak eksiklik maskesi kanalı. |
 | **behavior** | **Eksiklik ve sabitlikle ilgili tüm öznitelikler hariç:** `lag_*_missing`, eksiklik bayrakları, geriye dönük sabitlik süresi, `is_zero`, `log_diff_1h` (değeri 0 ise sabitliği doğrudan gösterir) ve derin modellerde maske kanalı. Eksik gecikmeler NaN bırakılmaz; ileri doldurulmuş seriden hesaplanır (yalnız geçmiş). Böylece NaN üzerinden eksiklik bilgisi sızmaz. |
 
-- **Önceden kabul edilen sınırlılık:** behavior setinde eksiklik ve sabitlik bilgisi tamamen yok edilemez. İleri doldurma boşlukları yapay sabit serilere çevirir; ham okuma ile `lag_1h`'nin eşitliği de dolaylı bilgi taşır.
-- **Ölçüm:** behavior modellerinin `gap_edge` ve `frozen` alt kümelerindeki recall'ü raporlanır. Bu değer yüksekse dolaylı sızıntı var demektir ve böyle yorumlanır.
+- **Önceden kabul edilen sınırlılık — kısayol:** behavior setinde eksiklik ve sabitlik bilgisine giden **kısayollar** tamamen kapatılamaz. İleri doldurma boşlukları yapay sabit serilere çevirir; ham okuma ile `lag_1h`'nin eşitliği de dolaylı bilgi taşır.
+- **Ölçüm:** behavior modellerinin `gap_edge` ve `frozen` alt kümelerindeki recall'ü raporlanır. Bu değer yüksekse model bir kısayol kullanıyor demektir ve böyle yorumlanır.
 - L1 (LightGBM), L2 (GRU) ve L3 (CNN+GRU) **iki setle de** eğitilir.
 
 ## 8. Modeller
@@ -105,7 +107,11 @@ Kaynak: `results/tables/anomaly_protocol_test.csv` ve `anomaly_protocol_val.csv`
 - Val ve test binaları Optuna'da hiç kullanılmaz.
 - Seçilen ayarlarla model bütün train binalarında yeniden eğitilir. Early stopping (L1: ağaç sayısı; L2 ve L3: epoch, patience 8) **val binalarında PR-AUC** ile yapılır.
 - L4, hanedeki F10-opt ayarlarıyla eğitilir; yeni arama yapılmaz. Early stopping val binalarının tahmin MAE'si ile yapılır.
-- Derin modellerde eğitim süresine göre normal pencereler rastgele alt örneklenebilir. Bu karar 1 epoch'luk smoke test'ten sonra günlüğe yazılır; değerlendirme her zaman tüm saatlerde yapılır.
+- **Hesaplama bütçesi (güncelleme 1):**
+  - Optuna sırasında eğitim örneklerinde **negatif alt örnekleme**: bütün pozitifler + negatiflerin %20'si (seed'li, kat başına sabit). Katların değerlendirmesi ve bütün val/test değerlendirmeleri **tam veriyle** yapılır.
+  - Derin modellerde deneme başına epoch sınırı ve Optuna **MedianPruner**.
+  - Toplam GPU süresi **4 saati** aşacaksa deneme sayısı düşürülür; bu karar ve gerçekleşen süreler günlüğe yazılır.
+  - Optuna sonrası son eğitimde de aynı negatif alt örnekleme kullanılır (eğitim dağılımı ayarlarla tutarlı kalsın); `pos_weight` alt örneklenmiş eğitim kümesinden hesaplanır.
 
 ## 10. Eşik
 
@@ -151,6 +157,8 @@ Hepsi genel ve alt tür bazında (§3), 3 bölme seed'inin ortalaması ± std ol
 - Pencere bina sınırını ve eksik saati aşmıyor; t saatinin girdisi yalnız ≤ t saatlerini içeriyor (nedensellik testi).
 - R1 / R2 / geriye dönük sabitlik yalnız geçmişe bakıyor.
 - Behavior setinde §7'de dışlanan sütunlar yok.
+- **Hiçbir öznitelik setinde mutlak tarih türevi yok** (yılın günü, tarih sırası, yıl, zaman damgası); takvim yalnız döngüsel (güncelleme 1).
+- Paylaşılan / tekil dilimi ve alt tür ataması model girdisi listelerinde yok.
 - Alt tür atamasında her anomali saati tam bir alt türde ve öncelik sırası doğru.
 
 ## 16. Önceden kabul edilen sınırlılıklar
@@ -158,5 +166,6 @@ Hepsi genel ve alt tür bazında (§3), 3 bölme seed'inin ortalaması ± std ol
 - **Etiket gürültüsü:** etiketlerin büyük kısmı veri kalitesi olaylarına karşılık geliyor; bazı belirgin tepeler etiketsiz (L1 etiket incelemesi).
 - **Kapsam:** tek yıl; yalnız 200 bina; ticari binalar. Bulgular hane verisine doğrudan taşınmaz.
 - **Kontaminasyon:** L4, etiketli anomalileri de içeren saatlerle eğitilir.
-- **Behavior setinde dolaylı sızıntı:** §7'de belirtildiği gibi tamamen önlenemez.
-- **Site bilgisi** yoksa siteye göre sağlamlık kontrolü yapılamaz. Aynı saatte başlayan olayların aynı sitede olup olmadığı da doğrulanamaz.
+- **Behavior setinde kısayollar:** §7'de belirtildiği gibi tamamen kapatılamaz.
+- **Siteler dengesiz:** siteye göre bölmede parça büyüklükleri ve anomali oranları tekrardan tekrara değişir; sonuçlar bu yüzden bina bölmesinden daha oynaktır.
+- **Site bilgisi** Kaggle'ın işlenmiş `train_features.csv` dosyasından alındı (ASHRAE özgün metadata dosyası değil).
