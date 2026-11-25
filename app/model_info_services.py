@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 import yaml
 
-from src.data.load import PROJECT_ROOT
+from src.core.config import PROJECT_ROOT
 
 
 def _read_yaml(path):

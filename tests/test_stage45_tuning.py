@@ -6,11 +6,11 @@ import pandas as pd
 import pytest
 import torch
 
-from src.data.load import load_config
-from src.ensemble import combine, search_weights, weight_grid
-from src.seed_stability import seed_exp_id, summarize
-from src.train_forecast import make_loss
-from src.tune_optuna import apply_params, cv_folds, fold_config, suggest_params
+from src.core.config import load_config
+from src.pipelines.ensemble import combine, search_weights, weight_grid
+from src.pipelines.seed_stability import seed_exp_id, summarize
+from src.pipelines.train_forecast import make_loss
+from src.pipelines.tune_optuna import apply_params, cv_folds, fold_config, suggest_params
 
 
 def test_cv_folds_cover_last_12_train_months_in_order():

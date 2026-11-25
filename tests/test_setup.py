@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.utils.config import load_config
-from src.utils.seed import set_seed
+from src.core.config import load_config
+from src.core.seed import set_seed
 
 
 def test_config_loads_required_sections():

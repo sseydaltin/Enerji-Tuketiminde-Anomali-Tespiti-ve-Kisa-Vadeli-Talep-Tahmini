@@ -12,44 +12,40 @@ venv/
 # --- Notebook ---
 .ipynb_checkpoints/
 
-# --- Veri: ham veri büyük (~127 MB) ve UCI'dan yeniden indirilebilir ---
+# --- Veri: ham veri büyük (UCI ~127 MB, ELD ~680 MB) ve yeniden indirilebilir ---
 # İşlenmiş veri de koddan yeniden üretilebilir. Klasörler .gitkeep ile korunur.
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
 
-# Local backup copy; keep out of PRs.
-src/data/preprocess.py.bak
-
-# --- Model ağırlıkları: eğitim betikleriyle yeniden üretilir ---
+# --- Model ağırlıkları: eğitim betikleriyle yeniden üretilir (yedek repo dışında) ---
 models/*.pt
 models/eld/*.pt
+# Gözetimli anomali dedektörü (sentetik eğitim): python -m experiments.archive.anomaly_supervised ile yeniden üretilir
+models/anomaly_supervised/
+
+# --- Kayıtlı val/test tahminleri (yeniden üretilebilir, büyük) ---
+results/predictions/
+results/eld/predictions/
+
+# --- Arşiv dosyaları (model yedekleri vb. repoya girmez) ---
+*.zip
 
 # --- İşletim sistemi ---
 .DS_Store
 Thumbs.db
 
-# Ruflo local secrets and runtime data
+# --- Gizli bilgiler ---
 .env
 .env.local
 .env.*.local
-.claude-flow/data/
-.claude-flow/logs/
-.claude-flow/sessions/
+.streamlit/secrets.toml
 
-# Yerel ajan/araç çalışma klasörleri (proje kodu değil)
+# --- Yerel yapay zekâ / ajan araçlarının ayar ve çalışma klasörleri (proje kodu değil) ---
+.claude/
+.mcp.json
 .claude-flow/
 .swarm/
-
-# Kayıtlı val/test tahminleri (yeniden üretilebilir, büyük)
-results/predictions/
-results/eld/predictions/
-
-# Gözetimli anomali dedektörü (sentetik eğitim): python -m src.anomaly_supervised ile yeniden üretilir
-models/anomaly_supervised/
-
-# Yerel araç ayarları ve model arşivi (git dışı)
-models_release.zip
-.mcp.json
-.claude/
+.ruv-swarm/
+.hive-mind/

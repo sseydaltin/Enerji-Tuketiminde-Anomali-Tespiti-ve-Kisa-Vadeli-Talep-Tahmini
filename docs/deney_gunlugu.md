@@ -53,6 +53,70 @@ Her önemli karar (eşik, öznitelik seti, hiperparametre, protokol) buraya **ta
 | 2026-10-31 | **Aşama 5 – topluluk:** üyeler F10-opt (seq2seq), F5-opt (LSTM), F12-L336 (XGBoost); ağırlıklar {0, 0,1, …, 1} ızgarasında (66 kombinasyon) val MAE ile → [0,8; 0,2; 0,0], val MAE 0,4599 (F10-opt 0,4627). Seed 7 ve 2026'da aynı ağırlıklar kullanıldı (yeniden seçilmedi). | Basit ve şeffaf ağırlık seçimi; ağırlıklar val'de seçildiği için topluluğun val skoru iyimser. XGBoost'un ağırlığı 0: seq2seq + LSTM'e ek bilgi katmıyor. | F13-ens | Şeyda |
 | 2026-10-31 | **Aşama 5 – seed kararlılığı (F9; 42, 7, 2026; ddof=1):** seq2seq 0,4688 ± 0,0060; LSTM 0,4810 ± 0,0016; XGBoost 0,4995 ± 0,0002; topluluk 0,4625 ± 0,0027. Seq2seq'in seed 42 değeri (0,4627) üç seed'in en iyisiydi. Seed tekrarları `configs/optuna_*_best.yaml` ile koşuldu; GPU 166 s, CPU 37 s. | Seed std'si (≈0,006) Aşama 2–3'teki birçok farktan büyük → o farklar tek seed ile anlamlı sayılmamalı. Seq2seq–LSTM farkı (≈0,012) std'nin birkaç katı → muhtemelen gerçek. Topluluk ortalamada en iyi ve en kararlı. Toplam GPU (Aşama 1–5) ≈ 4.532 s ≈ 76 dk. Özet: `docs/tahmin_deneyleri_ozet.md`. | F10-opt-s*, F5-opt-s*, F12-L336-s*, F13-ens-s* | Şeyda |
 
+## Yeniden yapılandırma (2026-11-25): eski yol → yeni yol
+
+Final sonuçlar değişmedi (`scripts/verify_frozen_results.py`, karar satırları 2026-11-25). Bu tarihten önceki kayıtlarda geçen yollar tarihsel olarak bırakıldı; güncel karşılıkları aşağıdadır. Modül adı yolun noktalı hâlidir (ör. `src/pipelines/train_forecast.py` → `python -m src.pipelines.train_forecast`). Eski `python -m src.<ad>` ve `python -m src.data.<ad>` komutları geçici yönlendirmelerle çalışmaya devam eder (uyarı yazar); import için yalnız yeni yollar kullanılır.
+
+| Grup | Eski yol | Yeni yol |
+|---|---|---|
+| Çekirdek (`src/core/`) | `src/utils/metrics.py` | `src/core/metrics.py` |
+| Çekirdek (`src/core/`) | `src/utils/anomaly_metrics.py` | `src/core/anomaly_metrics.py` |
+| Çekirdek (`src/core/`) | `src/utils/results_io.py` | `src/core/results_io.py` |
+| Çekirdek (`src/core/`) | `src/utils/seed.py` | `src/core/seed.py` |
+| Çekirdek (`src/core/`) | `src/utils/console.py` | `src/core/console.py` |
+| Çekirdek (`src/core/`) | `src/data/split.py` | `src/core/split.py` |
+| Çekirdek (`src/core/`) | `src/data/windows.py` | `src/core/windows.py` |
+| Çekirdek (`src/core/`) | `src/data/inject_anomalies.py` | `src/core/inject_anomalies.py` |
+| Çekirdek (`src/core/`) | `src/utils/config.py + src/data/load.py (load_config, PROJECT_ROOT)` | `src/core/config.py (tek tanım)` |
+| Veri setleri (`src/datasets/`) | `src/data/load.py` | `src/datasets/household/load.py` |
+| Veri setleri (`src/datasets/`) | `src/data/preprocess.py` | `src/datasets/household/preprocess.py` |
+| Veri setleri (`src/datasets/`) | `src/data/weather.py` | `src/datasets/household/weather.py` |
+| Veri setleri (`src/datasets/`) | `src/data/eld.py` | `src/datasets/eld/eld.py` |
+| Hatlar (`src/pipelines/`) | `src/anomaly_dual.py` | `src/pipelines/anomaly_dual.py` |
+| Hatlar (`src/pipelines/`) | `src/anomaly_protocol.py` | `src/pipelines/anomaly_protocol.py` |
+| Hatlar (`src/pipelines/`) | `src/compare_hane_sebeke.py` | `src/pipelines/compare_hane_sebeke.py` |
+| Hatlar (`src/pipelines/`) | `src/eld_run.py` | `src/pipelines/eld_run.py` |
+| Hatlar (`src/pipelines/`) | `src/ensemble.py` | `src/pipelines/ensemble.py` |
+| Hatlar (`src/pipelines/`) | `src/evaluate_anomaly.py` | `src/pipelines/evaluate_anomaly.py` |
+| Hatlar (`src/pipelines/`) | `src/evaluate_forecast.py` | `src/pipelines/evaluate_forecast.py` |
+| Hatlar (`src/pipelines/`) | `src/final_tables.py` | `src/pipelines/final_tables.py` |
+| Hatlar (`src/pipelines/`) | `src/forecast_levels.py` | `src/pipelines/forecast_levels.py` |
+| Hatlar (`src/pipelines/`) | `src/seed_stability.py` | `src/pipelines/seed_stability.py` |
+| Hatlar (`src/pipelines/`) | `src/train_autoencoder.py` | `src/pipelines/train_autoencoder.py` |
+| Hatlar (`src/pipelines/`) | `src/train_forecast.py` | `src/pipelines/train_forecast.py` |
+| Hatlar (`src/pipelines/`) | `src/train_oof.py` | `src/pipelines/train_oof.py` |
+| Hatlar (`src/pipelines/`) | `src/tune_optuna.py` | `src/pipelines/tune_optuna.py` |
+| Hatlar (`src/pipelines/`) | `src/verify_forecast_eval.py` | `src/pipelines/verify_forecast_eval.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_candidates.py` | `experiments/archive/anomaly_candidates.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_dev.py` | `experiments/archive/anomaly_dev.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_diagnostics.py` | `experiments/archive/anomaly_diagnostics.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_e1_sustained.py` | `experiments/archive/anomaly_e1_sustained.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_eval_audit.py` | `experiments/archive/anomaly_eval_audit.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_floor_channel.py` | `experiments/archive/anomaly_floor_channel.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_or_channels.py` | `experiments/archive/anomaly_or_channels.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_short_event.py` | `experiments/archive/anomaly_short_event.py` |
+| Arşiv (`experiments/archive/`) | `src/anomaly_supervised.py` | `experiments/archive/anomaly_supervised.py` |
+| Arşiv (`experiments/archive/`) | `src/explore_tcn_ae.py` | `experiments/archive/explore_tcn_ae.py` |
+| Arşiv (`experiments/archive/`) | `src/train_summer_dev.py` | `experiments/archive/train_summer_dev.py` |
+| Arşiv (`experiments/archive/`) | `src/weather_eda.py` | `experiments/archive/weather_eda.py` |
+| Arşiv (`experiments/archive/`) | `src/analyze_forecast_errors.py` | `experiments/archive/analyze_forecast_errors.py` |
+| Arşiv (`experiments/archive/`) | `tests/test_anomaly_candidates.py` | `experiments/archive/tests/test_anomaly_candidates.py` |
+| Arşiv (`experiments/archive/`) | `tests/test_anomaly_dev.py` | `experiments/archive/tests/test_anomaly_dev.py` |
+| Arşiv (`experiments/archive/`) | `tests/test_anomaly_e1_sustained.py` | `experiments/archive/tests/test_anomaly_e1_sustained.py` |
+| Arşiv (`experiments/archive/`) | `tests/test_anomaly_eval_audit.py` | `experiments/archive/tests/test_anomaly_eval_audit.py` |
+| Arşiv (`experiments/archive/`) | `tests/test_anomaly_floor_channel.py` | `experiments/archive/tests/test_anomaly_floor_channel.py` |
+| Arşiv (`experiments/archive/`) | `tests/test_anomaly_or_channels.py` | `experiments/archive/tests/test_anomaly_or_channels.py` |
+| Arşiv (`experiments/archive/`) | `tests/test_anomaly_short_event.py` | `experiments/archive/tests/test_anomaly_short_event.py` |
+| Arşiv (`experiments/archive/`) | `tests/test_anomaly_supervised.py` | `experiments/archive/tests/test_anomaly_supervised.py` |
+| Arşiv (`experiments/archive/`) | `configs/experimental_s0_floor.yaml` | `experiments/archive/configs/experimental_s0_floor.yaml` |
+| Belgeler (`docs/archive/`) | `docs/yontem_ve_teknikler_dilara.md` | `docs/archive/yontem_ve_teknikler_dilara.md` |
+| Belgeler (`docs/archive/`) | `docs/durum_ozeti_2026-11-08.md` | `docs/archive/durum_ozeti_2026-11-08.md` |
+| Belgeler (`docs/archive/`) | `docs/inceleme_ve_iyilestirme_plani_2026-11-08.md` | `docs/archive/inceleme_ve_iyilestirme_plani_2026-11-08.md` |
+| Belgeler (`docs/archive/`) | `docs/seyda_ozet_2026-11-08.txt` | `docs/archive/seyda_ozet_2026-11-08.txt` |
+| Belgeler (`docs/archive/`) | `docs/seyda_ozet_anomali_adaylar_2026-11-09.txt` | `docs/archive/seyda_ozet_anomali_adaylar_2026-11-09.txt` |
+
+Değişmeyenler: `src/models/`, `app/`, `configs/` (deneysel config hariç), `notebooks/`, `results/`, `models/`. Yeni: `src/datasets/lead/` (boş), `scripts/verify_frozen_results.py`, `pytest.ini`, `experiments/archive/README.md`.
+
 ## Olay kayıtları
 
 ### Olay 1 – LSTM/GRU val metriklerinin yanlış ölçekte hesaplanması (2026-10-31)
@@ -139,3 +203,9 @@ Her önemli karar (eşik, öznitelik seti, hiperparametre, protokol) buraya **ta
 | 2026-11-10 | **A7 – TCN-Autoencoder keşif deneyi (final test SONRASI eklendi; yalnız val, test kullanılmadı; final yöntem A3-s2s-norm DEĞİŞMEDİ).** Mimari: nedensel genişletilmiş Conv1d (kanal 32, kernel 3, dilation 1/2/4, alıcı alan 29 s) → 1x1 conv 2 kanal → AvgPool(4) darboğazı (12 sayı < 24 girdi) → Upsample → simetrik TCN decoder. Eğitim ayarları A2 ile aynı (seed 42, yalnız train, early stopping val); 60 epoch'un tamamı kullanıldı, en iyi val MSE 0,0646 (A2 0,0653). Final protokolle aynı kopyalar ve kurallar (val-dev ana senaryoda w ve olay-F1 eşiği seçimi → w = 6, eşik 0,447; diğerlerine aynen). Olay F1 (10 seed ort ± std): val-dev ana A7 0,486 ± 0,205 (A2 0,364, A0 0,536, A3-s2s-norm 0,575); val-dev zor 0,238 ± 0,178; val-hold ana 0,257 ± 0,158 (A2 0,208, A0 0,289, A3-s2s-norm 0,494); val-hold zor 0,205 ± 0,127. Eşleştirilmiş fark (gürültü sınırı 2·std/√10): A7 − A2 val-dev ana +0,122 ± 0,237 (sınır 0,150 → gürültü düzeyinde); A7 − A3-s2s-norm val-hold ana −0,237 ± 0,259 ve val-hold zor −0,226 ± 0,220 (sınırın dışında). Kontrol: A0/A2/A3-s2s-norm pencere, eşik ve olay F1 değerleri `anomaly_protocol_*` tablolarıyla birebir aynı çıktı. | TCN-AE, LSTM-AE'den olay F1'de ortalamada yüksek ama fark seed gürültüsü içinde; final yöntemin val-hold'daki üstünlüğü korunuyor. Test sonrası eklendiği için yalnız keşif olarak raporlanır; tek eğitim seed'i (A2 ile aynı koşul) bir sınırlılıktır. | A7, P-A7-explore | Dilara |
 | 2026-11-24 | **Kimlik değişikliği: TCN-AE keşif deneyi A6 → A7** (`P-A6-explore` → `P-A7-explore`, `A6_*` tablo/figür/checkpoint adları → `A7_*`). Yeni deney yapılmadı; aynı checkpoint ile val değerlendirmesi yeniden üretildi, sayılar 2026-11-10 koşusuyla karşılaştırıldı: beş `A7_explore_*` tablosu kimlik etiketi dışında birebir aynı; öğrenme eğrisi kayıtlı `A7_training_history.csv`'den aynı çizim koduyla yeniden çizildi (yeniden eğitim yok). | A6 kimliği main'de A6-dual / A6-dual-floor (2026-11-03) için zaten kullanılıyordu; raporda iki farklı "A6" olmaması için. | A7, P-A7-explore | Dilara |
 | 2026-11-25 | **v2 (A3 + taban) test commit'i `a3c9fe8` birleştirilmedi.** `dilara/v2-taban-entegrasyon` dalı yalnız `cb895d1`'e kadar main'e alındı (Aşama 3 kısa olay, inceleme düzeltmeleri, anomali adayları, gözetimli sınıflandırıcı). Dal silinmedi, kayıt olarak duruyor. | Geliştirme protokolü §1: test kümesi yeni yöntemler için kullanılmaz. Aynı taban kuralı A6-dual+taban olarak val-hold'da zaten raporlanmış durumda (`docs/final_sonuclar.md`, A6 bölümü). | V2-A3+taban-test (main'e alınmadı) | Şeyda |
+| 2026-11-25 | **`seyda/rapor` main'e birleştirildi** (öneri formu, ders belgeleri, rapor taslağı). `docs/literatur.md` çakışmasında main sürümü kaldı; `seyda/rapor` sürümü `docs/archive/literatur_v0_seyda.md` olarak saklandı. | Öneri formu çalışması birleşmemiş bir dalda kalmıştı; literatürün güncel hâli main'deki (2026-11-24) sürümdü. | — | Şeyda |
+| 2026-11-25 | **Hane anomali geliştirmesi donduruldu.** `docs/gelistirme_protokolu.md` Aşama 3–8 (normalizasyon, kalan çoklu sinyal, artık kaynağı, eşik/alarm, AE, bağımsız kontrol) yapılmayacak. Sıradaki iş: LEAD1.0 (`docs/veri_seti_lead1_degerlendirme.md`). | Gerçek etiketli veri olmadan hane anomalisinde sentetik enjeksiyon dışında bağımsız doğrulama yok (UCI hanede kullanılmamış zaman bölümü kalmadı); LEAD bu boşluğu kapatıyor. | — | Şeyda |
+| 2026-11-25 | **Yeniden yapılandırma** (dal `seyda/yeniden-yapilandirma`, etiket öncesi `v1.7-yapilandirma-oncesi`): `src/core/` (veri setinden bağımsız adımlar ve yardımcılar), `src/datasets/{household,eld,lead}/`, `src/pipelines/`, `experiments/archive/` (final sonuç üretmeyen 13 betik, 8 test, 1 config). Eski yol → yeni yol tablosu: bu dosyada "Yeniden yapılandırma (2026-11-25)" bölümü. Ayrıca: `PROJECT_ROOT` ve `load_config` tek tanım (`src/core/config.py`; kök, `configs/config.yaml` işaret dosyası yukarı doğru aranarak bulunur); sekiz betikteki cihaz satırı `get_device` (davranış aynı; A6'nın CPU zorlaması korundu); eski CLI komutları için 34 geçici yönlendirme; A7 tablosunun başlığı ve notu betikten (`write_markdown(title=, note=)`); `weather_val_summary.md`'ye kaynak notu (sayılar `seed_stability_val.csv` ile karşılaştırıldı, tutuyor). | LEAD'i eklemeden önce veri setine özgü kodu ortak koddan ayırmak; final sonuç üretmeyen deney kodunu çekirdekten ayırmak; dosya taşınınca sessizce yanlış klasörü gösteren `parents[2]` kök hesabını kaldırmak. Final sonuçlar yeniden hesaplanmadı, yalnız aynı çıktının üretildiği doğrulandı (aşağıdaki satır). | — | Şeyda |
+| 2026-11-25 | **Doğrulamada test kümesi kullanıldı: seçim değil, regresyon kontrolü** (kullanıcı onayı). `scripts/verify_frozen_results.py`, taşımadan önce (`v1.7`) ve sonra kayıtlı ağırlıklarla hane tahminlerini (val, test), hane anomali skorlarını ve seed başına metrikleri (val-dev, val-hold, test; ana + zor), A6'yı (val-dev, val-hold), ELD tahmin ve anomalisini (val, test) ve demo servislerinin çıktılarını yeniden üretir; dosya özetleri birebir, diziler atol 1e-6 ile karşılaştırılır. | Kod taşınınca hesap değişmemeli; bunu yalnız aynı kodun aynı girdilerle aynı sayıları verdiğini görerek gösterebiliriz. Hiçbir model, eşik, pencere veya yöntem seçilmez; kayıtlı seçim tabloları aynen okunur; çıktı yalnız repo dışına yazılır ve `results/`, `experiments.csv` değişmez (betik bunu kendisi denetler). Bu, test kümesinin yeni bir yöntemi ölçmek için kullanılması değildir. | — | Şeyda |
+| 2026-11-25 | **XGBoost çıktısı iş parçacığı sayısına bağlı (ölçüm).** F12-L336 kayıtlı final tahminlerine göre en büyük fark: `n_jobs` = 12 (bu makinenin çekirdek sayısı, final koşudaki varsayılan) → 0; 4 → 0,655 kW (val); 1 → 0,752 kW (val). Her ayar kendi içinde deterministik. 4 iş parçacığıyla test MAE 0,41603 / kayıtlı 0,41599. `make_xgboost` isteğe bağlı `n_jobs` okur (yoksa eski davranış); doğrulama 12 kullanır. Derin modellerde kayıtlı final tahminlerine göre en büyük fark 1,0e-3 kW (CNN-LSTM test; final tahminleri GPU'da, doğrulama CPU'da üretildi). | Final XGBoost sayıları başka çekirdek sayısına sahip bir makinede birebir tekrar üretilmeyebilir; metrik düzeyindeki fark küçük (MAE'de 4e-5) ama raporda tekrarlanabilirlik sınırlılığı olarak belirtilmeli. | F12-L336 | Şeyda |
+| 2026-11-25 | **Yeniden yapılandırma doğrulaması: final sonuçlar değişmedi.** `python scripts/verify_frozen_results.py compare` (referans `v1.7-yapilandirma-oncesi` kodu, yeni `seyda/yeniden-yapilandirma` son commit'i; CPU, torch 4 / XGBoost 12 iş parçacığı): 265 öğenin 265'i aynı, en büyük fark 0,0. 137 dosya özeti birebir (final tablolar, ELD tabloları, `experiments.csv`, donmuş belgeler, config'ler, ağırlıklar, işlenmiş veri); 124 dizi birebir (hane tahmin val+test 34, hane anomali skorları val-dev/val-hold/test × ana/zor 51, ELD tahmin 28, ELD anomali 10, demo 1); 4 tablo (seed başına hane anomali metrikleri, A6 val-dev ve val-hold, ELD anomali). Yeni çalıştırmada modüller yeni yollardan yüklendi (`src.core`, `src.datasets`, `src.pipelines`). Aynı kodla iki koşu arasında da fark 0 (determinizm denetimi). Ara bulgu: taşınan `experimental_s0_floor.yaml`'ın yorum satırı import aracıyla değişmişti; özgün içeriğe döndürüldü. Ayrıca demo araçları (`app.build_calibration`, `app.capture_table`) ve argparse'sız iki hat (`final_tables`, `compare_hane_sebeke`) yeni yollardan tam çalıştırıldı; yeniden yazdıkları tablolar byte düzeyinde aynı. | Taşıma yalnız import yollarını değiştirdi; hesap aynı. Doğrulama çıktıları repo dışında (`../yedek/verify_ref_v1.7`, `../yedek/verify_v2.0`). | — | Şeyda |

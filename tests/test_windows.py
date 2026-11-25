@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.windows import make_windows, build_datasets
+from src.core.windows import make_windows, build_datasets
 
 
 def sample_data():

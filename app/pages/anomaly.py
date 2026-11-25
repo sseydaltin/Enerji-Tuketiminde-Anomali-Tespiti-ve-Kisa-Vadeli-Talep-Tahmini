@@ -35,8 +35,8 @@ from app.ui import (
     number,
     show_chart,
 )
-from src.data.inject_anomalies import ANOMALY_TYPES
-from src.utils.anomaly_metrics import runs
+from src.core.inject_anomalies import ANOMALY_TYPES
+from src.core.anomaly_metrics import runs
 
 NO_INJECTION = "none"
 DEFAULT_TYPE = "level_shift"

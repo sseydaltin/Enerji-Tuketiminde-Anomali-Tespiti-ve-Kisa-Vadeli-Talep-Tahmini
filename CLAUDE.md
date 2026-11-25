@@ -1,15 +1,15 @@
 # CLAUDE.md
 
-Bu dosya, bu repoda çalışan Claude Code (ve diğer yapay zekâ asistanları) için kalıcı talimatlardır. Proje planı, deney listesi ve tüm teknik kararlar **`README.md`** içindedir. Herhangi bir iş yapmadan önce README'deki ilgili bölümü oku ve ona uy. README ile bu dosya çelişirse **dur ve kullanıcıya sor**.
+Bu dosya, bu repoda çalışan Claude Code (ve diğer yapay zekâ asistanları) için kalıcı talimatlardır. Teknik kararlar, deney listesi, sonuçlar ve repo yapısı **`README.md`** içindedir. Herhangi bir iş yapmadan önce README'deki ilgili bölümü oku ve ona uy. README ile bu dosya çelişirse **dur ve kullanıcıya sor**.
 
 ## Proje bağlamı
 - **Ders:** YMÜ425 – Uygulamalı Sinir Ağları (Fırat Üniversitesi, 2026–2027 Güz)
 - **Konu:** Enerji tüketiminde anomali tespiti ve kısa vadeli (24 saat) talep tahmini
-- **Ekip:** Dilara YILDIRIM (veri hattı, tahmin, demo) · Şeyda ALTIN (EDA, literatür, anomali, görselleştirme)
-- **Veri:** UCI Individual Household Electric Power Consumption (dakikalık → saatlik)
-- **Modeller:** LSTM, GRU, Seq2Seq-LSTM (tahmin, 24 s ufuk; final F13-ens, lookback 48) · LSTM-Autoencoder + tahmin artığı dedektörü (anomali; final artık F10-opt Seq2Seq'ten, GRU değil)
-- **Referanslar:** Persistence, Seasonal Naive 24/168, Ridge, MLP · Hareketli z-skoru, Isolation Forest
-- **Süre:** 4 gün. Basit, okunabilir ve savunulabilir çözüm > karmaşık çözüm.
+- **Ekip:** Dilara YILDIRIM (veri hattı, tahmin, demo; katkısı 2026-11-24'te tamamlandı) · Şeyda ALTIN (EDA, literatür, anomali, şebeke deneyi, görselleştirme; 2026-11-25'ten itibaren projeyi yürütüyor)
+- **Veri setleri:** (1) UCI Individual Household Electric Power Consumption – hane, dakikalık → saatlik (ana); (2) UCI ElectricityLoadDiagrams20112014 – şebeke, 160 müşteri toplamı (aynı yöntemlerle ek deney); (3) **LEAD1.0** – gerçek etiketli bina anomalileri, **eklenecek** (`docs/veri_seti_lead1_degerlendirme.md`)
+- **Final modeller (yalnız val ile seçildi, test bir kez kullanıldı):** tahmin **F13-ens** = 0,8 · F10-opt (Seq2Seq-LSTM) + 0,2 · F5-opt (LSTM), lookback 48, ufuk 24 · anomali **A3-s2s-norm** = F10-opt'un h=1 artığı / OOF std (saat × gün), w = 3
+- **Karşılaştırma modelleri:** Persistence, Seasonal Naive 24/168, Ridge, MLP, GRU, CNN-LSTM, XGBoost · Hareketli z-skoru (A0), Isolation Forest (A1), LSTM-Autoencoder (A2), A5-mean-z; test sonrası A6 (deneysel)
+- **Durum:** Final sonuçlar donmuş (`docs/final_sonuclar.md`, `docs/hane_vs_sebeke.md`). Hane anomali geliştirmesi 2026-11-25'te donduruldu. Sıradaki iş: LEAD1.0. Basit, okunabilir ve savunulabilir çözüm > karmaşık çözüm.
 
 ## En önemli kural: öğrenciler her satırı savunacak
 Ders yönergesine göre öğrenciler kodun her parçasını sözlü savunmada açıklamak zorunda; "kodu yapay zekâ yazdı" cevabı kabul edilmiyor. Bu yüzden:
@@ -25,51 +25,66 @@ Ders yönergesine göre öğrenciler kodun her parçasını sözlü savunmada a�
 2. **Kaynak uydurma.** Doğrulanamayan makale, yazar, DOI veya cilt/sayfa bilgisi yazma. Emin değilsen "doğrulanmalı" diye işaretle.
 3. **Rastgele bölme yok.** Veri her zaman `configs/config.yaml`'daki tarihlere göre **kronolojik** bölünür. `shuffle` yalnızca eğitim DataLoader'ında, pencereler oluşturulduktan sonra serbesttir.
 4. **Fit yalnızca eğitimde.** `StandardScaler`, imputasyon istatistikleri, Isolation Forest, Autoencoder yalnızca eğitim kümesiyle fit/eğitilir. Doğrulama/test'e sadece `transform`.
-5. **Test kümesi kutsaldır.** Hiperparametre seçimi, early stopping, eşik seçimi yalnızca doğrulama kümesiyle yapılır. `--split test` yalnızca kullanıcı açıkça "final değerlendirme" dediğinde çalıştırılır.
+5. **Test kümesi kutsaldır.** Hiperparametre seçimi, early stopping, eşik seçimi yalnızca doğrulama kümesiyle yapılır. `--split test` / `--stage test` yalnızca kullanıcı açıkça "final değerlendirme" dediğinde çalıştırılır. Yeni yöntemler test kümesinde ve val-hold'da **ölçülmez** (`docs/gelistirme_protokolu.md` §1). Tek istisna, seçim yapmayan ve kullanıcının açıkça onayladığı regresyon kontrolüdür (`scripts/verify_frozen_results.py`).
 6. **Gelecek bilgisi yok.** Merkezli hareketli ortalama, `bfill`, gelecekteki değerlere bakan öznitelikler kullanılmaz. Hedef penceresi küme sınırını aşamaz.
-7. **Anomali enjeksiyonu** ham kW üzerinde, ayrı kopyalarda, doğrulama için `seed=1`, test için `seed=2` ile yapılır. Orijinal veri asla yerinde değiştirilmez.
+7. **Anomali enjeksiyonu** ham kW üzerinde, ayrı kopyalarda, `config.yaml`'daki `protocol.scenarios` seed listeleriyle yapılır (doğrulama ve test seed'leri farklı). Orijinal veri asla yerinde değiştirilmez.
+8. **Donmuş sonuçlar değişmez.** `docs/final_sonuclar.md`, `docs/hane_vs_sebeke.md`, `results/tables/final_*`, `anomaly_protocol_*`, `results/eld/` ve `experiments.csv`'deki mevcut satırlar yeniden hesaplanıp değiştirilmez. Kod yapısı değişirse `scripts/verify_frozen_results.py` ile önce/sonra karşılaştırılır.
 
 ## Proje yapısı
 ```
-configs/config.yaml     # TEK yapılandırma kaynağı (yollar, split tarihleri, pencere, hiperparametreler, seed)
-data/raw/               # ham veri (git'e girmez)
-data/processed/         # hourly.parquet
-src/data/               # load, preprocess, split, windows, inject_anomalies
-src/models/             # baselines, mlp, lstm, gru, autoencoder, anomaly_baselines
-src/utils/              # seed, config, metrics, plots, results_io (deney kaydı; stdlib logging ile çakışmasın diye bu ad)
-notebooks/              # 01_eda.ipynb, 02_results_analysis.ipynb
-src/train_forecast.py   src/train_autoencoder.py
-src/evaluate_forecast.py src/evaluate_anomaly.py
-tests/                  # pytest
-app/streamlit_app.py
-models/                 # ağırlıklar (.pt) + scaler.pkl
-results/experiments.csv results/figures/ results/tables/
-docs/                   # literatur.md, deney_gunlugu.md, oneri_formu/, rapor/, sunum/
+configs/                  # config.yaml (TEK kaynak), eld.yaml, optuna_*_best.yaml
+data/raw/ data/processed/ # ham ve işlenmiş veri (git'e girmez)
+src/core/                 # config (PROJECT_ROOT, load_config), split, windows, inject_anomalies,
+                          # metrics, anomaly_metrics, results_io, seed (set_seed, get_device), console
+src/datasets/household/   # load, preprocess, weather (UCI hane)
+src/datasets/eld/         # eld (UCI ELD, 160 müşteri toplamı)
+src/datasets/lead/        # LEAD1.0 (boş; eklenecek)
+src/models/               # tahmin modelleri ve referanslar; anomali skorları (A0/A1, AE, A3 artık)
+src/pipelines/            # train_forecast, tune_optuna, train_oof, ensemble, seed_stability, evaluate_forecast,
+                          # forecast_levels, verify_forecast_eval, train_autoencoder, evaluate_anomaly,
+                          # anomaly_protocol, anomaly_dual, eld_run, final_tables, compare_hane_sebeke
+src/*.py, src/data/*.py   # GEÇİCİ: yalnız eski `python -m` komutları için yönlendirme (kod içermez)
+experiments/archive/      # final sonuç üretmeyen deneyler + testleri (çalışır; çekirdek buradan import ETMEZ)
+app/                      # Streamlit demo (streamlit_app.py, pages/, *_services.py, ui.py)
+notebooks/01_eda.ipynb
+scripts/verify_frozen_results.py
+tests/                    # pytest (pytest.ini: tests + experiments/archive/tests)
+models/                   # ağırlıklar (.pt; git'e girmez, yedek repo dışında); ölçek istatistikleri checkpoint içinde
+results/                  # experiments.csv, tables/, figures/, logs/, eld/
+docs/                     # deney_gunlugu, final sonuçlar, protokoller, literatür, LEAD değerlendirmesi,
+                          # oneri_formu/, rapor/, sunum/, demo/, archive/
 ```
+- Yeni veri seti kodu `src/datasets/<ad>/` altına; veri setinden bağımsız adımlar `src/core/` altına.
+- Yeni deneyler önce `experiments/` altında yazılır; final sonuç üretmeyen kod `src/`'ye girmez.
+- Proje kökü yalnız `src.core.config.PROJECT_ROOT`'tan alınır; `Path(__file__).parents[k]` ile kök hesaplanmaz.
 
 ## Komutlar
 ```bash
 pip install -r requirements.txt
-python -m src.data.load
-python -m src.data.preprocess
-python -m src.train_forecast --model {mlp,lstm,gru} --exp F5 [--feature_set A|B|C] [--lookback 168] [--seed 42]
-python -m src.train_autoencoder --exp A2
-python -m src.evaluate_forecast --split val|test
-python -m src.evaluate_anomaly  --split val|test
-pytest tests/
-streamlit run app/streamlit_app.py
+python -m src.datasets.household.load
+python -m src.datasets.household.preprocess
+python -m src.pipelines.train_forecast --model {ridge,mlp,lstm,gru,seq2seq,cnn_lstm,xgboost,all} --exp <exp_id> [--feature_set A|B|C|W1|W2] [--lookback 48] [--seed 42]
+python -m src.pipelines.train_autoencoder --exp A2
+python -m src.pipelines.evaluate_forecast --split val|test     # test: yalnız final değerlendirme
+python -m src.pipelines.anomaly_protocol [--split test]        # test: yalnız final değerlendirme
+python -m src.pipelines.eld_run --stage val|test               # test: yalnız final değerlendirme
+python scripts/verify_frozen_results.py snapshot --out <repo dışı> | compare <ref> <yeni>
+pytest -q                                                       # çekirdek + arşiv; yalnız çekirdek: pytest tests/ -q
+python -m streamlit run app/streamlit_app.py --server.address localhost
 ```
+Tam liste README §5'tedir.
 
 ## Kodlama kuralları
-- Python 3.10+, PyTorch, scikit-learn, pandas, numpy, matplotlib, streamlit, pyyaml, holidays.
+- Python 3.10+, PyTorch, scikit-learn, pandas, numpy, matplotlib, streamlit, pyyaml, holidays, xgboost, optuna.
 - Hiperparametreler ve yollar **koda gömülmez**, `config.yaml`'dan okunur; CLI argümanları config'i ezer.
 - Her betik başında `set_seed(seed)` (random, numpy, torch, cudnn deterministic).
-- Cihaz: `cuda` varsa kullan, yoksa `cpu`. Kod CPU'da da makul sürede çalışmalı.
+- Cihaz: `src.core.seed.get_device(args.device)` (CUDA varsa istenen cihaz, yoksa `cpu`). Kod CPU'da da makul sürede çalışmalı.
 - Eğitim döngüsü açık yazılır (Lightning vb. kullanılmaz): epoch döngüsü, train/val loss, early stopping (tahminde val MAE izlenir, patience 8), `ReduceLROnPlateau` (factor 0.5, patience 3), gradient clipping (1.0), en iyi **val MAE** modeli `models/{exp_id}_best.pt`.
 - Metrikler her zaman **orijinal ölçekte (kW)** hesaplanır (inverse transform). MAPE yalnız `y > 0.1 kW` için; ayrıca sMAPE.
 - Doldurulmuş (`is_imputed=1`) hedef içeren pencereler değerlendirme metriklerinden çıkarılır.
 - Her eğitim/değerlendirme koşusu `results/experiments.csv`'ye bir satır ekler: `exp_id, date, model, feature_set, lookback, hidden, layers, dropout, lr, batch, epochs_run, best_epoch, seed, val_mae, val_rmse, test_mae, test_rmse, train_time_s, note` (test sütunları final değerlendirmeye kadar boş).
-- Figürler: `results/figures/{exp_id}_{ad}.png`, dpi 200; **her figürde eksen adı + birim, model adı, hangi küme (train/val/test) olduğu** başlıkta veya lejantta yazılı. Tablolar `results/tables/*.csv` (+ rapora kolay aktarım için `.md`).
+- Figürler: `results/figures/{exp_id}_{ad}.png`, dpi 200; **her figürde eksen adı + birim, model adı, hangi küme (train/val/test) olduğu** başlıkta veya lejantta yazılı. Tablolar `results/tables/*.csv` (+ rapora kolay aktarım için `.md`). Tablo başlığı ve notları ("final sonuç değildir" vb.) **betikten** yazılır, elle eklenmez (`write_markdown(..., title=, note=)`).
+- XGBoost çıktısı iş parçacığı sayısına bağlıdır; karşılaştırmalı koşularda `forecast.xgboost.n_jobs` sabitlenir.
 - Yeni bir veri işleme adımı yazıldığında ilgili **pytest** testi de yazılır. Zorunlu testler:
   - train/val/test zaman aralıkları kesişmiyor
   - scaler'ın `mean_`'i yalnız eğitim verisinden geliyor
@@ -78,17 +93,17 @@ streamlit run app/streamlit_app.py
   - enjeksiyon aynı seed ile aynı etiketleri üretiyor, orijinal veriyi değiştirmiyor
 
 ## Çalışma akışı
-1. Göreve başlamadan README'de ilgili bölümü ve günün planını (§3) kontrol et; görev planda yoksa kullanıcıya hangi iş paketine (İP1–İP6) ait olduğunu sor.
+1. Göreve başlamadan README'de ilgili bölümü ve durumu (§3) kontrol et; görev orada yoksa kullanıcıya hangi iş paketine (İP1–İP6, LEAD) ait olduğunu sor.
 2. Küçük, test edilebilir adımlarla ilerle. Her adımdan sonra çalıştır ve çıktıyı göster.
 3. Uzun eğitimlerden önce 1 epoch'luk "smoke test" yap.
-4. Önemli bir karar alındığında (eşik değeri, öznitelik seti, hiperparametre) `docs/deney_gunlugu.md`'ye tarih + karar + gerekçe + ilgili exp_id ekle.
-5. README'deki plan veya kararlar değişirse README'yi de güncelle ve değişikliği kullanıcıya bildir.
-6. Commit mesajları Türkçe ve açıklayıcı. `main` dalı her zaman çalışır durumda kalmalı.
+4. Önemli bir karar alındığında (eşik değeri, öznitelik seti, hiperparametre, yapı değişikliği) `docs/deney_gunlugu.md`'ye tarih + karar + gerekçe + ilgili exp_id ekle.
+5. README'deki kararlar veya yapı değişirse README'yi de güncelle ve değişikliği kullanıcıya bildir.
+6. Commit mesajları Türkçe ve açıklayıcı. `main` dalı her zaman çalışır durumda kalmalı; iş `seyda/...` dallarında yapılır.
 
 ## Rapor, öneri formu ve sunum işleri
 - Öneri formu kuralları README §6'dadır (Arial 9 pt; Özet 150–300 kelime, tek paragraf, tablo/denklem/atıf yok; Özgün Değer 200–750 kelime ve ≥350 boşluksuz karakter; Amaç ve Hedefler ayrı ve ölçülebilir; ≥10 IEEE kaynak, metinde [n] atıf; ≤20 sayfa). Metin yazarken bu sınırları say ve kontrol et.
 - Hedeflerdeki sayılar **hedef**tir; gerçekleşmeden "elde edildi" diye yazılmaz.
-- Rapor ve sunumdaki sayılar yalnızca `results/tables/` dosyalarından alınır. Rapor, kod ve sunum tutarlı olmalıdır.
+- Rapor ve sunumdaki sayılar yalnızca `results/tables/` (ve `results/eld/tables/`) dosyalarından alınır. Rapor, kod ve sunum tutarlı olmalıdır.
 - Literatürle kıyas yaparken veri seti, çözünürlük, ufuk, bölme yöntemi ve metrik farklarını belirt; koşullar farklıysa doğrudan "daha iyiyiz" deme.
 
 ## Kullanıcıyla iletişim

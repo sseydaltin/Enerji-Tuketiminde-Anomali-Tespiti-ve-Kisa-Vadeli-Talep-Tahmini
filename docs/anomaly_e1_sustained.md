@@ -7,7 +7,7 @@ Dal: `dilara/inceleme-zorunlu-duzeltmeler` · Komut: `python -m src.anomaly_e1_s
 **Hipotez.** Geçmişe bakan 6 saatlik işaretli artık ortalaması, uzun süre aynı yönde kalan sapmaları
 (özellikle yaz deseni ve seviye kayması) saatlik A3-s2s-hmean skorundan daha iyi ayırır.
 Gerekçe: saatlik gürültü işaretiyle birlikte ortalanınca kısmen birbirini götürür; sürekli sapma kalır.
-Yaz desen sapması 0,50 kW, h=1 MAE 0,34 kW (`docs/inceleme_ve_iyilestirme_plani_2026-11-08.md`).
+Yaz desen sapması 0,50 kW, h=1 MAE 0,34 kW (`docs/archive/inceleme_ve_iyilestirme_plani_2026-11-08.md`).
 
 **Skor.**
 - z̄_t = (1/24) Σ_{h=1..24} (y_t − ŷ_{h,t}) / σ_h(saat_t, gün_t). Bu, Aşama 3'teki işaretli ortalama artıktır; z̄ = spike − drop.

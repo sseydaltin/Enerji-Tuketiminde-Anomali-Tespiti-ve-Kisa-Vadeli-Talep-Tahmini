@@ -22,7 +22,7 @@ from app.anomaly_services import (
 )
 from app.services import load_f13_models, load_household_data
 from app.ui import ANOMALY_LABELS, METHOD_LABELS
-from src.utils.console import setup_console
+from src.core.console import setup_console
 
 OUTPUT_NAME = "demo_capture_by_type"
 

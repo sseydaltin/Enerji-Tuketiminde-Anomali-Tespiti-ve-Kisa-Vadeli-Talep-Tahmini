@@ -477,9 +477,9 @@ A3-ens-norm, `0,8 × F10-opt + 0,2 × F5-opt` tahmin artığını kullanır. Ref
             "Kaynak notu: docs/final_test_protokolu.md §5'te A0, revizyon öncesi seçim "
             "olarak geçer; §5a revizyonuyla final yöntem A3-s2s-norm olarak değiştirilmiştir "
             "(README ve seçim CSV'siyle uyumlu). Final A5 referansı için "
-            "docs/final_test_protokolu.md test komutu ve src/anomaly_protocol.py içindeki "
+            "docs/final_test_protokolu.md test komutu ve src/pipelines/anomaly_protocol.py içindeki "
             "açık reference_split='val_dev' çağrısı, ayrıca results/experiments.csv notu "
-            "val-dev kullanımını destekler. src/evaluate_anomaly.py içindeki genel "
+            "val-dev kullanımını destekler. src/pipelines/evaluate_anomaly.py içindeki genel "
             "fit_combination varsayılanı tam doğrulama kümesidir; final protokol bu varsayılanı "
             "açıkça geçersiz kılar. Kaydedilmiş test tablolarında reference_split alanı ve bağımsız "
             "çalıştırma günlüğü bulunmadığından kanıt final kod yolu ve deney notuna dayanır. "
@@ -538,7 +538,7 @@ def _protocol_section(info):
         )
         st.caption(
             "Kaynaklar: docs/final_test_protokolu.md, docs/eld_protokol.md, "
-            "src/data/windows.py ve src/utils/metrics.py."
+            "src/core/windows.py ve src/core/metrics.py."
         )
     with st.expander("Teknik sınırlılıklar"):
         eld_state = (

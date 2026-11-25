@@ -2,9 +2,9 @@
 
 import pandas as pd
 
-from src.data.load import load_config
-from src.train_oof import inner_fold_config
-from src.tune_optuna import cv_folds
+from src.core.config import load_config
+from src.pipelines.train_oof import inner_fold_config
+from src.pipelines.tune_optuna import cv_folds
 
 
 def test_inner_fold_config_keeps_fold_hours_out_of_training_and_early_stopping():

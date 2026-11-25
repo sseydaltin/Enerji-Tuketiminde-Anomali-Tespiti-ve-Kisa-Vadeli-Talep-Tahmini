@@ -5,11 +5,11 @@ import time
 
 from xgboost import XGBRegressor
 
-from src.data.load import PROJECT_ROOT
-from src.data.split import chronological_split
+from src.core.config import PROJECT_ROOT
+from src.core.split import chronological_split
 from src.models.forecast_baselines import build_train_val_windows, ridge_design_matrix
-from src.utils.results_io import record_forecast_results, resolve_path, upsert_csv
-from src.utils.seed import set_seed
+from src.core.results_io import record_forecast_results, resolve_path, upsert_csv
+from src.core.seed import set_seed
 
 
 def xgboost_lags(config):
@@ -33,6 +33,9 @@ def make_xgboost(settings, seed):
         tree_method="hist",
         device="cpu",
         random_state=seed,
+        # İş parçacığı sayısı: config'te yoksa None = XGBoost varsayılanı (eski davranış).
+        # Doğrulama betiği (scripts/verify_frozen_results.py) iki koşuda aynı sayıyı verir.
+        n_jobs=settings.get("n_jobs"),
     )
 
 

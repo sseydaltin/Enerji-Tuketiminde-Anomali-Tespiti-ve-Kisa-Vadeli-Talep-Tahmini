@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from src.data.load import load_raw_data, summarize_raw_data
+from src.datasets.household.load import load_raw_data, summarize_raw_data
 
 
 @pytest.fixture

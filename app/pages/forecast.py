@@ -33,7 +33,7 @@ from app.ui import (
     number,
     show_chart,
 )
-from src.utils.metrics import calculate_metrics
+from src.core.metrics import calculate_metrics
 
 # Şebeke yükü ~100.000 kW olduğundan 3 ondalık anlamsızdır.
 DIGITS = {"household": 3, "eld": 1}
