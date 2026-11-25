@@ -409,3 +409,34 @@ def run_site_fe(ctx, seeds, variants=("full", "behavior")):
     run_l1_fe(ctx, seeds, variants, kind="site", store=store)
     run_l2_fe(ctx, seeds, variants, kind="site", store=store)
     run_l5_fe(ctx, seeds, variants, kind="site")
+
+
+# ----------------------------------------------------------------------------- L1-OFF (§19, yalnız literatür kıyası)
+def run_l1_offline(ctx, seeds):
+    """L1-OFF: L1-FE (full) seçilen seti + iki yönlü (GELECEĞE BAKAN) öznitelikler; ablasyon yok, val'de bir kez.
+
+    Ana (çevrimiçi) sonuç DEĞİLDİR; seçim yarışına girmez. Yalnız Kaggle/literatür (iki yönlü öznitelik kullanan
+    çözümler) ile kıyas için. Ayarlar, eğitim, erken durdurma ve eşik L1-FE ile aynı.
+    """
+    from src.datasets.lead.features import offline_features
+    store = FeatureStore(ctx)
+    offline = offline_features(ctx.grid).iloc[ctx.obs].reset_index(drop=True).to_numpy(np.float32)
+    settings, budget = ctx.config["lightgbm"], ctx.config["budget"]
+    for seed in seeds:
+        started = time.time()
+        groups = selected_groups(ctx, seed)
+        split = ctx.split("bina", seed)
+        train_idx = np.flatnonzero(ctx.rows(split["train"]))
+        val = ctx.rows(split["val"])
+        stacked = stacked_l4semi(ctx, seed) if "G7" in groups else None
+        X, columns, categorical = store.matrix(groups, "full", stacked)
+        X = np.hstack([X, offline])                                   # [N, F + 5]
+        params = l1_params(ctx, seed, "full")
+        fit_rows = negative_subsample(train_idx, ctx.y, budget["negative_fraction"], seed)
+        model = fit_lgb(X[fit_rows], ctx.y[fit_rows], X[val], ctx.y[val], params, seed, settings, categorical)
+        scores = model.predict_proba(X[val])[:, 1]
+        record(ctx, "L1-OFF", "full", "bina", seed, f1_max_threshold(ctx.y[val], scores), val, scores,
+               {"gruplar": groups + ["OFFLINE"], "best_iteration": int(model.best_iteration_ or 0)})
+        log_run(ctx, {"model": "L1-OFF", "set": "full", "bolme": "bina", "seed": seed,
+                      "params": json.dumps({"gruplar": groups + ["OFFLINE"], **params}),
+                      "best_epoch": int(model.best_iteration_ or 0), "train_time_s": round(time.time() - started, 1)})

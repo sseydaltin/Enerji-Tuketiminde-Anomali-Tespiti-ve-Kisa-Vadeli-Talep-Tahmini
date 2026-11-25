@@ -317,3 +317,83 @@ def fe_columns(groups, variant):
         if g != "G0":
             cols += [c for c in FE_GROUPS[g] if variant == "full" or c not in FE_BEHAVIOR_DROP]
     return cols
+
+
+# ============================================================================= OFFLINE (iki yönlü) öznitelikler
+# YALNIZ literatür kıyas satırı (L1-OFF, protokol §19) içindir: GELECEĞE BAKAR (t+1 ve sonrası).
+# Ana (çevrimiçi, nedensel) sonuçlarda ve hiçbir FE grubunda KULLANILMAZ; testler bunu denetler.
+OFFLINE_CENTER_WINDOWS = (6, 24)
+OFFLINE_COLS = (["next_missing", "forward_run_length"] + [f"robust_z_c{w}h" for w in OFFLINE_CENTER_WINDOWS]
+                + ["diff_next_1h"])
+
+
+def forward_run_length_wide(wide):
+    """t'den İLERİYE doğru değerin değişmeden kaç saat aynı kaldığı (t dahil; NaN'da NaN). [H, B]."""
+    reversed_runs = run_length_wide(wide.iloc[::-1].reset_index(drop=True))
+    return reversed_runs.iloc[::-1].reset_index(drop=True)
+
+
+def offline_features(grid):
+    """İki yönlü öznitelikler (ham seri, ızgaranın her saati). Çıktı: DataFrame [B·H, OFFLINE_COLS] (float32).
+
+    next_missing: t+1 eksik mi; forward_run_length: ileri yönde sabitlik süresi; robust_z_c{w}h: t'yi ortalayan
+    w saatlik pencerenin medyanı/IQR'si ile z; diff_next_1h: x(t+1) − x(t).
+    """
+    wide = base_series(grid, "full")
+    missing = to_wide(grid, grid["observed"] == 0)
+    parts = {"next_missing": missing.shift(-1),                          # GELECEK: t+1
+             "forward_run_length": forward_run_length_wide(wide),        # GELECEK: t, t+1, …
+             "diff_next_1h": wide.shift(-1) - wide}                      # GELECEK: t+1
+    for w in OFFLINE_CENTER_WINDOWS:
+        roll = wide.rolling(w + 1, center=True, min_periods=max(2, w // 4))   # GELECEK: merkezli pencere
+        iqr = roll.quantile(0.75) - roll.quantile(0.25)
+        parts[f"robust_z_c{w}h"] = (wide - roll.median()) / (iqr + 1e-3)
+    X = pd.DataFrame({c: from_wide(parts[c]) for c in OFFLINE_COLS}, index=grid.index)
+    return X.replace([np.inf, -np.inf], np.nan).astype("float32")
+
+
+# ============================================================================= I-turu P4: benzer bina sapması (§20.2)
+P4_COLS = ["peer_median", "peer_iqr", "peer_z", "peer_fallback"]
+P4_MIN_PEERS = 3
+
+
+def peer_deviation(ratio, part, use, min_peers=P4_MIN_PEERS):
+    """Benzer bina sapması. ratio: [H, B] her binanın log1p(x) − log1p(geçmiş 168 s medyanı) (G3, nedensel).
+
+    part [B]: binanın bölme parçası (train/val/test); use [B]: primary_use. Bina b için akranlar = aynı parçadaki
+    aynı türden binalar, b HARİÇ; min_peers'ten azsa parçadaki bütün binalar (b hariç) ve peer_fallback = 1.
+    Her saat t'de akranların ratio(t) medyanı ve IQR'si; b'nin robust z'si. Etiket kullanılmaz.
+    Çıktı: {sütun: [H, B]} (P4_COLS).
+    """
+    ratio = np.asarray(ratio, dtype=np.float64)
+    H, B = ratio.shape
+    out = {c: np.full((H, B), np.nan) for c in P4_COLS}
+    for b in range(B):
+        same_part = (part == part[b]) & (np.arange(B) != b)            # b kendisi hesaba katılmaz
+        peers = same_part & (use == use[b])
+        fallback = peers.sum() < min_peers
+        if fallback:
+            peers = same_part
+        values = ratio[:, peers]                                       # [H, akran]; aynı saat t
+        q25, med, q75 = np.nanpercentile(values, [25, 50, 75], axis=1) if values.shape[1] else (np.nan,) * 3
+        out["peer_median"][:, b] = med
+        out["peer_iqr"][:, b] = q75 - q25
+        out["peer_z"][:, b] = (ratio[:, b] - med) / (q75 - q25 + 1e-3)
+        out["peer_fallback"][:, b] = float(fallback)
+    return out
+
+
+def peer_features(grid, part_of, use_of):
+    """Izgara için P4 öznitelikleri. part_of / use_of: bina → parça / tür. Çıktı: DataFrame [B·H, P4_COLS] float32."""
+    wide = base_series(grid, "full")
+    ratio = g3_scale_free(wide)["log_ratio_med168h"].to_numpy()        # [H, B], nedensel
+    buildings = np.sort(grid["building_id"].unique())
+    part = np.array([part_of.get(b, "yok") for b in buildings])
+    use = np.array([use_of[b] for b in buildings])
+    with np.errstate(all="ignore"):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)              # tüm akranları NaN olan saatler
+            parts = peer_deviation(ratio, part, use)
+    X = pd.DataFrame({c: parts[c].T.reshape(-1) for c in P4_COLS}, index=grid.index)
+    return X.replace([np.inf, -np.inf], np.nan).astype("float32")

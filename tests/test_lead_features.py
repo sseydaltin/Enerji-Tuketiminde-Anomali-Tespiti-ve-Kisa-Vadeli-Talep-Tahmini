@@ -180,3 +180,50 @@ def test_normalized_residual_is_causal():
     changed[251:] *= 10
     a, b = normalized_residual(errors, 168), normalized_residual(changed, 168)
     pd.testing.assert_frame_equal(a.iloc[:251], b.iloc[:251])
+
+
+def test_offline_features_isolated_and_two_sided():
+    """Offline (iki yönlü) sütunlar hiçbir nedensel sette/grupta yok; ve gerçekten geleceğe bakıyorlar
+    (geleceği değiştirmek onları değiştirir — yanlışlıkla nedensel sete girerse bu test fark ettirir)."""
+    from src.datasets.lead.features import OFFLINE_COLS, offline_features
+    causal = set(FULL) | set(BEHAVIOR) | {c for cols in FE_GROUPS.values() for c in cols}
+    assert not causal & set(OFFLINE_COLS)
+    clean = _clean(n_hours=500)
+    cut = pd.Timestamp("2016-01-01") + pd.Timedelta(hours=300)
+    changed = clean.copy()
+    changed.loc[changed["timestamp"] > cut, "meter_reading"] *= 3.0
+    keep = (full_grid(clean)["timestamp"] <= cut).to_numpy()
+    a, b = offline_features(full_grid(clean)), offline_features(full_grid(changed))
+    assert not a[keep].equals(b[keep])
+
+
+def test_peer_deviation_excludes_self_and_falls_back():
+    """P4: bina kendi değerini görmez; aynı türde < 3 akran varsa parçanın tümü + bayrak; parça dışı kullanılmaz."""
+    from src.datasets.lead.features import peer_deviation
+    H = 5
+    ratio = np.tile(np.array([0.0, 1.0, 2.0, 3.0, 100.0, 50.0]), (H, 1))   # [H, 6]
+    part = np.array(["train"] * 5 + ["val"])
+    use = np.array(["ofis", "ofis", "ofis", "ofis", "ofis", "ofis"])
+    out = peer_deviation(ratio, part, use)
+    assert out["peer_median"][0, 4] == 1.5                                # b=4 hariç train akranları 0,1,2,3
+    assert out["peer_fallback"][0, 0] == 0
+    assert np.isnan(out["peer_median"][0, 5])                             # val'de başka bina yok
+    use2 = np.array(["ofis", "ofis", "okul", "okul", "okul", "ofis"])
+    out2 = peer_deviation(ratio, part, use2)
+    assert out2["peer_fallback"][0, 0] == 1                               # train'de yalnız 1 ofis akranı
+    assert out2["peer_median"][0, 0] == 2.5                               # → train'in tümü (b hariç): 1,2,3,100
+
+
+def test_peer_features_are_causal():
+    """P4 t'den sonraki okumaları değiştirince ≤ t değişmez."""
+    from src.datasets.lead.features import peer_features
+    clean = _clean(n_hours=500, buildings=(1, 2, 3, 4))
+    cut = pd.Timestamp("2016-01-01") + pd.Timedelta(hours=300)
+    changed = clean.copy()
+    changed.loc[changed["timestamp"] > cut, "meter_reading"] *= 3.0
+    part_of = {1: "train", 2: "train", 3: "train", 4: "val"}
+    use_of = {1: "a", 2: "a", 3: "b", 4: "a"}
+    keep = (full_grid(clean)["timestamp"] <= cut).to_numpy()
+    a = peer_features(full_grid(clean), part_of, use_of)
+    b = peer_features(full_grid(changed), part_of, use_of)
+    pd.testing.assert_frame_equal(a[keep], b[keep])

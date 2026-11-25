@@ -388,7 +388,7 @@ def main():
     """--stage clean | eda."""
     setup_console()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--stage", choices=("clean", "eda", "sites", "splits", "l0", "l1", "l4", "deep", "l5", "fe", "l1fe", "l2fe", "l5fe", "sitefe",
+    parser.add_argument("--stage", choices=("clean", "eda", "sites", "splits", "l0", "l1", "l4", "deep", "l5", "fe", "l1fe", "l2fe", "l5fe", "sitefe", "l1off",
                                             "if", "site", "summary"), required=True)
     parser.add_argument("--model", choices=("L2", "L3"), default="L2", help="--stage deep")
     parser.add_argument("--sets", default="full,behavior", help="öznitelik setleri (virgülle)")
@@ -399,14 +399,14 @@ def main():
     parser.add_argument("--config", default=str(CONFIG_FILE))
     args = parser.parse_args()
     config = load_config(args.config)
-    if args.stage in ("splits", "l0", "l1", "l4", "deep", "l5", "if", "site", "summary", "fe", "l1fe", "l2fe", "l5fe", "sitefe"):
+    if args.stage in ("splits", "l0", "l1", "l4", "deep", "l5", "if", "site", "summary", "fe", "l1fe", "l2fe", "l5fe", "sitefe", "l1off"):
         from src.pipelines import lead_models as lm      # model kütüphaneleri yalnız gerektiğinde yüklenir
         ctx = lm.LeadData(config)
         seeds = [int(s) for s in args.seeds.split(",")] if args.seeds else config["split"]["seeds"]
         sets = args.sets.split(",")
         if args.stage == "splits":
             lm.write_splits(ctx)
-        if args.stage in ("fe", "l1fe", "l2fe", "l5fe", "sitefe"):   # L-FE (§17–§18); fe yalnız train CV
+        if args.stage in ("fe", "l1fe", "l2fe", "l5fe", "sitefe", "l1off"):  # L-FE (§17–§19)
             from src.pipelines import lead_fe
             if args.stage == "fe":
                 print(lead_fe.run_fe(ctx, seeds))
@@ -414,12 +414,14 @@ def main():
                 lead_fe.run_l1_fe(ctx, seeds)
             elif args.stage == "l2fe":
                 lead_fe.run_l2_fe(ctx, seeds, sets, n_trials=args.trials)
+            elif args.stage == "l1off":                  # §19: yalnız literatür kıyası (offline)
+                lead_fe.run_l1_offline(ctx, seeds)
             elif args.stage == "l5fe":
                 lead_fe.run_l5_fe(ctx, seeds, sets)
             else:
                 lead_fe.run_site_fe(ctx, seeds, sets)
         for seed in seeds if args.stage not in ("splits", "site", "summary", "fe", "l1fe", "l2fe", "l5fe",
-                                                "sitefe") else []:
+                                                "sitefe", "l1off") else []:
             if args.stage == "l0":
                 lm.run_rules(ctx, "bina", seed)
             elif args.stage == "l1":
