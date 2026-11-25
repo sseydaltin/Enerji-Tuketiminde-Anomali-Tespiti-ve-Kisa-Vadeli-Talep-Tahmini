@@ -1,0 +1,1 @@
+{"model": "I-turu", "set": "full", "bolme": "bina", "seed": 42, "params": "{\"L1\": {\"p1\": false, \"p4\": true, \"k\": 1}, \"L2\": {\"p1\": false, \"k\": 1}}", "best_epoch": null, "train_time_s": 379.6}

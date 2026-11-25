@@ -4,6 +4,9 @@ G7-OOF,-,bina,42,"{""fixed_epochs"": 28}",28.0,564.7
 G7-OOF,-,bina,7,"{""fixed_epochs"": 29}",29.0,574.6
 G7-OOF,-,site,2026,"{""fixed_epochs"": 30}",30.0,577.9
 G7-OOF,-,site,7,"{""fixed_epochs"": 30}",30.0,579.8
+I-turu,full,bina,2026,"{""L1"": {""p1"": false, ""p4"": false, ""k"": 1}, ""L2"": {""p1"": false, ""k"": 1}}",,444.0
+I-turu,full,bina,42,"{""L1"": {""p1"": false, ""p4"": true, ""k"": 1}, ""L2"": {""p1"": false, ""k"": 1}}",,379.6
+I-turu,full,bina,7,"{""L1"": {""p1"": false, ""p4"": false, ""k"": 1}, ""L2"": {""p1"": false, ""k"": 1}}",,797.4
 L-FE-ablasyon,full,bina,2026,"{""secilen"": [""G0"", ""G1"", ""G2"", ""G4"", ""G5"", ""G7""]}",,818.3
 L-FE-ablasyon,full,bina,42,"{""secilen"": [""G0"", ""G4"", ""G5""]}",,722.0
 L-FE-ablasyon,full,bina,7,"{""secilen"": [""G0"", ""G4"", ""G5"", ""G6"", ""G7""]}",,1147.8

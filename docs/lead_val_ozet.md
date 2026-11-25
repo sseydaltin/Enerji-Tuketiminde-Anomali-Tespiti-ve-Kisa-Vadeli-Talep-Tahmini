@@ -118,3 +118,83 @@ Gözlemler:
 2. Sinir ağı tercihi L5-FE full'ü seçiyor, ama iki seed'de L5-FE = L1-FE. Öneri L5-FE full olarak mı kalsın, yoksa "gerçekten sinir ağı katkısı olan" bir koşul (ör. w_L1 < 1) mi eklensin?
 3. L4-semi'nin val etiketiyle erken durdurması kabul mü, yoksa testten önce val etiketsiz erken durdurmayla (ör. sabit epoch) yeniden mi üretilsin?
 4. Literatür satırındaki 0,952 (Tech Science) değerinin künyesi repoda yok; doğrulanmalı.
+5. (I-turu sonrası) L1-FE/L2-FE/L5-FE val sonuçlarında val erken durdurmasından gelen hafif iyimserlik var (§8.2). Test öncesinde final model, val erken durdurması olmayan L1-I ile mi değiştirilsin, yoksa L5-FE full mü kalsın? (Test sonucu her iki durumda da iyimserlik taşımaz; soru yalnız val raporunun dürüstlüğü ve seçim kuralının uygulanması.)
+
+## 8. I-turu: davranışsal (`other`) odaklı iyileştirme (protokol §20)
+
+Seçim yalnız train binalarında, 3 katlı gruplu CV'nin OOF skorlarıyla, her seed ayrı (ana ölçüt `other` PR-AUC, ikincil genel PR-AUC, gürültü kuralı 2·std/√3). Varyant full. Kaynak: `results/lead/tables/i_cv_steps.csv`, `i_cv_folds.csv`, `i_shap_other.csv`, `val_results.csv` (L1-I, L2-I).
+
+### 8.1 CV adımları (kat ort.; Δ = önceki kabul edilen yapılandırmaya göre)
+
+| seed | hat | adım | other PR-AUC | genel PR-AUC | frozen PR-AUC | gap_edge PR-AUC | other ROC-AUC | genel ROC-AUC | Δ other (2se) | Δ genel (2se) | karar |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 42 | L1 | temel L1-FE | 0.053 ± 0.041 | 0.712 | 0.862 | 0.490 | 0.816 | 0.940 | — | — | temel |
+| 42 | L1 | +P1 (L1-other, max) | 0.054 ± 0.044 | 0.599 | 0.687 | 0.368 | 0.817 | 0.938 | +0.0007 (0.0041) | -0.1134 (0.1547) | ret |
+| 42 | L1 | +P4 (akran sapması) | 0.060 ± 0.039 | 0.724 | 0.872 | 0.494 | 0.826 | 0.942 | +0.0063 (0.0109) | +0.0113 (0.0088) | kabul |
+| 42 | L1 | +P5 (k=3) | 0.054 ± 0.031 | 0.692 | 0.854 | 0.332 | 0.831 | 0.941 | -0.0054 (0.0096) | -0.0315 (0.0139) | ret |
+| 42 | L1 | +P5 (k=6) | 0.049 ± 0.027 | 0.627 | 0.785 | 0.239 | 0.818 | 0.933 | -0.0112 (0.0147) | -0.0969 (0.0260) | ret |
+| 42 | L2 | temel L2-FE | 0.105 ± 0.054 | 0.735 | 0.875 | 0.393 | 0.800 | 0.928 | — | — | temel |
+| 42 | L2 | +P1 (L2-other, max) | 0.097 ± 0.050 | 0.696 | 0.822 | 0.295 | 0.808 | 0.927 | -0.0087 (0.0074) | -0.0388 (0.0497) | ret |
+| 42 | L2 | +P5 (k=3) | 0.069 ± 0.024 | 0.693 | 0.849 | 0.263 | 0.792 | 0.923 | -0.0365 (0.0375) | -0.0419 (0.0070) | ret |
+| 42 | L2 | +P5 (k=6) | 0.059 ± 0.017 | 0.630 | 0.784 | 0.185 | 0.777 | 0.913 | -0.0466 (0.0464) | -0.1049 (0.0100) | ret |
+| 7 | L1 | temel L1-FE | 0.111 ± 0.036 | 0.772 | 0.953 | 0.601 | 0.812 | 0.940 | — | — | temel |
+| 7 | L1 | +P1 (L1-other, max) | 0.115 ± 0.054 | 0.767 | 0.946 | 0.562 | 0.817 | 0.940 | +0.0046 (0.0213) | -0.0059 (0.0014) | ret |
+| 7 | L1 | +P4 (akran sapması) | 0.107 ± 0.040 | 0.772 | 0.952 | 0.591 | 0.822 | 0.943 | -0.0037 (0.0105) | -0.0000 (0.0024) | ret |
+| 7 | L1 | +P5 (k=3) | 0.083 ± 0.027 | 0.741 | 0.929 | 0.417 | 0.822 | 0.941 | -0.0280 (0.0136) | -0.0318 (0.0061) | ret |
+| 7 | L1 | +P5 (k=6) | 0.065 ± 0.018 | 0.675 | 0.866 | 0.284 | 0.813 | 0.935 | -0.0460 (0.0300) | -0.0973 (0.0163) | ret |
+| 7 | L2 | temel L2-FE | 0.086 ± 0.034 | 0.709 | 0.887 | 0.296 | 0.811 | 0.928 | — | — | temel |
+| 7 | L2 | +P1 (L2-other, max) | 0.097 ± 0.039 | 0.690 | 0.852 | 0.260 | 0.826 | 0.930 | +0.0112 (0.0216) | -0.0190 (0.0189) | ret |
+| 7 | L2 | +P5 (k=3) | 0.059 ± 0.025 | 0.658 | 0.848 | 0.211 | 0.802 | 0.922 | -0.0267 (0.0167) | -0.0516 (0.0109) | ret |
+| 7 | L2 | +P5 (k=6) | 0.048 ± 0.022 | 0.580 | 0.756 | 0.153 | 0.785 | 0.910 | -0.0379 (0.0216) | -0.1295 (0.0193) | ret |
+| 2026 | L1 | temel L1-FE | 0.134 ± 0.088 | 0.779 | 0.943 | 0.500 | 0.815 | 0.944 | — | — | temel |
+| 2026 | L1 | +P1 (L1-other, max) | 0.136 ± 0.078 | 0.715 | 0.845 | 0.454 | 0.820 | 0.942 | +0.0023 (0.0165) | -0.0639 (0.1125) | ret |
+| 2026 | L1 | +P4 (akran sapması) | 0.130 ± 0.088 | 0.788 | 0.957 | 0.518 | 0.817 | 0.944 | -0.0037 (0.0073) | +0.0092 (0.0190) | ret |
+| 2026 | L1 | +P5 (k=3) | 0.110 ± 0.064 | 0.758 | 0.929 | 0.385 | 0.817 | 0.942 | -0.0244 (0.0331) | -0.0212 (0.0058) | ret |
+| 2026 | L1 | +P5 (k=6) | 0.078 ± 0.041 | 0.705 | 0.884 | 0.279 | 0.807 | 0.936 | -0.0562 (0.0559) | -0.0738 (0.0129) | ret |
+| 2026 | L2 | temel L2-FE | 0.139 ± 0.067 | 0.766 | 0.921 | 0.418 | 0.824 | 0.940 | — | — | temel |
+| 2026 | L2 | +P1 (L2-other, max) | 0.140 ± 0.061 | 0.731 | 0.867 | 0.368 | 0.839 | 0.942 | +0.0002 (0.0095) | -0.0347 (0.0584) | ret |
+| 2026 | L2 | +P5 (k=3) | 0.089 ± 0.033 | 0.722 | 0.894 | 0.299 | 0.818 | 0.936 | -0.0499 (0.0420) | -0.0439 (0.0032) | ret |
+| 2026 | L2 | +P5 (k=6) | 0.064 ± 0.021 | 0.657 | 0.832 | 0.218 | 0.804 | 0.927 | -0.0750 (0.0540) | -0.1088 (0.0067) | ret |
+
+**Kabul edilen adımlar:** seed 42 L1 +P4 (akran sapması). P1 (L1-other / L2-other, kalibre max) hiçbir seed ve hatta kabul edilmedi: `other` PR-AUC değişimi gürültü düzeyinde, genel PR-AUC (özellikle frozen ve gap_edge) belirgin düştü — kalibre max, `other` modelinin alarmlarını veri kalitesi olaylarının önüne taşıyor. P5 (yumuşatma) her yerde ret: anomalilerin çoğu kısa, ortalama alma tepeleri bastırıyor. P2 (sıcaklık) yapılmadı (§8.4).
+
+### 8.2 Son val (bir kez; son modellerde val erken durdurması YOK)
+
+| model | other PR-AUC | other ROC-AUC | genel PR-AUC | genel ROC-AUC | frozen PR-AUC | frozen ROC-AUC | gap_edge PR-AUC | gap_edge ROC-AUC |
+|---|---|---|---|---|---|---|---|---|
+| L1-FE | 0.053 ± 0.030 | 0.770 ± 0.074 | 0.667 ± 0.099 | 0.912 ± 0.033 | 0.882 ± 0.054 | 0.990 ± 0.005 | 0.505 ± 0.089 | 0.945 ± 0.012 |
+| L1-I | 0.049 ± 0.030 | 0.770 ± 0.062 | 0.640 ± 0.123 | 0.911 ± 0.030 | 0.856 ± 0.082 | 0.988 ± 0.007 | 0.426 ± 0.202 | 0.937 ± 0.017 |
+| L2-FE | 0.045 ± 0.019 | 0.772 ± 0.090 | 0.594 ± 0.086 | 0.903 ± 0.037 | 0.792 ± 0.018 | 0.980 ± 0.007 | 0.183 ± 0.051 | 0.895 ± 0.006 |
+| L2-I | 0.039 ± 0.020 | 0.731 ± 0.108 | 0.546 ± 0.100 | 0.892 ± 0.044 | 0.721 ± 0.043 | 0.977 ± 0.007 | 0.134 ± 0.044 | 0.920 ± 0.011 |
+
+- L1-I − L1-FE, other PR-AUC: -0.0042 (2se 0.0014).
+- L1-I − L1-FE, genel PR-AUC: -0.0264 (2se 0.0378).
+- L2-I − L2-FE, other PR-AUC: -0.0058 (2se 0.0046).
+- L2-I − L2-FE, genel PR-AUC: -0.0475 (2se 0.0176).
+
+**Yorum:** seed 7 ve 2026'da L1-I'nin yapılandırması L1-FE ile aynı (bütün adımlar ret); L2-I üç seed'de de L2-FE ile aynı. Aradaki tek fark son modelin val'de erken durdurma yapmaması (ağaç/epoch = CV ortalaması). Buna rağmen val'de L1-I/L2-I biraz daha düşük: **L1-FE ve L2-FE'nin val sonuçlarında val erken durdurmasından gelen hafif iyimserlik var** (protokol §9 buna izin veriyordu; ama val hem erken durdurmada hem ölçümde kullanıldığı için). Test için önemli: test sonucu bu iyimserliği taşımaz; L1-I/L2-I val sonuçları test için daha dürüst bir beklentidir.
+
+### 8.3 Davranışsal dilimde en önemli 10 öznitelik (SHAP, tutulan katlar; L1 hattının seçilen modeli)
+
+| sıra | seed 42 | seed 7 | seed 2026 |
+|---|---|---|---|
+| 1 | profile_z | l4semi_score | l4semi_score |
+| 2 | log_diff_168h | profile_z | profile_z |
+| 3 | log_diff_1h | gap_age_h | gap_age_h |
+| 4 | gap_age_h | log_diff_1h | log_diff_168h |
+| 5 | log_diff_24h | log_diff_168h | roll_iqr_24h |
+| 6 | backward_run_length | primary_use | dow_sin |
+| 7 | last_gap_len | last_gap_len | n_distinct_24h |
+| 8 | lag_1h | log_diff_24h | absdiff_1h |
+| 9 | month_cos | profile_mean | log_diff_1h |
+| 10 | profile_mean | backward_run_length | log_diff_24h |
+
+Üç seed'de de ilk sıralarda `profile_z` (aynı hafta-saatine göre sapma), `l4semi_score` (G7, tahmin artığı), `log_diff_168h`, `gap_age_h`: davranışsal sinyal profil sapması ve tahmin artığından geliyor; `gap_age_h` (son boşluktan beri geçen süre) `other` saatlerinin de boşluklara yakın olduğunu gösteriyor.
+
+### 8.4 P2 (sıcaklık) — kullanılmadı
+
+`train_features.csv`'de `air_temperature` var, ama **üretimi belgelenemedi**: sütunda hiç eksik yok (%0 NaN; ASHRAE ham hava verisinde eksik saatler bulunur → Kaggle boşlukları bilinmeyen bir yöntemle doldurmuş; geleceğe bakan doldurma dışlanamıyor). `air_temperature_mean_lag7` geri 7 saat, merkezli 7 saat ya da t−7…t−1 pencerelerinin hiçbirine uymuyor. §20.2 kuralı gereği kullanılmadı.
+
+### 8.5 I-turu sonrası seçim (§18.2)
+
+Seçim değişmedi: **L5-FE / full** (`val_selection_v2.csv`). L1-I ve L2-I yarışa girdi. İkisi de `other`'da gürültü düzeyinde (C1). Genel PR-AUC'de L1-I gürültü düzeyinde (C2'de), L2-I anlamlı biçimde geride (C2 dışı). C2'de sinir ağı içeren tek model L5-FE full olduğu için seçim değişmedi. **Çekince:** L5-FE'nin üyeleri (L1-FE, L2-FE) val'de erken durdurulmuş ve ağırlığı val'de seçilmiştir; §8.2'deki iyimserlik L5-FE için de geçerlidir. Val erken durdurması olmayan karşılığı L1-I'dir.
