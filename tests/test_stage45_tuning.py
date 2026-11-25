@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 import torch
 
-from src.data.load import load_config
+from src.core.config import load_config
 from src.ensemble import combine, search_weights, weight_grid
 from src.seed_stability import seed_exp_id, summarize
 from src.train_forecast import make_loss

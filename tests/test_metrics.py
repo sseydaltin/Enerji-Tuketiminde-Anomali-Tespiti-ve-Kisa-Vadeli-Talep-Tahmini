@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.utils.metrics import calculate_metrics, metrics_by_horizon
+from src.core.metrics import calculate_metrics, metrics_by_horizon
 
 
 def test_calculate_metrics_ignores_near_zero_targets_in_mape():

@@ -10,10 +10,10 @@ import optuna
 import pandas as pd
 import yaml
 
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.config import PROJECT_ROOT, load_config
 from src.train_forecast import MODEL_LABELS, fit_forecaster, train_model
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path, upsert_csv
+from src.core.console import setup_console
+from src.core.results_io import resolve_path, upsert_csv
 
 
 def cv_folds(train_start, train_end, cv_months, n_folds):

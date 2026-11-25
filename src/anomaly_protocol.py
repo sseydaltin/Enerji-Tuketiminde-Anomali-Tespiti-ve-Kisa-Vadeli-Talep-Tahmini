@@ -22,9 +22,9 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for, train_sigma_table
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
+from src.core.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for, train_sigma_table
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
 from src.evaluate_anomaly import (
     METHOD_LABELS,
     add_combinations,
@@ -39,10 +39,10 @@ from src.evaluate_anomaly import (
     with_context,
 )
 from src.models.residual_detector import combine_predictions, one_step_predictions, residual_std_table
-from src.utils.anomaly_metrics import evaluate_threshold, event_f1_max_threshold, runs
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path, upsert_csv
-from src.utils.seed import set_seed
+from src.core.anomaly_metrics import evaluate_threshold, event_f1_max_threshold, runs
+from src.core.console import setup_console
+from src.core.results_io import resolve_path, upsert_csv
+from src.core.seed import get_device, set_seed
 
 RULE = "evf1max"   # eşik kuralı: birleşik olay F1'inin maksimumu
 PROTOCOL_LABELS = {
@@ -343,7 +343,7 @@ def main():
 
     config = load_config(args.config)
     set_seed(config["seed"])
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = get_device(args.device)
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
     tables_dir = resolve_path(PROJECT_ROOT, config["paths"]["tables_dir"])
     figures_dir = resolve_path(PROJECT_ROOT, config["paths"]["figures_dir"])

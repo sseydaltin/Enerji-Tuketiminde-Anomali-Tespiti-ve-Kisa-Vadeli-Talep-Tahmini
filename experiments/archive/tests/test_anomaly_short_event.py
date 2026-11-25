@@ -12,7 +12,7 @@ from experiments.archive.anomaly_short_event import (
     weight_grid,
 )
 from src.models.residual_detector import residual_std_table
-from src.utils.anomaly_metrics import event_f1_max_threshold, fill_alarm_gaps
+from src.core.anomaly_metrics import event_f1_max_threshold, fill_alarm_gaps
 
 TARGET = "Global_active_power"
 

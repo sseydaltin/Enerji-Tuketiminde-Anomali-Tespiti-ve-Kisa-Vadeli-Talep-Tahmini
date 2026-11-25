@@ -7,12 +7,12 @@ import pandas as pd
 import streamlit as st
 import torch
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
-from src.data.windows import get_feature_columns
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
+from src.core.windows import get_feature_columns
 from src.train_forecast import build_model
-from src.utils.metrics import calculate_metrics
-from src.utils.results_io import resolve_path
+from src.core.metrics import calculate_metrics
+from src.core.results_io import resolve_path
 
 
 @st.cache_data(show_spinner=False)

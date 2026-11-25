@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 import torch
 
-from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies
-from src.data.load import load_config
+from src.core.inject_anomalies import ANOMALY_TYPES, inject_anomalies
+from src.core.config import load_config
 from src.evaluate_anomaly import evaluate_split
 from src.models.anomaly_baselines import rolling_zscore, window_features
 from src.models.autoencoder import (
@@ -14,7 +14,7 @@ from src.models.autoencoder import (
     receptive_field,
 )
 from src.train_autoencoder import clean_windows
-from src.utils.anomaly_metrics import evaluate_threshold, event_metrics, f1_max_threshold, runs
+from src.core.anomaly_metrics import evaluate_threshold, event_metrics, f1_max_threshold, runs
 
 
 def make_frame(days=120, seed=0):
@@ -363,10 +363,10 @@ def test_paired_differences_per_seed():
 # ---------------------------------------------------------------- Final protokol
 
 from src.anomaly_protocol import choose_final, protocol_splits, scenario_settings
-from src.data.inject_anomalies import sigma_for, train_sigma_table
+from src.core.inject_anomalies import sigma_for, train_sigma_table
 from src.evaluate_anomaly import with_context
 from src.models.residual_detector import load_forecaster, out_of_fold_predictions
-from src.utils.anomaly_metrics import event_f1_max_threshold
+from src.core.anomaly_metrics import event_f1_max_threshold
 
 
 def full_period_frame():
@@ -416,7 +416,7 @@ def test_main_scenario_uses_train_sigma_and_hard_scenario_is_unchanged(injection
     spike = types == "spike"
     added = (values[spike] - original[spike]) / sigma[spike]
     assert ((added >= 3.0) & (added <= 5.0)).all()
-    from src.utils.anomaly_metrics import runs as blocks
+    from src.core.anomaly_metrics import runs as blocks
     for kind in ("drop", "level_shift"):
         for start, end in blocks(types == kind):
             if kind == "drop":
@@ -489,7 +489,7 @@ def test_final_choice_uses_standard_error_not_std():
 
 def test_alarm_diagnostics_counts_false_alarms_and_delays():
     """Yanlış alarm = anomaliyle kesişmeyen blok; gecikme = olay içindeki ilk işaretli saat."""
-    from src.utils.anomaly_metrics import alarm_diagnostics
+    from src.core.anomaly_metrics import alarm_diagnostics
     types = np.array(["none"] * 4 + ["spike"] * 3 + ["none"] * 3 + ["drop"] * 2 + ["none"] * 12)
     predicted = np.zeros(len(types), dtype=bool)
     predicted[0] = True          # yanlış alarm 1
@@ -503,7 +503,7 @@ def test_alarm_diagnostics_counts_false_alarms_and_delays():
 
 
 def test_alarm_diagnostics_without_detections_returns_nan_delay():
-    from src.utils.anomaly_metrics import alarm_diagnostics
+    from src.core.anomaly_metrics import alarm_diagnostics
     types = np.array(["none"] * 5 + ["level_shift"] * 5)
     result = alarm_diagnostics(types, np.zeros(10, dtype=bool), n_valid_hours=48)
     assert result["false_alarms"] == 0 and result["delays"] == []

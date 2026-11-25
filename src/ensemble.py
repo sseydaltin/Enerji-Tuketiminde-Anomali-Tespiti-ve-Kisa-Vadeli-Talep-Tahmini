@@ -6,15 +6,10 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.utils.console import setup_console
-from src.utils.metrics import calculate_metrics
-from src.utils.results_io import (
-    load_predictions,
-    record_forecast_results,
-    resolve_path,
-    upsert_csv,
-)
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.console import setup_console
+from src.core.metrics import calculate_metrics
+from src.core.results_io import load_predictions, record_forecast_results, resolve_path, upsert_csv
 
 
 def weight_grid(n_models, step):

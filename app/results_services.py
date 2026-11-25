@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from src.data.eld import eld_config
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.config import PROJECT_ROOT, load_config
 
 FORECAST_MODELS = ("F13-ens", "XGBoost", "SN168")
 ANOMALY_METHODS = ("A0", "A3-s2s-norm", "A5-mean-z")

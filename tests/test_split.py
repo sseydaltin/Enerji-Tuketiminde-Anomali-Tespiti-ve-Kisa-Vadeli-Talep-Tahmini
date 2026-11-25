@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.data.split import chronological_split
+from src.core.split import chronological_split
 
 
 @pytest.fixture

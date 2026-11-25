@@ -4,8 +4,8 @@ import argparse
 
 import pandas as pd
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.utils.console import setup_console
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.console import setup_console
 
 
 def chronological_split(df, config):

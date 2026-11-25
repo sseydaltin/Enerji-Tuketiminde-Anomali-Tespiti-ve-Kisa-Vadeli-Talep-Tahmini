@@ -24,8 +24,8 @@ from app.services import (
     worst_decile_days,
 )
 from app.ui import FORECAST_LABELS, METHOD_LABELS
-from src.data.load import PROJECT_ROOT
-from src.utils.metrics import calculate_metrics
+from src.core.config import PROJECT_ROOT
+from src.core.metrics import calculate_metrics
 
 COMPARISON_DOC = PROJECT_ROOT / "docs/hane_vs_sebeke.md"
 FINAL_DOC = PROJECT_ROOT / "docs/final_sonuclar.md"

@@ -21,9 +21,9 @@ import pandas as pd
 import torch
 from sklearn.metrics import precision_recall_curve, roc_curve
 
-from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
+from src.core.inject_anomalies import ANOMALY_TYPES, inject_anomalies
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
 from src.models.anomaly_baselines import (
     fit_isolation_forest,
     isolation_forest_scores,
@@ -40,10 +40,10 @@ from src.models.residual_detector import (
     out_of_fold_predictions,
     residual_std_table,
 )
-from src.utils.anomaly_metrics import evaluate_threshold, f1_max_threshold
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path, upsert_csv
-from src.utils.seed import set_seed
+from src.core.anomaly_metrics import evaluate_threshold, f1_max_threshold
+from src.core.console import setup_console
+from src.core.results_io import resolve_path, upsert_csv
+from src.core.seed import get_device, set_seed
 
 METHOD_LABELS = {
     "A0": "Hareketli z-skoru",
@@ -656,7 +656,7 @@ def main():
 
     config = load_config(args.config)
     set_seed(config["seed"])
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = get_device(args.device)
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
     tables_dir = resolve_path(PROJECT_ROOT, config["paths"]["tables_dir"])
     figures_dir = resolve_path(PROJECT_ROOT, config["paths"]["figures_dir"])

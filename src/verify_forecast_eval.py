@@ -6,14 +6,14 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
-from src.data.windows import make_windows
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
+from src.core.windows import make_windows
 from src.models.baselines import naive_forecasts
 from src.models.forecast_baselines import build_train_val_windows
 from src.train_forecast import prepare_forecast_data
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path
+from src.core.console import setup_console
+from src.core.results_io import resolve_path
 
 
 def check_hourly_index(df):

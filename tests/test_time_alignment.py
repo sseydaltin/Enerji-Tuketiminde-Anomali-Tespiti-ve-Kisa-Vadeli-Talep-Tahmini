@@ -12,9 +12,9 @@ import pandas as pd
 import pytest
 import torch
 
-from src.data.load import load_config
-from src.data.split import chronological_split
-from src.data.windows import make_windows
+from src.core.config import load_config
+from src.core.split import chronological_split
+from src.core.windows import make_windows
 from src.models.residual_detector import load_forecaster, multi_step_predictions, one_step_predictions
 
 ROOT = Path(__file__).resolve().parents[1]

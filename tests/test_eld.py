@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from src.data.eld import active_clients, deep_merge, dst_change_days, eld_config, fix_dst, to_hourly
-from src.data.load import load_config
+from src.core.config import load_config
 
 
 def quarter_series(start, end, value=100.0):

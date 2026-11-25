@@ -9,16 +9,12 @@ import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
-from src.data.windows import make_windows
-from src.utils.console import setup_console
-from src.utils.results_io import (
-    record_forecast_results,
-    resolve_path,
-    upsert_csv,
-)
-from src.utils.seed import set_seed
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
+from src.core.windows import make_windows
+from src.core.console import setup_console
+from src.core.results_io import record_forecast_results, resolve_path, upsert_csv
+from src.core.seed import set_seed
 
 
 def build_train_val_windows(

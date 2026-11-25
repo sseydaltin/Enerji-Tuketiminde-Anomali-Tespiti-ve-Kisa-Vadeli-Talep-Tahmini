@@ -25,19 +25,19 @@ from scipy import stats
 from sklearn.metrics import average_precision_score
 
 from experiments.archive.anomaly_dev import SCENARIOS, SET_KEYS, dev_scenario_settings, prepare_set
-from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for
+from src.core.config import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import make_runs, multi_horizon_scores, valid_hours, with_context
 from src.models.residual_detector import multi_step_predictions, normalized_scores
-from src.utils.anomaly_metrics import (
+from src.core.anomaly_metrics import (
     alarm_diagnostics,
     event_f1_max_threshold,
     event_metrics,
     fill_alarm_gaps,
 )
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path, upsert_csv
-from src.utils.seed import set_seed
+from src.core.console import setup_console
+from src.core.results_io import resolve_path, upsert_csv
+from src.core.seed import get_device, set_seed
 
 # Deney → A3'e eklenen sinyaller (sıra = basitlik sırası).
 EXPERIMENTS = {
@@ -428,7 +428,7 @@ def main():
 
     config = load_config()
     set_seed(config["seed"])
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = get_device(args.device)
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
     tables_dir = resolve_path(PROJECT_ROOT, config["paths"]["tables_dir"])
     figures_dir = resolve_path(PROJECT_ROOT, config["paths"]["figures_dir"]) / "anomaly_short_event"

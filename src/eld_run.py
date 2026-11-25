@@ -19,15 +19,16 @@ from src.anomaly_protocol import (
     select_on_dev,
 )
 from src.data.eld import eld_config
-from src.data.inject_anomalies import train_sigma_table
-from src.data.load import PROJECT_ROOT
-from src.data.split import chronological_split
+from src.core.inject_anomalies import train_sigma_table
+from src.core.config import PROJECT_ROOT
+from src.core.split import chronological_split
 from src.evaluate_anomaly import fit_combination, fit_detectors, paired_differences, summarize
 from src.evaluate_forecast import all_predictions, save_error_figures, summarize_levels
 from src.train_forecast import train_model
 from src.train_oof import train_oof_models
-from src.utils.console import setup_console
-from src.utils.results_io import record_forecast_results, resolve_path, upsert_csv
+from src.core.console import setup_console
+from src.core.results_io import record_forecast_results, resolve_path, upsert_csv
+from src.core.seed import get_device
 
 PREFIX = "ELD-"
 MODEL_CONFIGS = {   # ana exp_id → (household Optuna config'i, model adı)
@@ -141,7 +142,7 @@ def main():
     config = eld_config()
     for key in ("tables_dir", "figures_dir", "predictions_dir", "models_dir"):
         resolve_path(PROJECT_ROOT, config["paths"][key]).mkdir(parents=True, exist_ok=True)
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = get_device(args.device)
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
 
     if args.stage == "val":

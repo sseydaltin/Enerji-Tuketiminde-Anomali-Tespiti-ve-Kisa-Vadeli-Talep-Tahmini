@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from src.utils.console import setup_console
+from src.core.console import setup_console
 
 
 def test_setup_console_switches_cp1252_to_utf8(monkeypatch):
@@ -36,8 +36,8 @@ def test_setup_console_switches_cp1252_to_utf8(monkeypatch):
     [
         "src.data.load",
         "src.data.preprocess",
-        "src.data.split",
-        "src.data.windows",
+        "src.core.split",
+        "src.core.windows",
         "src.models.baselines",
     ],
 )

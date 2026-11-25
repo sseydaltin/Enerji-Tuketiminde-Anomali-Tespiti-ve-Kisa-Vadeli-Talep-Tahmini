@@ -5,7 +5,7 @@ import pandas as pd
 
 from experiments.archive.anomaly_dev import dev_scenario_settings, dev_splits, set_config
 from src.anomaly_protocol import scenario_settings
-from src.data.load import load_config
+from src.core.config import load_config
 
 
 def make_hourly(start="2006-12-16", end="2010-11-26 21:00"):

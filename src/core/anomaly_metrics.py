@@ -8,7 +8,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
-from src.data.inject_anomalies import ANOMALY_TYPES
+from src.core.inject_anomalies import ANOMALY_TYPES
 
 
 def f1_max_threshold(labels, scores):

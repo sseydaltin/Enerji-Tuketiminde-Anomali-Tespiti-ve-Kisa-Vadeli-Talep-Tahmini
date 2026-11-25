@@ -8,8 +8,8 @@ ve PR-AUC (ana senaryo, eşik/pencere her veri setinin kendi val'inde seçildi).
 
 import pandas as pd
 
-from src.data.load import PROJECT_ROOT
-from src.utils.results_io import resolve_path
+from src.core.config import PROJECT_ROOT
+from src.core.results_io import resolve_path
 
 GROUPS = ["F1 Seasonal Naive 24", "F2 Seasonal Naive 168", "F3-cal Ridge", "F12-L336 XGBoost",
           "F5-opt LSTM", "F10-opt Seq2Seq", "F13-ens (final)"]

@@ -22,16 +22,17 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
 from src.forecast_levels import level_metrics
 from src.models.baselines import NAIVE_EXPERIMENT_IDS, naive_forecasts
 from src.models.forecast_baselines import build_train_val_windows, fit_ridge, ridge_design_matrix
 from src.models.xgb_forecast import make_xgboost, xgboost_lags
 from src.train_forecast import _predict_in_batches, build_model, prepare_forecast_data
-from src.utils.console import setup_console
-from src.utils.metrics import calculate_metrics
-from src.utils.results_io import record_forecast_results, resolve_path
+from src.core.console import setup_console
+from src.core.metrics import calculate_metrics
+from src.core.results_io import record_forecast_results, resolve_path
+from src.core.seed import get_device
 
 # exp_id → (aile, model etiketi, öznitelik seti, lookback). Derin modellerde ayarlar checkpoint'ten.
 ROSTER = {
@@ -270,7 +271,7 @@ def main():
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
     config = load_config()
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = get_device(args.device)
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
     tables_dir = resolve_path(PROJECT_ROOT, config["paths"]["tables_dir"])
     figures_dir = resolve_path(PROJECT_ROOT, config["paths"]["figures_dir"])

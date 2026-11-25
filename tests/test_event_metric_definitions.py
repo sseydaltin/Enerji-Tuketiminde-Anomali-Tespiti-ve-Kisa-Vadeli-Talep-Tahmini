@@ -7,7 +7,7 @@ olay sayımlı (event_count_metrics): yakalanan olay / (yakalanan olay + yanlı�
 import numpy as np
 import pytest
 
-from src.utils.anomaly_metrics import event_count_metrics, event_metrics
+from src.core.anomaly_metrics import event_count_metrics, event_metrics
 
 
 def series(n, events=(), alarms=()):

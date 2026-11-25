@@ -17,11 +17,11 @@ from datetime import date
 import pandas as pd
 import torch
 
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.config import PROJECT_ROOT, load_config
 from src.train_forecast import checkpoint_payload, fit_forecaster
 from src.tune_optuna import cv_folds
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path, upsert_csv
+from src.core.console import setup_console
+from src.core.results_io import resolve_path, upsert_csv
 
 # Ana model → (Optuna config'i, model adı).
 MODELS = {

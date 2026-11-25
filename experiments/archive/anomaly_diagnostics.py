@@ -23,13 +23,13 @@ import pandas as pd
 import torch
 
 from src.anomaly_protocol import protocol_splits, score_copies
-from src.data.inject_anomalies import ANOMALY_TYPES, train_sigma_table
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.inject_anomalies import ANOMALY_TYPES, train_sigma_table
+from src.core.config import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import fit_combination, fit_detectors, make_runs, score_frame, valid_hours, with_context
-from src.utils.anomaly_metrics import alarm_diagnostics, event_metrics, runs
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path
-from src.utils.seed import set_seed
+from src.core.anomaly_metrics import alarm_diagnostics, event_metrics, runs
+from src.core.console import setup_console
+from src.core.results_io import resolve_path
+from src.core.seed import get_device, set_seed
 
 SPLIT = "val_dev"        # kış-dev; bu betik başka küme kabul etmez
 
@@ -178,7 +178,7 @@ def main():
 
     config = load_config()
     set_seed(config["seed"])
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = get_device(args.device)
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
     tables_dir = resolve_path(PROJECT_ROOT, config["paths"]["tables_dir"])
     figures_dir = resolve_path(PROJECT_ROOT, config["paths"]["figures_dir"])

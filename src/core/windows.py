@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
-from src.utils.console import setup_console
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
+from src.core.console import setup_console
 
 
 def get_feature_columns(config, feature_set=None):

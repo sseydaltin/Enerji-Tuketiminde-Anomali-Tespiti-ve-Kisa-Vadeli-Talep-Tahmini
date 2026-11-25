@@ -13,10 +13,10 @@ import pandas as pd
 import torch
 
 from src.anomaly_protocol import protocol_splits
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.config import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import fit_combination, fit_detectors
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path
+from src.core.console import setup_console
+from src.core.results_io import resolve_path
 
 STD_FILE = "demo_oof_std_{name}.csv"
 REFERENCE_FILE = "demo_a5_reference.csv"

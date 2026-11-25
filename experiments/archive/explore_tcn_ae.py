@@ -28,8 +28,8 @@ from src.anomaly_protocol import (
     side_by_side,
     write_markdown,
 )
-from src.data.inject_anomalies import inject_anomalies, sigma_for, train_sigma_table
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.inject_anomalies import inject_anomalies, sigma_for, train_sigma_table
+from src.core.config import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import (
     autoencoder_scores,
     fit_detectors,
@@ -38,9 +38,9 @@ from src.evaluate_anomaly import (
     summarize,
     with_context,
 )
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path, upsert_csv
-from src.utils.seed import set_seed
+from src.core.console import setup_console
+from src.core.results_io import resolve_path, upsert_csv
+from src.core.seed import get_device, set_seed
 
 METHODS = ["A0", "A2", "A3-s2s-norm", "A7"]
 EXP_ID = "A7"
@@ -106,7 +106,7 @@ def main():
 
     config = load_config(args.config)
     set_seed(config["seed"])
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+    device = get_device(args.device)
     df = pd.read_parquet(resolve_path(PROJECT_ROOT, config["paths"]["processed_file"]))
     tables_dir = resolve_path(PROJECT_ROOT, config["paths"]["tables_dir"])
     figures_dir = resolve_path(PROJECT_ROOT, config["paths"]["figures_dir"])

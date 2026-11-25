@@ -21,13 +21,13 @@ from datetime import date
 import pandas as pd
 import torch
 
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.config import PROJECT_ROOT, load_config
 from src.train_autoencoder import train_autoencoder
 from src.train_forecast import checkpoint_payload, fit_forecaster
 from src.train_oof import inner_fold_config
 from src.tune_optuna import cv_folds
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path, upsert_csv
+from src.core.console import setup_console
+from src.core.results_io import resolve_path, upsert_csv
 
 # Yaz-dev tahmin modelleri: ad → (model adı, lookback). Diğer ayarlar config.yaml varsayılanı.
 SUMMER_MODELS = {"S-F10-L48": ("seq2seq", 48), "S-F5-L48": ("lstm", 48)}

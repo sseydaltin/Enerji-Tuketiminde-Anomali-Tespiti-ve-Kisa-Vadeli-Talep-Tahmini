@@ -14,10 +14,10 @@ import torch
 from sklearn.preprocessing import StandardScaler
 from torch import nn
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
 from src.data.weather import load_weather_frame
-from src.data.windows import get_feature_columns, make_windows
+from src.core.windows import get_feature_columns, make_windows
 from src.models.cnn_lstm import CNNLSTMForecaster
 from src.models.forecast_baselines import run_ridge
 from src.models.gru import GRUForecaster
@@ -25,10 +25,10 @@ from src.models.lstm import LSTMForecaster
 from src.models.mlp import MLPForecaster
 from src.models.seq2seq import Seq2SeqForecaster
 from src.models.xgb_forecast import run_xgboost
-from src.utils.console import setup_console
-from src.utils.metrics import calculate_metrics
-from src.utils.results_io import record_forecast_results, resolve_path, upsert_csv
-from src.utils.seed import set_seed
+from src.core.console import setup_console
+from src.core.metrics import calculate_metrics
+from src.core.results_io import record_forecast_results, resolve_path, upsert_csv
+from src.core.seed import set_seed
 
 
 # --exp verilmezse kullanılan varsayılan deney kimlikleri. F4 eski sklearn

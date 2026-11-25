@@ -8,11 +8,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.data.load import PROJECT_ROOT, load_config
-from src.data.split import chronological_split
+from src.core.config import PROJECT_ROOT, load_config
+from src.core.split import chronological_split
 from src.data.weather import load_weather_frame
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path
+from src.core.console import setup_console
+from src.core.results_io import resolve_path
 
 
 def daily_table(train, target):

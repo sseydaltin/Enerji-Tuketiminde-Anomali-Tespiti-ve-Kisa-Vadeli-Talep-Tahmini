@@ -18,13 +18,13 @@ import pandas as pd
 import torch
 
 from src.anomaly_protocol import protocol_splits, score_copies
-from src.data.inject_anomalies import ANOMALY_TYPES, train_sigma_table
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.inject_anomalies import ANOMALY_TYPES, train_sigma_table
+from src.core.config import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import fit_combination, fit_detectors, make_runs, valid_hours
-from src.utils.anomaly_metrics import event_metrics
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path
-from src.utils.seed import set_seed
+from src.core.anomaly_metrics import event_metrics
+from src.core.console import setup_console
+from src.core.results_io import resolve_path
+from src.core.seed import set_seed
 
 BASE_METHOD = "A3-s2s-norm"
 REFERENCE_METHOD = "A5-mean-z"
@@ -104,7 +104,7 @@ def pooled_event_f1(pairs):
     """Birleşik olay F1: yakalananlar ve doğru bloklar kopyalar üzerinden toplanır.
 
     Girdi: [(tipler [N], alarm [N]), ...]. Neden: Final eşik seçimiyle aynı ölçüt
-    (src.utils.anomaly_metrics.event_f1_max_threshold).
+    (src.core.anomaly_metrics.event_f1_max_threshold).
     """
     detected = n_events = correct = n_blocks = 0.0
     for types, flags in pairs:

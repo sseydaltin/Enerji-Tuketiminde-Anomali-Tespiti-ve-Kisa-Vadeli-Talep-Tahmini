@@ -20,11 +20,11 @@ from app.anomaly_services import (
     scale_injection,
 )
 from app.pages.anomaly import _make_figure
-from src.utils.anomaly_metrics import event_metrics
+from src.core.anomaly_metrics import event_metrics
 from app.services import load_f13_models, load_household_data, valid_test_days
 from app.ui import METHOD_LABELS
 from src.anomaly_protocol import scenario_settings
-from src.data.inject_anomalies import inject_anomalies
+from src.core.inject_anomalies import inject_anomalies
 
 
 @pytest.fixture(scope="module")

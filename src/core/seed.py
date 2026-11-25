@@ -31,12 +31,13 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
 
 
-def get_device() -> torch.device:
-    """Eğitim/çıkarım cihazını döndürür: CUDA varsa GPU, yoksa CPU.
+def get_device(preference="cuda") -> torch.device:
+    """Değerlendirme betiklerinin cihazı: CUDA varsa istenen cihaz, yoksa CPU.
 
-    Çıktı:
-        torch.device("cuda") veya torch.device("cpu")
+    Girdi: --device argümanı (ör. "cuda", "cpu").
+    Çıktı: torch.device(preference) CUDA varsa; yoksa torch.device("cpu").
+    Neden: Aynı satır sekiz betikte tekrar yazılmıştı; tek fonksiyonda toplandı,
+    davranış aynen korundu. Eğitim betiği (train_forecast) "auto"/"mps" seçeneği
+    olduğu için kendi seçimini yapar; A6 (anomaly_dual) bilerek her zaman CPU kullanır.
     """
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu")
+    return torch.device(preference if torch.cuda.is_available() else "cpu")

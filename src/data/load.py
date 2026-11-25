@@ -4,12 +4,10 @@ from pathlib import Path
 import argparse
 
 import pandas as pd
-import yaml
 
-from src.utils.console import setup_console
+from src.core.config import PROJECT_ROOT, load_config  # tek tanım: src/core/config.py
+from src.core.console import setup_console
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 NUMERIC_COLUMNS = [
     "Global_active_power",
@@ -22,15 +20,6 @@ NUMERIC_COLUMNS = [
 ]
 
 REQUIRED_COLUMNS = ["Date", "Time", *NUMERIC_COLUMNS]
-
-
-def load_config(config_path=None):
-    """YAML yapılandırmasını yükler."""
-    if config_path is None:
-        config_path = PROJECT_ROOT / "configs/config.yaml"
-
-    with open(config_path, "r", encoding="utf-8") as file:
-        return yaml.safe_load(file)
 
 
 def load_raw_data(file_path=None, config_path=None):

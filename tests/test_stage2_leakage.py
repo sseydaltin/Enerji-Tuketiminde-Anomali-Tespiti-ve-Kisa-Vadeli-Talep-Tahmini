@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.split import chronological_split
+from src.core.split import chronological_split
 from src.models.forecast_baselines import build_train_val_windows, ridge_design_matrix
 from src.train_forecast import prepare_forecast_data
 from tests.test_eval_consistency import make_long_frame_and_config

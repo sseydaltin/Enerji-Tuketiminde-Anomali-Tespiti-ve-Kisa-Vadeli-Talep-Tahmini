@@ -12,11 +12,11 @@ import torch
 
 from app.services import comparison_table, valid_test_days
 from src.data.eld import eld_config
-from src.data.load import PROJECT_ROOT
+from src.core.config import PROJECT_ROOT
 from src.eld_run import ENSEMBLE, MODEL_CONFIGS, PREFIX, ROSTER
 from src.evaluate_forecast import all_predictions
-from src.utils.metrics import calculate_metrics
-from src.utils.results_io import resolve_path
+from src.core.metrics import calculate_metrics
+from src.core.results_io import resolve_path
 
 # Noel: yük komşu günlerin yaklaşık yarısına düşer (docs/hane_vs_sebeke.md).
 HARD_DAY = "2014-12-25"

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.utils.metrics import calculate_metrics, metrics_by_horizon
+from src.core.metrics import calculate_metrics, metrics_by_horizon
 
 
 def resolve_path(root, configured_path):

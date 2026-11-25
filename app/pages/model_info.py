@@ -538,7 +538,7 @@ def _protocol_section(info):
         )
         st.caption(
             "Kaynaklar: docs/final_test_protokolu.md, docs/eld_protokol.md, "
-            "src/data/windows.py ve src/utils/metrics.py."
+            "src/core/windows.py ve src/core/metrics.py."
         )
     with st.expander("Teknik sınırlılıklar"):
         eld_state = (

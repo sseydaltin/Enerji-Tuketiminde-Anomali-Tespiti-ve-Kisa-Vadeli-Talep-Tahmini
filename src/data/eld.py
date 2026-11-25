@@ -18,10 +18,10 @@ from copy import deepcopy
 import numpy as np
 import pandas as pd
 
-from src.data.load import PROJECT_ROOT, load_config
+from src.core.config import PROJECT_ROOT, load_config
 from src.data.preprocess import add_calendar_features
-from src.utils.console import setup_console
-from src.utils.results_io import resolve_path
+from src.core.console import setup_console
+from src.core.results_io import resolve_path
 
 DST_STAMPS = ("01:00", "01:15", "01:30", "01:45")   # etkilenen çeyreklerin damgaları
 # eld.yaml'da bütünüyle DEĞİŞTİRİLEN (birleştirilmeyen) bölümler: household'un val_dev/val_hold
