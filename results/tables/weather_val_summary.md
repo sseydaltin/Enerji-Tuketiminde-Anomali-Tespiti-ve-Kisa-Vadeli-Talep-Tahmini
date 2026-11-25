@@ -1,3 +1,5 @@
+> **Kaynak notu (2026-11-25):** Bu tablo elle hazırlandı; onu üreten bir betik yoktur ve hiçbir betik üzerine yazmaz. Sayılar `results/tables/seed_stability_val.csv` dosyasından (üreten: `python -m src.pipelines.seed_stability`) yuvarlanarak alındı; 2026-11-25'te CSV ile karşılaştırıldı, bütün değerler tutuyor. CSV değişirse bu tablo elle güncellenmelidir.
+
 Val, 3 seed (42, 7, 2026) ortalama ± std (ddof=1). Kaynak: seed_stability_val.csv. W2 satırı ORACLE'dır: hedef saatlerin gerçek havası kullanıldı, gerçekte bilinemez.
 
 | Model | Set | Rol | MAE (kW) | RMSE (kW) | sMAPE (%) | R² |

@@ -1,15 +1,19 @@
 # Enerji Tüketiminde Anomali Tespiti ve Kısa Vadeli Talep Tahmini
 
+*Derin Öğrenme ile Hane ve Şebeke Düzeyinde 24 Saatlik Elektrik Talep Tahmini ve Tahmin Artığı Tabanlı Tüketim Anomalisi Tespiti* (öneri formundaki kesinleşen başlık, §6.2)
+
 **YMÜ425 – Uygulamalı Sinir Ağları · 2026–2027 Güz · Fırat Üniversitesi Yazılım Mühendisliği**
 
 | Öğrenci | Numara | Ana sorumluluk |
 |---|---|---|
-| Dilara YILDIRIM | 230290018 | Veri hattı (yükleme, temizleme, bölme, pencereleme) + **Talep tahmini** (LSTM, GRU, baseline'lar) + Demo uygulaması |
-| Şeyda ALTIN | 230290046 | Veri analizi (EDA) + Literatür + **Anomali tespiti** (LSTM-Autoencoder, anomali enjeksiyonu, baseline'lar) + Görselleştirme |
+| Dilara YILDIRIM | 230290018 | Veri hattı (yükleme, temizleme, bölme, pencereleme) + **Talep tahmini** (referanslar, MLP, LSTM, GRU, Seq2Seq-LSTM, CNN-LSTM, XGBoost, F13 topluluğu) + Demo uygulamasının ilk sürümü + test sonrası anomali deneyleri ve literatür taraması (katkı 2026-11-24'te tamamlandı) |
+| Şeyda ALTIN | 230290046 | EDA + Literatür + **Anomali tespiti** (enjeksiyon, A0–A6, final anomali protokolü) + Şebeke (ELD) deneyi + Görselleştirme ve demo arayüzü; 2026-11-25'ten itibaren projenin yürütülmesi (yeniden yapılandırma, LEAD) |
 
-> ⚠️ **Yönergenin altın kuralı:** Görev dağılımı yapılabilir, ancak **her iki üye de projenin tamamından sorumludur** (Yönerge §1, §17). Savunmada Dilara'ya anomali, Şeyda'ya tahmin sorusu gelebilir. Bu yüzden her gün sonunda **30 dakikalık "çapraz anlatım"** zorunludur (bkz. §3).
+> ⚠️ **Yönergenin altın kuralı:** Görev dağılımı yapılabilir, ancak **her iki üye de projenin tamamından sorumludur** (Yönerge §1, §17). Savunmada Dilara'ya anomali, Şeyda'ya tahmin sorusu gelebilir (§2.2, §9).
 
-Bu dosya projenin **tek kaynak kılavuzudur**. Plan, teknik kararlar, deney listesi, öneri formu, rapor, sunum ve savunma hazırlığı burada. Claude Code ile geliştirme kuralları `CLAUDE.md` dosyasındadır.
+Bu dosya projenin **tek kaynak kılavuzudur**: teknik kararlar, deney listesi, sonuçlar, repo yapısı, öneri formu, rapor, sunum ve savunma hazırlığı burada. Claude Code ile geliştirme kuralları `CLAUDE.md` dosyasındadır.
+
+**Veri setleri:** (1) **Hane** – UCI Individual Household Electric Power Consumption (ana veri, tahmin + anomali); (2) **Şebeke** – UCI ElectricityLoadDiagrams20112014, 160 müşteri toplamı (aynı yöntemlerle ek deney); (3) **LEAD1.0** – gerçek etiketli bina anomalisi veri seti, **eklenecek** (değerlendirme: `docs/veri_seti_lead1_degerlendirme.md`; kod yeri: `src/datasets/lead/`). Ayrıntı §4.1.
 
 ---
 
@@ -47,16 +51,16 @@ F13-ens MAE'de birinci; RMSE, R² ve günlük toplamda XGBoost daha iyi. Proje h
 
 Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomali tespitini kolaylaştırıyor. Şebeke testindeki bozulmanın çoğu Aralık'tan (Noel) geliyor. Protokol: `docs/eld_protokol.md`.
 
-**Test sonrası geliştirme, son durum (2026-11-09; final değil, bağımsız doğrulama yok):** Denenip **kabul edilmeyenler**: Aşama 3 S1–S5, E1, C1/C2, kanal başına OR. **Kabul edilen tek deneysel ek**: S0 + fiziksel taban kanalı (`docs/anomaly_floor_channel.md`, `configs/experimental_s0_floor.yaml`). Kış-dev / yaz-dev block_f1 0,551 / 0,535 → 0,644 / 0,604. Kazancın tamamı, train minimumunun altındaki enjekte tam kesintilerden (0,05 kW) geliyor; drop değeri tabanın üstünde olunca kazanç sıfır. Final anomali yöntemi A3-s2s-norm ve demo değişmedi. **Gözetimli sınıflandırıcı** (sentetik eğitim, HGB; `docs/anomaly_supervised.md`): dev block_f1 0,668 / 0,588, kabul edilmedi (kış spike kaybı). **F1 ≥ 0,70 hedefine hiçbir değerlendirmede ulaşılamadı**; UCI hanede hiç kullanılmamış zaman bölümü olmadığı için bağımsız doğrulama da yapılamıyor.
+**Test sonrası geliştirme, son durum (2026-11-09; final değil, bağımsız doğrulama yok; 2026-11-25'te donduruldu, kod `experiments/archive/`):** Denenip **kabul edilmeyenler**: Aşama 3 S1–S5, E1, C1/C2, kanal başına OR. **Kabul edilen tek deneysel ek**: S0 + fiziksel taban kanalı (`docs/anomaly_floor_channel.md`, `experiments/archive/configs/experimental_s0_floor.yaml`). Kış-dev / yaz-dev block_f1 0,551 / 0,535 → 0,644 / 0,604. Kazancın tamamı, train minimumunun altındaki enjekte tam kesintilerden (0,05 kW) geliyor; drop değeri tabanın üstünde olunca kazanç sıfır. Final anomali yöntemi A3-s2s-norm ve demo değişmedi. **Gözetimli sınıflandırıcı** (sentetik eğitim, HGB; `docs/anomaly_supervised.md`): dev block_f1 0,668 / 0,588, kabul edilmedi (kış spike kaybı). **F1 ≥ 0,70 hedefine hiçbir değerlendirmede ulaşılamadı**; UCI hanede hiç kullanılmamış zaman bölümü olmadığı için bağımsız doğrulama da yapılamıyor.
 
-**Test sonrası geliştirme (final sonuç değildir; yalnız kış-dev + yaz-dev):** Aşama 3 kısa olay sinyalleri (`docs/anomaly_short_event_experiments.md`): hiçbir aday kabul edilmedi, A3-s2s-hmean referansı korundu. Değerlendirme denetimi (`python -m src.anomaly_eval_audit`, `docs/inceleme_ve_iyilestirme_plani_2026-11-08.md`): "olay F1" alarm **bloklarını** sayan precision kullanır (`block_f1`); her olayı bir kez sayan olay sayımlı tanım (`count_f1`) ayrıca raporlanır ve değerler daha düşüktür. Enjeksiyonsuz veride de alarm veren bloklar "etiketsiz arka plan alarmı" olarak ayrıca sayılır.
+**Test sonrası geliştirme (final sonuç değildir; yalnız kış-dev + yaz-dev):** Aşama 3 kısa olay sinyalleri (`docs/anomaly_short_event_experiments.md`): hiçbir aday kabul edilmedi, A3-s2s-hmean referansı korundu. Değerlendirme denetimi (`python -m experiments.archive.anomaly_eval_audit`, `docs/archive/inceleme_ve_iyilestirme_plani_2026-11-08.md`): "olay F1" alarm **bloklarını** sayan precision kullanır (`block_f1`); her olayı bir kez sayan olay sayımlı tanım (`count_f1`) ayrıca raporlanır ve değerler daha düşüktür. Enjeksiyonsuz veride de alarm veren bloklar "etiketsiz arka plan alarmı" olarak ayrıca sayılır.
 
 ---
 
 ## İçindekiler
 1. [Temel kararlar (özet)](#1-temel-kararlar-özet)
 2. [Görev dağılımı](#2-görev-dağılımı)
-3. [4 günlük plan](#3-4-günlük-plan)
+3. [Durum ve sıradaki iş](#3-durum-ve-sıradaki-iş)
 4. [Teknik kılavuz](#4-teknik-kılavuz)
 5. [Repo yapısı ve komutlar](#5-repo-yapısı-ve-komutlar)
 6. [Proje Öneri Formu kılavuzu](#6-proje-öneri-formu-kılavuzu)
@@ -74,13 +78,13 @@ Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomal
 
 | Konu | Karar | Gerekçe (savunmada söylenecek) |
 |---|---|---|
-| **Veri seti** | **UCI Individual Household Electric Power Consumption** (ana). ElectricityLoadDiagrams20112014 ek deney olarak şebeke düzeyinde (160 müşteri toplamı) aynı ayarlarla değerlendirildi (`docs/eld_protokol.md`). | Tek hane, ~4 yıl, dakikalık ölçüm (~2,07 milyon satır), alt sayaç (sub-metering) bilgisi var. Saatliğe indirgenince (~34 bin saat) CPU/Colab'da 4 günde eğitilebilir. ElectricityLoadDiagrams 370 müşteri × 15 dk ile 4 gün için fazla büyük ve müşteri başlangıçları (sıfır dolgular) ek temizlik gerektirir. |
+| **Veri seti** | **UCI Individual Household Electric Power Consumption** (ana). ElectricityLoadDiagrams20112014 ek deney olarak şebeke düzeyinde (160 müşteri toplamı) aynı ayarlarla değerlendirildi (`docs/eld_protokol.md`). **LEAD1.0** gerçek etiketli ikinci anomali veri seti olarak eklenecek (`docs/veri_seti_lead1_degerlendirme.md`). | Tek hane, ~4 yıl, dakikalık ölçüm (~2,07 milyon satır), alt sayaç (sub-metering) bilgisi var. Saatliğe indirgenince (~34 bin saat) CPU/Colab'da makul sürede eğitilebilir. ElectricityLoadDiagrams 370 müşteri × 15 dk ile ana veri için fazla büyük ve müşteri başlangıçları (sıfır dolgular) ek temizlik gerektirir; bu yüzden ek deney olarak kullanıldı. |
 | **Zaman çözünürlüğü** | Dakikalık → **saatlik** (ortalama kW = saatlik kWh) | Gürültüyü azaltır, kısa vadeli talep tahmininin pratik ölçeği; eğitim süresi makul. |
 | **Görev 1 – Tahmin** | Planda geçmiş 168 saat → gelecek **24 saat** (çok çıktılı, doğrudan tahmin). **Final modellerde (F10-opt, F5-opt, F13-ens) lookback = 48 saat** (F8'de val ile seçildi; checkpoint metadata'sı) | Günlük ve haftalık periyodikliği yakalar; "gün öncesi" talep tahmini pratik bir senaryodur. Haftalık bilgi SN168 karşılaştırmasıyla raporlanır. |
 | **Görev 2 – Anomali** | **LSTM-Autoencoder** (A2, yeniden yapılandırma hatası) + **tahmin artığı** dedektörü (A3). Planda GRU artığı vardı; **final A3 artığı F10-opt Seq2Seq-LSTM'den** gelir, GRU anomalide kullanılmaz. Final yöntem **A3-s2s-norm** (h=1 artığı / OOF std); test sonrası geliştirme referansı **A3-s2s-hmean** (24 ufuk ortalaması) — ikisi farklı yöntemdir | İki görevi tek bir hatta bağlar; özgün değerin bir parçası. |
 | **Anomali etiketi sorunu** | Veri setinde gerçek anomali etiketi **yok** → doğrulama ve test kümelerine **kontrollü sentetik anomali enjeksiyonu** (bilinen etiket) + gerçek veride en yüksek skorlu olayların nitel incelemesi | Precision/Recall/F1/PR-AUC hesaplanabilmesi için zorunlu. Sınırlılık olarak raporlanır. |
 | **Veri bölme** | **Zamansal (kronolojik)** bölme, rastgele karıştırma yok | Zaman serisinde geleceği görmek veri sızıntısıdır (Yönerge §7). |
-| **Ana modeller** | LSTM, GRU (tahmin) · LSTM-Autoencoder (anomali) | Konu başlığında istenen aile; kapı mekanizmaları uzun bağımlılıkları öğrenir. |
+| **Ana modeller** | Planda LSTM, GRU (tahmin) · LSTM-Autoencoder (anomali). **Final:** tahmin **F13-ens** (0,8 · Seq2Seq-LSTM F10-opt + 0,2 · LSTM F5-opt, lookback 48); anomali **A3-s2s-norm** (F10-opt'un h=1 artığı / OOF std). GRU (F6-C), CNN-LSTM, MLP, A1, A2 karşılaştırma modeli olarak final tablolarda | Konu başlığında istenen aile; kapı mekanizmaları uzun bağımlılıkları öğrenir. Final seçimler yalnız val ile yapıldı. |
 | **Referans yöntemler** | Tahmin: Persistence, Seasonal Naive (24 s / 168 s), Ridge regresyon (klasik ML), MLP (daha basit sinir ağı). Anomali: Hareketli z-skoru, Isolation Forest | Yönerge §9: en az bir anlamlı referans + daha basit ağ + klasik ML. |
 | **Araçlar** | Python 3.10+, PyTorch, scikit-learn, pandas, matplotlib, Streamlit, Google Colab (gerekirse GPU) | |
 | **Tekrarlanabilirlik** | Tek `configs/config.yaml`, sabit `seed=42` (+ en iyi model 3 seed: 42, 7, 2026), deney günlüğü `results/experiments.csv` | Yönerge §10 son madde. |
@@ -91,85 +95,42 @@ Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomal
 
 ### 2.1 Rol tablosu
 
-| İş paketi | Sorumlu | Destek / gözden geçiren |
+İş paketleri öneri formundaki İP1–İP6'dır. Dilara'nın katkısı 2026-11-24'te tamamlandı; bu tarihten sonraki işleri Şeyda yürütür.
+
+| İş paketi | Ana sorumlu | Destek / gözden geçiren |
 |---|---|---|
-| İP1 – Literatür taraması, kaynakça (≥10 IEEE) | **Şeyda** | Dilara (tahmin makaleleri) |
+| İP1 – Literatür taraması, kaynakça (≥10 IEEE) | **Şeyda** | Dilara (tahmin makaleleri, `docs/literatur_taramasi.md`) |
 | İP2 – Veri yükleme, temizleme, saatliğe indirgeme, bölme, ölçekleme, pencereleme | **Dilara** | Şeyda (EDA ile çapraz kontrol) |
 | İP2b – Keşifsel veri analizi (EDA) ve figürler | **Şeyda** | Dilara |
-| İP3 – Tahmin: baseline'lar + MLP + LSTM + GRU, eğitim, ayar, ablasyon | **Dilara** | Şeyda (kod incelemesi) |
-| İP4 – Anomali: enjeksiyon, z-skor, Isolation Forest, LSTM-AE, artık tabanlı dedektör, eşik seçimi | **Şeyda** | Dilara (artık dedektörü final tahmin modelini kullanır: F10-opt / F13-ens) |
+| İP3 – Tahmin: referanslar + MLP + LSTM + GRU + Seq2Seq + CNN-LSTM + XGBoost, ayar, topluluk | **Dilara** | Şeyda (kod incelemesi) |
+| İP4 – Anomali: enjeksiyon, A0–A6, eşik seçimi, final protokol, şebeke (ELD) deneyi | **Şeyda** | Dilara (artık dedektörü final tahmin modelini kullanır: F10-opt / F13-ens) |
 | İP5 – Değerlendirme, hata analizi, karşılaştırma tabloları | İkisi birlikte (kendi hattını) | Çapraz okuma |
-| İP6 – Streamlit demo | **Dilara** | Şeyda (anomali sayfası) |
-| Öneri formu | Şeyda: Özgün Değer + Kaynaklar · Dilara: Yöntem · İkisi: Amaç/Hedefler, Özet (en son) | |
-| Rapor | Bölüm bazında §7'deki tabloya göre | Her bölüm diğer kişi tarafından okunur |
-| Sunum | §8.3'teki konuşmacı dağılımına göre | Birlikte prova |
+| İP6 – Streamlit demo | **Dilara** (ilk sürüm) · **Şeyda** (arayüz ve anomali sayfası) | — |
+| LEAD1.0 eklemesi (sıradaki iş, §3) | **Şeyda** | — |
+| Öneri formu, rapor, sunum | §6–§8'deki bölüm dağılımına göre | Her bölüm diğer kişi tarafından okunur |
 
 ### 2.2 Çapraz hâkimiyet kuralları (zorunlu)
-- Her gün sonunda **30 dk çapraz anlatım**: Dilara, Şeyda'ya o gün yazdığı kodu ve kararları anlatır; sonra tersi. Anlatan kişi ekran paylaşmadan, kâğıt üzerinde açıklayabilmelidir.
-- Her pull request / commit diğer kişi tarafından okunur. "Okudum, anladım" onayı olmadan `main`'e birleştirilmez.
-- Gün 4'te karşılıklı **sahte savunma**: §9'daki soru bankasından kişi kendi alanı **dışındaki** sorulara cevap verir.
+- Her iki üye de kodun her bölümünü sözlü savunmada açıklayabilmelidir; "kodu yapay zekâ yazdı" cevabı kabul edilmez (§10.3).
+- Diğer kişinin alanındaki her değişiklik okunur ve anlatılır; `main`'e birleştirilen her iş için "okudum, anladım" onayı aranır.
+- Savunmadan önce karşılıklı **sahte savunma**: §9'daki soru bankasından kişi kendi alanı **dışındaki** sorulara cevap verir.
 
 ---
 
-## 3. 4 günlük plan
+## 3. Durum ve sıradaki iş
 
-> Her gün ~9–10 saat varsayılmıştır. **Gün sonu kontrol noktaları (✅) karşılanmadan bir sonraki güne geçilmez**; karşılanmıyorsa §13'teki B planı devreye girer.
->
-> Öneri formu ara sınav haftasından önce teslim edileceği için **Gün 2 sonunda bitmiş olmalıdır** ve somut ilerleme (EDA figürleri, ilk baseline sonuçları) içermelidir (Yönerge §14 "Önemli" notu).
+Projenin ilk planı 4 günlüktü; tamamlandı ve README'den çıkarıldı (eski hâli git geçmişinde, `v1.7-yapilandirma-oncesi` etiketinde). Kararların tarihli kaydı: `docs/deney_gunlugu.md`.
 
-### Gün 1 – Kurulum, veri, EDA, literatür
-
-| Saat | Dilara | Şeyda |
+| Aşama | Durum | Kaynak |
 |---|---|---|
-| 09:00–09:45 | **Birlikte:** repo oluştur, klasör yapısı (§5), `requirements.txt`, `.gitignore` (`data/raw/`, `models/*.pt`), `configs/config.yaml`, `src/utils/seed.py` | |
-| 09:45–12:30 | `src/data/load.py`: UCI'dan indir, `;` ayırıcı, `?` → NaN, `Date+Time` → datetime index, tip dönüşümleri. Ham veri özet tablosu (satır sayısı, tarih aralığı, eksik oranı) | Literatür taraması: §11 havuzundan başla, her makale için **literatür matrisi** (`docs/literatur.md`: veri seti, model, metrik, sonuç, güçlü/zayıf yön, bize katkısı) |
-| 13:30–16:00 | `src/data/preprocess.py`: eksik veri stratejisi (§4.3), saatliğe indirgeme, `other_energy` türetme, takvim öznitelikleri, `is_imputed` bayrağı | `notebooks/01_eda.ipynb`: §4.2 EDA kontrol listesi (eksik veri ısı haritası, günlük/haftalık/yıllık profiller, dağılımlar, korelasyon, ACF) |
-| 16:00–18:00 | `src/data/split.py` (kronolojik bölme) + `src/data/windows.py` (168→24 pencere, ölçekleyici yalnız eğitime fit) + birim testleri: kümeler arası zaman çakışması yok | EDA figürlerini `results/figures/eda_*.png` olarak kaydet; gözlemleri yaz (tatil dönemleri, uzun boşluklar, mevsimsellik) |
-| 18:00–19:00 | `src/models/baselines.py`: Persistence + Seasonal Naive (24/168) → yalnız doğrulama sonucu (test için açıkça `--split test`) | Öneri formu: **Özgün Değer** taslağı (literatür boşluğu, araştırma sorusu, hipotez) |
-| 19:00–19:30 | **Çapraz anlatım** | |
+| Veri hattı, EDA, kronolojik bölme | Tamamlandı | §4.1–§4.5, `notebooks/01_eda.ipynb` |
+| Tahmin deneyleri (Aşama 1–5, 3b), yalnız val | Tamamlandı | `docs/tahmin_deneyleri_ozet.md` |
+| Final test (hane tahmin + anomali), bir kez | Tamamlandı | `docs/final_test_protokolu.md`, `docs/final_sonuclar.md` |
+| Şebeke (ELD) deneyi, aynı ayarlarla | Tamamlandı | `docs/eld_protokol.md`, `docs/hane_vs_sebeke.md` |
+| Test sonrası anomali geliştirmesi (yalnız kış-dev + yaz-dev) | **Donduruldu** (2026-11-25): Aşama 3–8 yapılmadı | `docs/gelistirme_protokolu.md`, kod `experiments/archive/` |
+| Yeniden yapılandırma (`src/core`, `src/datasets`, `src/pipelines`, `experiments/archive`) | Tamamlandı (2026-11-25); final sayılar değişmedi, `scripts/verify_frozen_results.py` ile doğrulandı | `docs/deney_gunlugu.md` |
+| **LEAD1.0 eklenmesi** | **Sıradaki iş** | `docs/veri_seti_lead1_degerlendirme.md` |
 
-✅ **Gün 1 bitiş kriterleri:** temiz saatlik veri `data/processed/hourly.parquet`; split tarihleri ve örnek sayıları tablosu; ≥6 EDA figürü; ilk baseline doğrulama MAE/RMSE; ≥10 adaylı literatür matrisi.
-
-### Gün 2 – Modeller ve ilk eğitimler + Öneri formu
-
-| Saat | Dilara | Şeyda |
-|---|---|---|
-| 09:00–11:00 | Ridge (lag öznitelikleri) + MLP baseline; `src/utils/metrics.py` (MAE, RMSE, MAPE*, sMAPE, R², ufka göre hata) | `src/data/inject_anomalies.py`: 4 anomali tipi (§4.9), tohumlu, etiket maskesi döndürür; doğrulama (seed=1) ve test (seed=2) kopyaları |
-| 11:00–13:00 | `src/models/lstm.py`, `src/models/gru.py` + `src/train_forecast.py` (early stopping, ReduceLROnPlateau, grad clip, en iyi val modeli kaydet, `experiments.csv`'ye yaz) | Hareketli z-skoru + Isolation Forest baseline'ları (`src/models/anomaly_baselines.py`) |
-| 14:00–16:30 | LSTM ve GRU varsayılan hiperparametrelerle eğitim (§4.7), öğrenme eğrileri | `src/models/autoencoder.py` (LSTM-AE) + `src/train_autoencoder.py` (yalnız eğitim kümesinde, normal veri varsayımı) |
-| 16:30–18:30 | Öneri formu: **Yöntem ve Teknikler** (ne/neden/nasıl, değişkenler, iş paketleri) | Öneri formu: **Kaynaklar** (≥10 IEEE, doğrulanmış) + Özgün Değer son hali |
-| 18:30–19:30 | **Birlikte:** Amaç ve Hedefler, Proje Özeti (en son), Ekip tablosu, Arial 9 pt biçim kontrolü → **Öneri formu teslime hazır** | |
-| 19:30–20:00 | **Çapraz anlatım** | |
-
-✅ **Gün 2 bitiş kriterleri:** LSTM ve GRU eğitilmiş, val sonuçları baseline'larla tek tabloda; LSTM-AE eğitilmiş; enjeksiyon modülü çalışıyor; **öneri formu tamam**.
-
-### Gün 3 – Deneyler, değerlendirme, hata analizi
-
-| Saat | Dilara | Şeyda |
-|---|---|---|
-| 09:00–12:00 | Hiperparametre ayarı **yalnız doğrulama** üzerinde (§4.8 küçük ızgara: hidden, lookback, dropout) | Eşik seçimi doğrulama kümesinde (F1-max ve yüzdelik 95/99/99.5 duyarlılık analizi); GRU artık (residual) dedektörü |
-| 12:00–13:00 | Ablasyon: öznitelik setleri A/B/C | Anomali tiplerine göre recall |
-| 14:00–16:00 | En iyi LSTM ve GRU: 3 seed ile yeniden eğit → ortalama ± std; **test kümesinde tek seferlik** son değerlendirme | **Test kümesinde tek seferlik** son değerlendirme: Precision, Recall, F1, ROC-AUC, PR-AUC, karmaşıklık matrisi |
-| 16:00–18:00 | Hata analizi: ufka göre hata, saat/gün/mevsim bazlı hata, en kötü 10 gün ve nedenleri, gerçek vs tahmin grafikleri | Hata analizi: kaçırılan/yanlış alarm örnekleri, gerçek (enjeksiyonsuz) test verisinde en yüksek skorlu 10 olay ve yorumları |
-| 18:00–19:00 | `results/tables/` altında son tablolar; §4.10 figür listesi tamam | |
-| 19:00–19:30 | **Çapraz anlatım** (sonuçların yorumu üzerine) | |
-
-✅ **Gün 3 bitiş kriterleri:** §4.6'daki tüm deneyler `experiments.csv`'de; son karşılaştırma tabloları; tüm figürler eksen adı, birim, küme adıyla kaydedilmiş; hata analizi notları yazılmış.
-
-### Gün 4 – Demo, rapor, sunum, prova
-
-| Saat | Dilara | Şeyda |
-|---|---|---|
-| 09:00–11:30 | `app/streamlit_app.py`: Tahmin sayfası + model yükleme | Rapor: Giriş, Literatür, Veri, Anomali bölümleri |
-| 11:30–13:00 | Streamlit: Anomali sayfası (Şeyda'nın fonksiyonlarıyla) + uçtan uca test | Rapor: Anomali sonuçları, hata analizi, sınırlılıklar |
-| 14:00–16:00 | Rapor: Yöntem (veri hattı, tahmin modelleri, hiperparametre tablosu), Tahmin sonuçları | Sunum slaytları (§8.2 plan) |
-| 16:00–17:00 | **Birlikte:** Rapor–kod–sunum tutarlılık kontrolü (§12); README'deki komutlar temiz ortamda çalışıyor mu? | |
-| 17:00–19:00 | **Birlikte:** 2 tam sunum provası (süre tutarak) + canlı demo provası | |
-| 19:00–20:00 | **Sahte savunma:** §9 soru bankası, herkes kendi alanı **dışındaki** sorulara cevap verir | |
-
-✅ **Gün 4 bitiş kriterleri:** Çalışan demo; rapor taslağı tam (şablon yayımlanınca aktarılacak); sunum süresi içinde; iki kişi de §9'daki soruların tamamını cevaplayabiliyor.
-
-> **Not:** Rapor şablonu ve tarihler henüz yayımlanmadı (Yönerge §14, §15.1, §15.3, §16). Şablon gelince içerik §7 iskeletinden aktarılır.
+Öneri formu `docs/oneri_formu/`, rapor taslağı `docs/rapor/` altındadır. Rapor şablonu ve tarihler yayımlanınca içerik §7 iskeletinden aktarılır.
 
 ---
 
@@ -182,13 +143,17 @@ Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomal
 - Türetilen: `other_energy = Global_active_power*1000/60 − Sub_1 − Sub_2 − Sub_3` (alt sayaçlarca ölçülmeyen aktif enerji, Wh/dk).
 - Lisans: CC BY 4.0 → raporda kaynak gösterilecek (Yönerge §5).
 
-**Hava durumu verisi (Aşama 3b):** Open-Meteo Historical Weather API (`archive-api.open-meteo.com`), ERA5 yeniden analizi; Sceaux (enlem 48,78, boylam 2,29 → en yakın ERA5 hücresi 48,75 / 2,25), saatlik `temperature_2m`, `relative_humidity_2m`, `cloud_cover`, `precipitation`. İndirme ve hizalama: `python -m src.data.weather` → `data/raw/weather_sceaux.csv` (git'e girmez, betikle yeniden üretilir).
+**Hava durumu verisi (Aşama 3b):** Open-Meteo Historical Weather API (`archive-api.open-meteo.com`), ERA5 yeniden analizi; Sceaux (enlem 48,78, boylam 2,29 → en yakın ERA5 hücresi 48,75 / 2,25), saatlik `temperature_2m`, `relative_humidity_2m`, `cloud_cover`, `precipitation`. İndirme ve hizalama: `python -m src.datasets.household.weather` → `data/raw/weather_sceaux.csv` (git'e girmez, betikle yeniden üretilir).
 - Lisans: Open-Meteo verisi **CC BY 4.0**; atıf zorunlu: "Weather data by Open-Meteo.com" (https://open-meteo.com/). ERA5 için Copernicus Climate Change Service (C3S) atfı da verilmeli; tam ERA5 künyesi (Hersbach vd., 2020) raporda kullanılmadan önce **doğrulanmalı**.
-- Saat dilimi: API'den UTC istenir; UCI veri seti Europe/Paris **yerel saatinde (yaz saatli)** — her ilkbahar geçişinde var olmayan 02:xx saati 03:xx'in kopyasıdır. Hizalama ve kurallar `src/data/weather.py` ve `tests/test_weather.py`'de.
+- Saat dilimi: API'den UTC istenir; UCI veri seti Europe/Paris **yerel saatinde (yaz saatli)** — her ilkbahar geçişinde var olmayan 02:xx saati 03:xx'in kopyasıdır. Hizalama ve kurallar `src/datasets/household/weather.py` ve `tests/test_weather.py`'de.
 - Türetilen: ısıtma derece-saati `max(0, 18 − T)`, soğutma derece-saati `max(0, T − 24)`.
 - ⚠️ Yukarıdaki sayıları raporda kullanmadan önce **kendi EDA çıktınızla doğrulayın**; rapordaki her sayı kodunuzdan gelmeli.
 
 **Neden bu veri seti uygun (Yönerge §5 kriterleri):** probleme uygunluk (gerçek konut tüketimi), yeterli miktar (saatlikte ~34 bin örnek), kalite sorunları bilinir ve yönetilebilir, zamansal bölmeye uygun, LSTM/GRU giriş yapısına uygun, donanımla gerçekleştirilebilir. **Sınırlılıklar:** tek hane (genellenebilirlik düşük), gerçek anomali etiketi yok, hava durumu veri setinde yok (Aşama 3b'de Open-Meteo'dan eklendi; ERA5 noktasal ölçüm değil, ~25 km'lik hücre ortalaması).
+
+**Şebeke veri seti – UCI ElectricityLoadDiagrams20112014 (ELD)** (Trindade, [17]): Portekiz'de 370 müşterinin 15 dakikalık tüketimi (2011–2014). 2012-01-01'e kadar en az bir sıfır dışı değeri olan **160 müşterinin toplamı** saatlik şebeke yükü olarak kullanılır (geç başlayan müşterilerin başlangıç öncesi sıfır dolguları toplama katılmasın diye); hane yöntemleri ve hiperparametreleri **aynen** uygulanır, yeni arama yapılmaz. Hazırlama: `python -m src.datasets.eld.eld` (`src/datasets/eld/`), protokol `docs/eld_protokol.md`, karşılaştırma `docs/hane_vs_sebeke.md`. Ham veri (~680 MB) git'e girmez.
+
+**LEAD1.0 (eklenecek):** gerçek, elle etiketlenmiş anomalileri olan ticari bina elektrik sayaçları (Gulati & Arjunan, ACM e-Energy '22). Uygunluk değerlendirmesi ve önerilen kullanım (IHEPC'nin yerine değil, "gerçek etiketli ikinci anomali veri seti" olarak): `docs/veri_seti_lead1_degerlendirme.md`. Veri henüz indirilmedi; kod `src/datasets/lead/` altına eklenecek. Künye ve sayılar raporda kullanılmadan önce o belgedeki kaynak işaretleriyle **doğrulanmalı**.
 
 ### 4.2 EDA kontrol listesi (Yönerge §6)
 - [ ] Satır sayısı, tarih aralığı, örnekleme aralığı tutarlılığı (eksik dakikalar var mı?)
@@ -210,7 +175,7 @@ Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomal
    - Doldurulmuş hedef içeren pencereler **değerlendirme metriklerinden çıkarılır** (eğitimde kalabilir). Raporda belirtin.
    - Kısa boşluk interpolasyonu boşluğun sonraki gözlemini kullanır; bu nedenle tümüyle nedensel değildir. Sınır çevresinde veri kümeleri arası bilgi geçişini önlemek için hafta-önce yöntemi kullanılır.
 5. **Takvim öznitelikleri:** saat ve haftanın günü için sin/cos kodlama, ay için sin/cos, `is_weekend`, `is_holiday` (Fransa resmi tatilleri, `holidays` paketi).
-6. **Ölçekleme:** `StandardScaler` **yalnızca eğitim kümesine fit**, doğrulama/test'e `transform` (Yönerge §6 ve §7 sızıntı uyarısı). Ölçekleyici `models/scaler.pkl` olarak saklanır; demo da aynısını kullanır.
+6. **Ölçekleme:** `StandardScaler` **yalnızca eğitim kümesine fit**, doğrulama/test'e `transform` (Yönerge §6 ve §7 sızıntı uyarısı). Ölçek istatistikleri (`feature_mean`, `feature_scale`, `target_mean`, `target_scale`) her modelin checkpoint'ine kaydedilir; değerlendirme ve demo bunları kullanır, ayrı bir `scaler.pkl` yoktur.
 7. İsteğe bağlı: hedefe `log1p` (EDA'da sağa çarpıklık görülürse); metrikler **her zaman orijinal ölçekte (kW)** raporlanır.
 
 ### 4.4 Eğitim / doğrulama / test bölmesi
@@ -224,11 +189,11 @@ Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomal
 
 - Rastgele karıştırma **yok**. Her kümedeki örnek (saat ve pencere) sayılarını tabloya yazın.
 - Pencereler küme sınırını aşmaz: doğrulama penceresinin girdisi eğitimin son 168 saatini **kullanabilir** (geçmiş bilgi, sızıntı değil), ama **hedefi** asla başka kümeye taşmaz. Bunu raporda açıklayın.
-- Test kümesi yalnızca Gün 3 öğleden sonra, **bir kez** kullanılır. Hiperparametre ve eşik seçimleri doğrulama ile yapılır.
+- Test kümesi final değerlendirmede **bir kez** kullanıldı (`docs/final_test_protokolu.md`). Hiperparametre ve eşik seçimleri doğrulama ile yapıldı. 2026-11-25 yeniden yapılandırmasındaki doğrulama, seçim yapmadan kayıtlı sonuçların aynen üretildiğini kontrol eden bir regresyon kontrolüdür (`docs/deney_gunlugu.md`).
 - Sınırlılık: test dönemi kış aylarını içermiyor → mevsimsel genelleme sınırlılığı olarak tartışılır. (Alternatif: rolling-origin değerlendirme, "gelecek çalışma".)
 
 ### 4.5 Pencereleme
-- Tahmin: `X[t-168:t]` (öznitelikler) → `y[t:t+24]` (`Global_active_power`). Adım (stride) 1 saat.
+- Tahmin: `X[t-L:t]` (öznitelikler) → `y[t:t+24]` (`Global_active_power`). Adım (stride) 1 saat. Planda L = 168; **final modellerde L = 48** (F8'de val ile seçildi; checkpoint metadata'sı).
 - Autoencoder: 24 saatlik pencere (`[24, n_features]` veya yalnız hedef), stride 1. Nokta skoru = o saati içeren tüm pencerelerin o saatteki yeniden yapılandırma hatalarının ortalaması.
 
 ### 4.6 Modeller ve deney listesi
@@ -262,18 +227,18 @@ Toplulaştırma tahmin hatasını bir büyüklük mertebesi azaltıyor ve anomal
 | 5 | En iyi 3 modelin ağırlıklı ortalaması (ağırlıklar val'de ızgarayla); en iyi tekil model ve topluluk için 3 seed (F9) | — |
 | 3b | Hava durumu öznitelikleri (Open-Meteo ERA5; §4.1): **W1** = B + geçmiş hava (yalnız encoder, ana deney); **W2** = W1 + hedef saatlerin *gerçek* havası seq2seq decoder'ında — **oracle / üst sınır, gerçekte bilinemez**, model seçiminde kullanılmaz. F10-opt ve F5-opt Optuna parametreleriyle, 3 seed. Sonuç: W1 katkı sağlamadı (seq2seq fark seed std'si içinde, LSTM'de hafif zarar), W2 aşırı öğrendi; tablo `results/tables/weather_val_summary.md` | `-W1`, `-W2` |
 | ↳ | Aşama 1–5 özeti ve val sonuçları: `docs/tahmin_deneyleri_ozet.md` (sayılar `results/` dosyalarından) | — |
-| 6 | Final betiği: train+val üzerinde val'de bulunan epoch sayısıyla yeniden eğitim, test'te tek değerlendirme (yalnız açık onayla çalıştırılır) | — |
+| 6 | Final değerlendirme: **yalnız train ile eğitilmiş** kayıtlı ağırlıklarla testte tek değerlendirme; Ridge ve XGBoost val'deki koşuyla aynı şekilde yeniden fit edilir (`python -m src.pipelines.evaluate_forecast --split test`, yalnız açık onayla) | — |
 
 #### Tahmin deneyleri: yöntem ve güncel val sonuçları
 
 - **Tek değerlendirme kuralı:** Tüm modeller (F0–F6) aynı 4.213 val penceresinde
   (2009-10-01 → 2010-03-31; doldurulmuş hedefli 132 pencere çıkarılmış), aynı
   `calculate_metrics` fonksiyonuyla ve tahminler kW'a geri çevrildikten sonra
-  değerlendirilir. Sonuçlar tek yardımcı (`src/utils/results_io.py`) ile yazılır:
+  değerlendirilir. Sonuçlar tek yardımcı (`src/core/results_io.py`) ile yazılır:
   özet `results/tables/forecast_val_results.csv` (anahtar `exp_id`), ufuk metrikleri
   `results/tables/forecast_val_horizon.csv`, tahmin dizileri
   `results/predictions/{exp_id}_val.npz` (git'e girmez, yeniden üretilebilir).
-  `python -m src.verify_forecast_eval` bu kuralın sağlandığını kontrol eder
+  `python -m src.pipelines.verify_forecast_eval` bu kuralın sağlandığını kontrol eder
   (`results/tables/eval_consistency_val.csv`).
 - **F3 Ridge:** yalnız `Global_active_power` geçmişinden 26 gecikme (1–24, 48, 168);
   alpha `{0.1, 1, 10, 100}` ızgarasından val MAE ile seçilir (`--grid`).
@@ -361,7 +326,7 @@ Hem doğrulama hem test kümesinin **kopyasına** (seed'ler aşağıda; ilk prot
 
 - **Seed'ler (yalnız enjeksiyon yerini/büyüklüğünü belirler):** ana — val-dev 1, 11, …, 91; val-hold 3, 13, …, 93; test 2, 12, 22, 32, 42. Zor — val-dev 5, 15, …, 95; val-hold 7, 17, …, 97; test 4, 14, 24, 34, 44. Test bağımsızlığı seed farkıyla değil **zaman ayrımıyla** sağlanır.
 - **Ana metrik: olay F1.** Olay recall'ü = en az bir saati işaretlenen olay oranı; olay precision'ı = gerçek bir anomaliyle örtüşen alarm segmentleri / tüm alarm segmentleri. Eşik, val-dev ana senaryonun 10 kopyasında birleşik olay F1'ini en büyük yapan değerdir (birleşik skor yüzdeliklerinde 300 noktalı ızgara); pencere ∈ {1, 3, 6} ortalama olay F1 ile seçilir. Nokta P/R/F1, PR-AUC ve ROC-AUC tabloda kalır.
-- **Final yöntem kuralı:** val-dev ana senaryoda ortalama olay F1'i en yüksek yöntem referanstır; ona karşı eşleştirilmiş seed farkı |ortalama| ≤ 2·std/√n (standart hata tabanlı; revizyon 1 — ilk sürümdeki |ort| ≤ std seed sayısı arttıkça gevşiyordu) olan yöntemler gürültü düzeyinde sayılır ve aralarından en basiti seçilir (basitlik: A0 < A1 < A2 < A3-s2s-norm < A3-s2s-hmean < A3-ens-norm < A5-mean-z). **Final anomali yöntemi: A3-s2s-norm** (w = 3, olay-F1 eşiği 3,558). Komut: `python -m src.anomaly_protocol` (val), final değerlendirmede `--split test`.
+- **Final yöntem kuralı:** val-dev ana senaryoda ortalama olay F1'i en yüksek yöntem referanstır; ona karşı eşleştirilmiş seed farkı |ortalama| ≤ 2·std/√n (standart hata tabanlı; revizyon 1 — ilk sürümdeki |ort| ≤ std seed sayısı arttıkça gevşiyordu) olan yöntemler gürültü düzeyinde sayılır ve aralarından en basiti seçilir (basitlik: A0 < A1 < A2 < A3-s2s-norm < A3-s2s-hmean < A3-ens-norm < A5-mean-z). **Final anomali yöntemi: A3-s2s-norm** (w = 3, olay-F1 eşiği 3,558). Komut: `python -m src.pipelines.anomaly_protocol` (val), final değerlendirmede `--split test`.
 - **Olay bazlı metrikler:** bir olay (aynı tipten ardışık etiketli saatler) en az bir saati işaretlenince yakalanmış sayılır (olay recall'ü); olay precision'ı = gerçek bir anomaliyle kesişen alarm bloklarının oranı. Bu kural yalnız olay metriklerinde kullanılır; nokta metriklerine *point-adjust* (yakalanan olayın tüm saatlerini doğru saymak) uygulanmaz, çünkü point-adjust rastgele skorlara bile yüksek F1 verebildiği için eleştirilmektedir (Kim vd., AAAI 2022 – kaynak doğrulanmalı).
 - Raporlanan: Precision, Recall, F1, ROC-AUC, PR-AUC (dengesiz sınıf → PR-AUC daha bilgilendirici), karmaşıklık matrisi, **tip bazında recall**.
 - Ek nitel analiz: enjeksiyonsuz test verisinde en yüksek skorlu 10 olay → gerçekte ne olmuş olabilir (tatil, ev boş, mevsim geçişi)?
@@ -398,53 +363,54 @@ Hem doğrulama hem test kümesinin **kopyasına** (seed'ler aşağıda; ilk prot
 
 ### 4.13 Demo uygulaması (Streamlit) – Yönerge §15.3, §16
 - **Arayüz:** Türkçe, açık tema, ortak grafik şablonu (`app/ui.py`): gerçek değer koyu gri, final model mavi, baseline açık gri kesikli, anomali kırmızı. Kenar çubuğunda proje/ekip/ders bilgisi ve tüm sayfalar için ortak veri seti seçimi (Hane / Şebeke) bulunur. İç deney kodları yalnız Model Bilgisi sayfasında parantez içinde görünür. Ekran görüntüleri: `docs/demo/`.
-- **Sayfa 1 – Talep Tahmini:** Hane ve Şebeke test dönemlerinde 48 saatlik gerçek geçmişten Topluluk modeli (0,8 Seq2Seq + 0,2 LSTM) ve SN168 tahminini gerçek sonraki 24 saatle karşılaştırır. Şebeke tahmini `src/eld_run.py` kadrosu ve `all_predictions` ile üretilir (`app/eld_services.py`). Üstte kayıtlı test geneli sonucu, altında seçili günün kartları (MAE, günlük toplam tüketim hatası, SN168 MAE, iyileşme) ve gün dağılımı bulunur; MAPE Detaylar'dadır. Varsayılan gün, iyileşmesi medyana en yakın gündür. “Kolay/zor örnek” en iyi/en kötü %10'luk dilimden seçilir (Şebeke'de zor örnek 25 Aralık 2014); model seçimine bağlanmaz. Gün bazlı değerler seed 42 içindir.
-- **Sayfa 2 – Anomali Tespiti:** Yalnız hane. Enjeksiyon protokoldeki gibi tüm test kopyasına yapılır, tarih aralığı görünümü seçer. Varsayılan: seviye kayması, ana senaryo, şiddet ×1. Ham ve yumuşatılmış skor ayrı gösterilir; kayıtlı doğrulama eşiği yumuşatılmış skora uygulanır. Kartlar ve olay tablosu `event_metrics` tanımlarını izler. Ölçekler final protokolle aynıdır (OOF std, val-dev referansı; `python -m app.build_calibration`). Tip bazlı yakalama oranları `python -m app.capture_table` ile `results/tables/demo_capture_by_type.csv` dosyasına yazılır; bu tablo final sonuç değildir. “Geliştirilmiş: kısa sıçramalar (deneysel)” (A6-dual) ve “Geliştirilmiş: sıçrama + taban yük (deneysel)” (A6-dual-floor) seçenekleri test sonrası A6 denemesidir (`python -m src.anomaly_dual`); final sonuç değildir ve test kümesinde çalıştırılmadığı için val-hold dönemini gösterir.
+- **Sayfa 1 – Talep Tahmini:** Hane ve Şebeke test dönemlerinde 48 saatlik gerçek geçmişten Topluluk modeli (0,8 Seq2Seq + 0,2 LSTM) ve SN168 tahminini gerçek sonraki 24 saatle karşılaştırır. Şebeke tahmini `src/pipelines/eld_run.py` kadrosu ve `all_predictions` ile üretilir (`app/eld_services.py`). Üstte kayıtlı test geneli sonucu, altında seçili günün kartları (MAE, günlük toplam tüketim hatası, SN168 MAE, iyileşme) ve gün dağılımı bulunur; MAPE Detaylar'dadır. Varsayılan gün, iyileşmesi medyana en yakın gündür. “Kolay/zor örnek” en iyi/en kötü %10'luk dilimden seçilir (Şebeke'de zor örnek 25 Aralık 2014); model seçimine bağlanmaz. Gün bazlı değerler seed 42 içindir.
+- **Sayfa 2 – Anomali Tespiti:** Yalnız hane. Enjeksiyon protokoldeki gibi tüm test kopyasına yapılır, tarih aralığı görünümü seçer. Varsayılan: seviye kayması, ana senaryo, şiddet ×1. Ham ve yumuşatılmış skor ayrı gösterilir; kayıtlı doğrulama eşiği yumuşatılmış skora uygulanır. Kartlar ve olay tablosu `event_metrics` tanımlarını izler. Ölçekler final protokolle aynıdır (OOF std, val-dev referansı; `python -m app.build_calibration`). Tip bazlı yakalama oranları `python -m app.capture_table` ile `results/tables/demo_capture_by_type.csv` dosyasına yazılır; bu tablo final sonuç değildir. “Geliştirilmiş: kısa sıçramalar (deneysel)” (A6-dual) ve “Geliştirilmiş: sıçrama + taban yük (deneysel)” (A6-dual-floor) seçenekleri test sonrası A6 denemesidir (`python -m src.pipelines.anomaly_dual`); final sonuç değildir ve test kümesinde çalıştırılmadığı için val-hold dönemini gösterir.
 - **Sayfa 3 – Sonuçlar:** Üstte Hane ve Şebeke için MAPE, R² ve olay F1 kartları; altta Tahmin, Anomali ve Hata analizi sekmeleri. Tüm sayılar kayıtlı test CSV'lerinden gelir. Veri setleri arasında mutlak MAE kıyaslanmaz. Sayfa salt okunurdur; eksik veya uyumsuz CSV için açık hata verir.
 - **Sayfa 4 – Model Bilgisi:** Seq2Seq blok diyagramı, hiperparametre tablosu, bölme zaman çizelgesi, anomali tanımları, protokol ve bilinen sınırlılıklar. Değerler kod/config/ağırlık metadata'sından okunur; eğitim veya tahmin başlatmaz.
 - Eğitim çalıştırılmaz. Çalıştırmadan önce `pip install -r requirements.txt` ile ortam kurulmalı; `data/processed/hourly.parquet`, `models/F5-opt_best.pt`, `models/F10-opt_best.pt` ile kayıtlı sonuç/eşik/OOF tabloları yerelde bulunmalıdır. Açılış: `python -m streamlit run app/streamlit_app.py --server.address localhost`. Uygulama çalışma anında dış servisten veri indirmez.
 - Şebeke verisi ve ağırlıkları repoya girmez; yoksa Talep Tahmini bunu bildirir ve Şebeke yalnız kayıtlı sonuçlarla gösterilir. Canlı anomali analizi yalnız hane içindir. XGBoost ağırlık dosyası yoksa canlı tahmin yapılmaz; kayıtlı deney sonuçları gösterilir.
-- **A5 normalizasyon referansı — bilinen kaynak/izlenebilirlik farkı:** `src/evaluate_anomaly.py` içindeki genel `fit_combination` varsayılanı tam `val` iken, final test yolu `src/anomaly_protocol.py` içinde `reference_split="val_dev"` değerini açıkça geçirir. Final protokol dokümanı ve deney notu da val-dev'i belirtir; final test CSV'lerinde referans kümesini kaydeden ayrı alan veya bağımsız çalışma zamanı günlüğü yoktur. Bu nedenle sonuç final kod yolu ve deney notlarıyla desteklenir, ancak CSV metadata'sından tek başına doğrulanamaz.
+- **A5 normalizasyon referansı — bilinen kaynak/izlenebilirlik farkı:** `src/pipelines/evaluate_anomaly.py` içindeki genel `fit_combination` varsayılanı tam `val` iken, final test yolu `src/pipelines/anomaly_protocol.py` içinde `reference_split="val_dev"` değerini açıkça geçirir. Final protokol dokümanı ve deney notu da val-dev'i belirtir; final test CSV'lerinde referans kümesini kaydeden ayrı alan veya bağımsız çalışma zamanı günlüğü yoktur. Bu nedenle sonuç final kod yolu ve deney notlarıyla desteklenir, ancak CSV metadata'sından tek başına doğrulanamaz.
 
 ---
 
 ## 5. Repo yapısı ve komutlar
 
 ```
-enerji-anomali-tahmin/
-├── README.md                  # bu kılavuz
-├── CLAUDE.md                  # Claude Code için geliştirme kuralları
-├── requirements.txt
-├── .gitignore                 # data/raw/, *.pt (büyükse), __pycache__, .ipynb_checkpoints
-├── configs/config.yaml        # yollar, split tarihleri, pencere, hiperparametreler, seed
-├── data/
-│   ├── raw/                   # household_power_consumption.txt (git'e girmez)
-│   └── processed/             # hourly.parquet, split indeksleri
-├── notebooks/
-│   ├── 01_eda.ipynb
-│   └── 02_results_analysis.ipynb
+.
+├── README.md · CLAUDE.md · requirements.txt · pytest.ini · .gitignore
+├── configs/
+│   ├── config.yaml               # TEK yapılandırma: yollar, bölme tarihleri, pencere, hiperparametreler, seed, protokol
+│   ├── eld.yaml                  # ELD'de config.yaml'dan farklı olanlar
+│   └── optuna_{lstm,seq2seq}_best.yaml   # Optuna'nın seçtiği F5-opt / F10-opt ayarları (otomatik üretildi)
+├── data/raw/ · data/processed/   # ham ve işlenmiş veri (git'e girmez; hourly.parquet, eld_hourly.parquet)
 ├── src/
-│   ├── data/   load.py · preprocess.py · split.py · windows.py · inject_anomalies.py
-│   ├── models/ baselines.py · forecast_baselines.py · mlp.py · lstm.py · gru.py · autoencoder.py · anomaly_baselines.py
-│   ├── utils/  seed.py · config.py · metrics.py · plots.py · results_io.py (deney kaydı: upsert_csv, resolve_path)
-│   ├── train_forecast.py      # python -m src.train_forecast --model all
-│   ├── train_autoencoder.py
-│   ├── evaluate_forecast.py   # --split val|test
-│   └── evaluate_anomaly.py    # --split val|test
-├── tests/                     # split çakışması, ölçekleyici sızıntısı, pencere şekilleri
-├── app/streamlit_app.py
-├── models/                    # en iyi ağırlıklar + scaler.pkl
-├── results/
-│   ├── experiments.csv
-│   ├── figures/
-│   └── tables/
-└── docs/
-    ├── literatur.md           # literatür matrisi
-    ├── deney_gunlugu.md       # günlük karar ve gözlem notları
-    ├── yontem_ve_teknikler_dilara.md  # tahmin yöntemleri ve deney protokolü
-    ├── oneri_formu/
-    ├── rapor/
-    └── sunum/
+│   ├── core/                     # veri setinden bağımsız ortak parçalar
+│   │   ├── config.py             # PROJECT_ROOT ve load_config (tek tanım)
+│   │   ├── split.py · windows.py · inject_anomalies.py   # kronolojik bölme, pencereler, anomali enjeksiyonu
+│   │   ├── metrics.py · anomaly_metrics.py               # tahmin metrikleri; olay metrikleri ve eşik seçimi
+│   │   └── results_io.py · seed.py · console.py           # sonuç kaydı, seed + get_device, konsol kodlaması
+│   ├── datasets/
+│   │   ├── household/            # load.py · preprocess.py · weather.py (UCI hane)
+│   │   ├── eld/                  # eld.py (UCI ELD, 160 müşteri toplamı)
+│   │   └── lead/                 # LEAD1.0 (boş; eklenecek)
+│   ├── models/                   # baselines · forecast_baselines (Ridge) · mlp · lstm · gru · seq2seq · cnn_lstm · xgb_forecast
+│   │                             # anomaly_baselines (A0, A1) · autoencoder (A2; A7 keşif) · residual_detector (A3)
+│   ├── pipelines/                # uçtan uca hatlar
+│   │   ├── train_forecast.py · tune_optuna.py · train_oof.py · ensemble.py · seed_stability.py
+│   │   ├── evaluate_forecast.py · forecast_levels.py · verify_forecast_eval.py
+│   │   ├── train_autoencoder.py · evaluate_anomaly.py · anomaly_protocol.py · anomaly_dual.py
+│   │   └── eld_run.py · final_tables.py · compare_hane_sebeke.py
+│   ├── <eski_ad>.py · data/<eski_ad>.py   # GEÇİCİ: yalnız eski `python -m` komutları için yönlendirme
+├── experiments/archive/          # final sonuç üretmeyen test sonrası deneyler (kod çalışır; sonuçlar results/ altında)
+│   ├── README.md · *.py · configs/ · tests/
+├── app/                          # Streamlit demo: streamlit_app.py · pages/ · *_services.py · ui.py
+├── notebooks/01_eda.ipynb
+├── scripts/verify_frozen_results.py   # donmuş sonuçların yeniden üretim doğrulaması
+├── tests/                        # çekirdek testler (sızıntı, bölme, pencere, enjeksiyon, demo tutarlılığı ...)
+├── models/                       # ağırlıklar (.pt, git'e girmez; yedek repo dışında); ölçek istatistikleri checkpoint içinde
+├── results/                      # experiments.csv · tables/ · figures/ · logs/ · eld/ · predictions/ (git'e girmez)
+└── docs/                         # deney_gunlugu · final_sonuclar · hane_vs_sebeke · protokoller · literatür ·
+                                  # veri_seti_lead1_degerlendirme · oneri_formu/ · rapor/ · sunum/ · demo/ · archive/
 ```
 
 **Kurulum** (Python 3.10+; proje kökünde):
@@ -454,39 +420,56 @@ python -m venv .venv
 # NVIDIA GPU varsa önce CUDA'lı torch (yoksa bu satırı atlayın, CPU sürümü kurulur):
 pip install torch --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
-pytest tests/                     # kurulum testleri geçmeli
+pytest -q                          # çekirdek + arşiv testleri (yalnız çekirdek: pytest tests/ -q)
 ```
 
-**Temel komutlar** (README'de güncel tutulacak):
+**Komutlar** (hepsi proje kökünden; `--help` her komutta seçenekleri gösterir):
 ```bash
-pip install -r requirements.txt
-python -m src.data.load            # ham veriyi indir/oku
-python -m src.data.preprocess      # data/processed/hourly.parquet
-python -m src.train_forecast --model all  # Ridge + MLP + LSTM + GRU, yalnız val
-python -m src.train_forecast --model ridge --grid        # alpha ızgarası (F3-a*)
-python -m src.train_forecast --model mlp --grid          # gizli katman ızgarası (F4-torch-*)
-python -m src.train_forecast --model gru --exp F6 [--feature_set B] [--lookback 168] [--seed 42] [--device cuda|cpu]
-python -m src.verify_forecast_eval       # tüm modeller aynı val pencereleri/kuralları mı?
-python -m src.data.weather                # Open-Meteo ERA5 indir + yerel saate hizala
-python -m src.weather_eda                 # sıcaklık – günlük tüketim (yalnız train)
-python -m src.train_forecast --model seq2seq --config configs/optuna_seq2seq_best.yaml --feature_set W1 --exp F10-opt-W1
-python -m src.analyze_forecast_errors --exp F3-a0.1 F5 F6   # saat, düzey, ufuk analizi
-python -m src.train_autoencoder --exp A2
-python -m src.train_autoencoder --arch tcn --exp A7   # A7 keşif (TCN-AE)
-python -m src.explore_tcn_ae                           # A7 yalnız val değerlendirmesi (test seçeneği yok)
-python -m src.models.baselines          # yalnız val
-python -m src.models.baselines --split test
-python -m src.models.forecast_baselines # yalnız Ridge, yalnız val
-python -m src.evaluate_forecast --split test
-python -m src.evaluate_anomaly  --split test
-python -m src.anomaly_eval_audit        # iki olay metriği + arka plan alarmları + repro manifestosu (yalnız dev)
-python -m src.anomaly_floor_channel      # DENEYSEL S0 + taban kanalı (yalnız dev; final değil)
-python -m src.anomaly_supervised         # gözetimli sınıflandırıcı (sentetik eğitim; yalnız dev; kabul edilmedi)
-pytest tests/
-python -m streamlit run app/streamlit_app.py
+# Veri
+python -m src.datasets.household.load          # ham UCI verisini oku ve doğrula
+python -m src.datasets.household.preprocess    # data/processed/hourly.parquet
+python -m src.datasets.household.weather       # Open-Meteo ERA5 indir + yerel saate hizala (Aşama 3b)
+python -m src.datasets.eld.eld                 # ELD: 160 müşteri toplamı → data/processed/eld_hourly.parquet
+
+# Tahmin (yalnız val; test yalnız final değerlendirmede)
+python -m src.models.baselines                 # F0–F2 naif referanslar (val)
+python -m src.models.forecast_baselines        # F3 Ridge (val)
+python -m src.pipelines.train_forecast --model {ridge,mlp,lstm,gru,seq2seq,cnn_lstm,xgboost,all} --exp <exp_id> [--feature_set A|B|C|W1|W2] [--lookback 48] [--seed 42] [--config configs/optuna_seq2seq_best.yaml]
+python -m src.pipelines.tune_optuna --help     # Aşama 4: Optuna (train içi zamansal CV)
+python -m src.pipelines.train_oof --help       # A3'ün OOF std'si için kat modelleri
+python -m src.pipelines.ensemble --help        # F13 topluluk ağırlıkları (val)
+python -m src.pipelines.seed_stability         # 3 seed özeti (val)
+python -m src.pipelines.verify_forecast_eval   # tüm modeller aynı val pencereleri/kurallarıyla mı?
+python -m src.pipelines.evaluate_forecast --split val    # kayıtlı ağırlıklarla val yeniden üretimi
+python -m src.pipelines.evaluate_forecast --split test   # FİNAL (yapıldı; yalnız açık onayla)
+python -m src.pipelines.forecast_levels        # val'de üç seviye rapor (h=1, 24 s, günlük)
+
+# Anomali
+python -m src.pipelines.train_autoencoder --exp A2      # A2 LSTM-AE (yalnız train)
+python -m src.pipelines.anomaly_protocol                 # final protokol: val-dev seçimi + val-hold ölçümü
+python -m src.pipelines.anomaly_protocol --split test    # FİNAL (yapıldı; yalnız açık onayla)
+python -m src.pipelines.anomaly_dual --stage select|hold # A6 (test sonrası deneme; test kümesi yok)
+
+# Şebeke (ELD) ve final tablolar
+python -m src.pipelines.eld_run --stage val              # test: --stage test (yapıldı; yalnız açık onayla)
+python -m src.pipelines.final_tables                     # val ve test yan yana (yeni hesap yok)
+python -m src.pipelines.compare_hane_sebeke              # hane – şebeke karşılaştırması (yeni hesap yok)
+
+# Arşiv deneyleri (final sonuç üretmez; liste: experiments/archive/README.md)
+python -m experiments.archive.<betik> --help
+
+# Doğrulama, test ve demo
+python scripts/verify_frozen_results.py snapshot --out <repo dışı klasör>
+python scripts/verify_frozen_results.py compare <referans> <yeni>
+pytest -q
+python -m app.build_calibration                # demo anomali kalibrasyonu (final protokol fonksiyonlarıyla)
+python -m app.capture_table                    # demo: tip bazlı yakalama tablosu (final sonuç değildir)
+python -m streamlit run app/streamlit_app.py --server.address localhost
 ```
 
-**Git düzeni:** `main` her zaman çalışır; kişisel dallar `dilara/...`, `seyda/...`; commit mesajları Türkçe ve açıklayıcı ("GRU eğitim betiği: early stopping eklendi").
+**Eski komutlar:** `python -m src.train_forecast`, `python -m src.data.preprocess` gibi 2026-11-25 öncesi komutlar geçici yönlendirmelerle hâlâ çalışır (uyarı yazar). Eski yol → yeni yol tablosu: `docs/deney_gunlugu.md` (2026-11-25).
+
+**Git düzeni:** `main` her zaman çalışır; iş dalları `seyda/...` (geçmişte `dilara/...`); commit mesajları Türkçe ve açıklayıcı. Önemli noktalar etiketlidir (`v1.5-temizlik-oncesi`, `v1.6-zincir-birlesti`, `v1.7-yapilandirma-oncesi`, `v2.0-yeni-yapi`).
 
 ---
 
@@ -547,7 +530,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 - **Eğitim/test ayrımı:** kronolojik, oranlar ve tarihler, neden rastgele değil
 - **Değerlendirme ve istatistik:** §4.10 metrikleri; 3 seed ortalama ± standart sapma; anomali için eşik val'de seçilir
 - **Araçlar:** Python, PyTorch, scikit-learn, pandas, Streamlit, Google Colab, Git/GitHub
-- **Ön çalışma:** Gün 1–2'de yapılan EDA bulguları (eksik oranı, periyodiklik, figürler) ve **ilk baseline doğrulama sonuçları** → "somut ilerleme" kanıtı (Yönerge §14)
+- **Ön çalışma:** EDA bulguları (eksik oranı, periyodiklik, figürler) ve **ilk baseline doğrulama sonuçları** → "somut ilerleme" kanıtı (Yönerge §14)
 - **İş paketleri** (hangi İP hangi hedefe hizmet eder):
 
 | İP | İçerik | Hedef | Sorumlu | Süre |
@@ -622,7 +605,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 
 ### 8.4 Demo B planı
 - İnternet yok: tüm veri ve ağırlıklar yerelde; `streamlit run` önceden açılmış.
-- Uygulama çökerse: aynı çıktıyı üreten `notebooks/02_results_analysis.ipynb` hücreleri hazır.
+- Uygulama çökerse: `docs/demo/` ekran görüntüleri ve `results/tables/` final tabloları (Sonuçlar sayfasının kaynağı) gösterilir.
 
 ---
 
@@ -644,7 +627,7 @@ Her iki kişi de **hepsini** cevaplayabilmelidir.
 **Modeller**
 9. LSTM hücresindeki kapılar (forget, input, output) ne yapar? GRU'dan farkı nedir?
 10. Vanishing gradient nedir, LSTM bunu nasıl hafifletir?
-11. Neden 168 saatlik pencere? ACF neyi gösterdi?
+11. Planda neden 168 saatlik pencere, finalde neden 48 saat? ACF ve F8 lookback deneyi neyi gösterdi?
 12. 24 saati tek seferde (çok çıktılı) tahmin etmek ile adım adım tahmin etmek arasındaki fark?
 13. Autoencoder nasıl anomali bulur? Neden yalnızca normal veriyle eğitilir?
 14. Tahmin artığı tabanlı dedektör ile yeniden yapılandırma tabanlı dedektörün farkı?
@@ -693,7 +676,7 @@ Her iki kişi de **hepsini** cevaplayabilmelidir.
 - Claude/ChatGPT ile üretilen kod **okunmadan ve test edilmeden** kullanılmaz.
 - **Yapılmayan deney, elde edilmeyen sonuç rapora yazılmaz.** Rapordaki tüm sayılar `results/` dosyalarından gelir.
 - Yapay zekânın önerdiği kaynaklar doğrulanmadan kaynakçaya eklenmez.
-- "Kodu yapay zekâ yazdı, bilmiyoruz" savunmada kabul edilmez → çapraz anlatım bu yüzden var.
+- "Kodu yapay zekâ yazdı, bilmiyoruz" savunmada kabul edilmez → §2.2'deki çapraz hâkimiyet kuralları bu yüzden var.
 
 ---
 
@@ -756,6 +739,5 @@ Yönerge §20'deki temel beklentiler:
 | Eğitim çok yavaş | 1 epoch > 2 dk (CPU) | Colab GPU; stride 2–3; hidden 32; ızgarayı küçült |
 | LSTM/GRU baseline'ı geçemiyor | Val MAE ≥ Seasonal Naive 168 | Takvim özniteliklerini kontrol et; hedefe log1p; Huber kayıp; lr 5e-4. Yine de geçemezse **dürüstçe raporla ve nedenini tartış** (tek hane gürültüsü) |
 | AE her şeyi anomali sayıyor | Val'de precision çok düşük | Eşiği val F1-max ile seç; pencere 24 → 48; skor yumuşatma (3 saatlik ortalama) |
-| Gün sonu hedefi kaçtı | ✅ kriterleri eksik | Öncelik sırası: (1) F1, F5, F6 + A1, A2 çalışıyor, (2) değerlendirme + figürler, (3) demo, (4) ablasyon ve seed'ler |
 | Demo çöküyor | Sunum günü hata | Notebook yedeği; ekran kaydı videosu |
 | Bir üye hastalandı | — | Çapraz anlatımlar sayesinde diğeri devam eder; README güncel tutulur |

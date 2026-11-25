@@ -1,5 +1,7 @@
 # Anomali geliştirme protokolü (H3) — deneylerden ÖNCE yazıldı
 
+> **Donduruldu (25.11.2026): Aşama 3–8 yapılmadı, LEAD'e geçildi.** Hane anomali geliştirmesi burada durduruldu. Bu protokol altında yapılanlar: Aşama 1 (teşhis), Aşama 2 (yaz-dev, senaryolar) ve protokol sırasından farklı olarak kısa olay sinyalleri, E1, C1/C2, kanal başına OR, taban kanalı ve gözetimli sınıflandırıcı (hepsi yalnız kış-dev + yaz-dev; `docs/deney_gunlugu.md`). §5'teki normalizasyon (N1–N3), kalan çoklu sinyal, artık kaynağı, eşik/alarm, AE ve §3 bağımsız kontrol aşamaları **yapılmadı**. Bu deneylerin kodu `experiments/archive/` altındadır. Final yöntem A3-s2s-norm ve dondurulan sonuçlar (§1) değişmedi.
+
 Dal: `seyda/gelistirme` · Tarih: 2026-11-08 · İş paketi: İP4 (anomali), İP5 (hata analizi)
 
 Bu belge, final testten sonra başlayan anomali geliştirme çalışmasının kurallarını deney yapılmadan önce sabitler. Bu belgeye aykırı bir seçim yapılırsa sonuç geçersiz sayılır. Kural değişikliği gerekirse tarih ve gerekçeyle `docs/deney_gunlugu.md`'ye yazılır; eski sonuçlar silinmez.
