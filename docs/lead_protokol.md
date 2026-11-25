@@ -1,6 +1,6 @@
 # LEAD1.0 protokolü — model eğitiminden ve testten ÖNCE yazıldı
 
-Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi. Güncelleme 2 (2026-11-25, test öncesi; L0, L1, L4, L2 ve IF val sonuçlarından sonra): L3 atlandı, yerine öznitelik mühendisliği aşaması L-FE (§17). Güncelleme 3 (2026-11-25, test öncesi; L-FE ablasyonu ve L1-FE val sonuçlarından sonra): çerçeve, birincil metrik `other` PR-AUC, yeni seçim kuralı (§18).
+Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi. Güncelleme 2 (2026-11-25, test öncesi; L0, L1, L4, L2 ve IF val sonuçlarından sonra): L3 atlandı, yerine öznitelik mühendisliği aşaması L-FE (§17). Güncelleme 3 (2026-11-25, test öncesi; L-FE ablasyonu ve L1-FE val sonuçlarından sonra): çerçeve, birincil metrik `other` PR-AUC, yeni seçim kuralı (§18). Güncelleme 4 (2026-11-26, test öncesi; val kapanışından sonra): literatür kıyas satırı L1-OFF (offline, §19).
 
 Bu belge, LEAD1.0 (Kaggle "energy-anomaly-detection" `train.csv`) üzerindeki modelleme ve değerlendirmenin kurallarını **deney yapılmadan önce** sabitler. Bu belgeye aykırı bir seçim yapılırsa sonuç geçersiz sayılır. Kural değişikliği gerekirse tarih ve gerekçeyle `docs/deney_gunlugu.md`'ye yazılır; eski sonuçlar silinmez.
 
@@ -241,3 +241,17 @@ Bütün karşılaştırmalar val'de, bina bölmesinin 3 seed'i üzerinde, bölme
 - **L4-semi erken durdurma kontrolü:** L4-semi'nin val erken durdurmasının val etiketlerini kullanıp kullanmadığı kodda kontrol edilir; kullanıyorsa tabloya not düşülür.
 - **Final özet tablosu:** val, 3 seed ort. ± std; bütün modeller × dilimler (genel, gap_edge, frozen, other, paylaşılan, tekil) × ROC-AUC, PR-AUC, F1, olay recall; her dilim için PR-AUC taban değeri (pozitif oranı). `other` dilimi tablonun başında.
 - **Final model önerisi** (§18.2) ve **test kontrol listesi**. Sonra durulur; test yalnız kullanıcının açık onayıyla.
+
+## 19. Güncelleme 4 (2026-11-26, test öncesi): literatür kıyas satırı (offline) — L1-OFF
+
+**Ne zaman yazıldı:** bütün val sonuçlarından ve val kapanışından (`docs/lead_val_ozet.md`) **sonra**, test kümesine dokunulmadan. Karar kullanıcının.
+
+- **Amaç yalnız literatür kıyası.** Kaggle LEAD çözümlerinde nedensellik kısıtı yoktur (§14). Koşulları onlara yaklaştırmak için tek bir **offline** satır eklenir. **Ana sonuç çevrimiçi (nedensel) kalır**; L1-OFF seçim yarışına girmez (§18.2'de IF gibi dışarıda) ve "final model" olamaz.
+- **Model:** L1-FE (full), her seed'in kendi seçtiği set (§17) + iki yönlü (GELECEĞE BAKAN) öznitelikler:
+  - `next_missing`: sonraki saat (t+1) eksik mi,
+  - `forward_run_length`: ileri yönde sabitlik süresi (t, t+1, … aynı değer),
+  - `robust_z_c6h`, `robust_z_c24h`: t'yi ortalayan 6/24 saatlik pencerenin medyanı ve IQR'si ile robust z,
+  - `diff_next_1h`: x(t+1) − x(t).
+- **Ablasyon yok.** Ayarlar, negatif alt örnekleme, erken durdurma ve eşik L1-FE ile aynı; val'de 3 seed, bir kez.
+- **Yalıtım:** offline sütunlar `features.OFFLINE_COLS`'ta ayrı tutulur; hiçbir nedensel sette ya da FE grubunda yoktur (pytest). Bu sütunlar CLAUDE.md'nin "gelecek bilgisi yok" kuralının **bilerek ve yalnız bu satır için** yapılan istisnasıdır; istisna günlüğe yazılır.
+- **Raporlama:** özet tabloda genel ROC-AUC sütunu öne alınır; literatür değerleri (Kaggle birincisi 0,9866 [veri_seti_lead1_degerlendirme.md, 2]; kullanıcının verdiği 0,952 — Tech Science yayını, künyesi repoda yok, **doğrulanmalı**) koşul farklarıyla yan yana gösterilir.
