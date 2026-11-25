@@ -1,0 +1,1 @@
+{"model": "L1-FE", "set": "behavior", "bolme": "bina", "seed": 42, "params": "{\"gruplar\": [\"G0\", \"G4\", \"G5\"], \"learning_rate\": 0.0810167556265935, \"num_leaves\": 21, \"min_child_samples\": 24, \"colsample_bytree\": 0.9744427686266666, \"subsample\": 0.9828160165372797, \"reg_lambda\": 1.7123375973163988}", "best_epoch": 39, "train_time_s": 6.1}
