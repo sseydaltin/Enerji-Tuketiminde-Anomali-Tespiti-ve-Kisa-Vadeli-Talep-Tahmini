@@ -4,12 +4,12 @@ Deneyler (birleşik skor = max(A3', w·sinyal', ...), ' = train OOF 99. yüzdeli
   S0 A3 · S1 A3+spike · S2 A3+drop · S3 A3+change · S4 A3+spike+drop · S5 A3+spike+drop+change
 
 Kurallar:
-- Kümeler: kış-dev ve yaz-dev (src/anomaly_dev.py ile aynı modeller, std tabloları, enjeksiyonlar).
+- Kümeler: kış-dev ve yaz-dev (experiments/archive/anomaly_dev.py ile aynı modeller, std tabloları, enjeksiyonlar).
   val_hold ve test bu modülde HİÇ kullanılmaz.
 - Ağırlık, yumuşatma penceresi, alarm birleştirme boşluğu ve eşik yalnız ORTA senaryoda,
   iki kümenin 20 kopyası birlikte seçilir; kolay ve zor aynı ayarlarla ek rapordur.
 - Ölçek (99. yüzdelik) ve değişim tablosu yalnız train / OOF saatlerinden.
-Komut: python -m src.anomaly_short_event
+Komut: python -m experiments.archive.anomaly_short_event
 """
 
 import argparse
@@ -24,7 +24,7 @@ import torch
 from scipy import stats
 from sklearn.metrics import average_precision_score
 
-from src.anomaly_dev import SCENARIOS, SET_KEYS, dev_scenario_settings, prepare_set
+from experiments.archive.anomaly_dev import SCENARIOS, SET_KEYS, dev_scenario_settings, prepare_set
 from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for
 from src.data.load import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import make_runs, multi_horizon_scores, valid_hours, with_context

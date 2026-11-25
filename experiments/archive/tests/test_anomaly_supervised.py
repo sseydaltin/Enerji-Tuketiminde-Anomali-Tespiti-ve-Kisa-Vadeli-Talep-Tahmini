@@ -3,8 +3,13 @@
 import numpy as np
 import pandas as pd
 
-from src.anomaly_short_event import change_table
-from src.anomaly_supervised import FEATURES, PERIODS, build_features, diverse_settings
+from experiments.archive.anomaly_short_event import change_table
+from experiments.archive.anomaly_supervised import (
+    FEATURES,
+    PERIODS,
+    build_features,
+    diverse_settings,
+)
 from src.models.residual_detector import residual_std_table
 
 T = "Global_active_power"

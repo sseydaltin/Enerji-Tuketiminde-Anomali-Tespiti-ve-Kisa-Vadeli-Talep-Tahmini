@@ -11,7 +11,7 @@ Eğitilenler (hepsi yalnız 2009-05-31'e kadarki veriyle; gerçek val/test kulla
 - S-F10-L48-oof{1,2}, S-F5-L48-oof{1,2}: A3 std tabloları için kat dışı modeller
   (katlar 2008-10 – 2009-01 ve 2009-02 – 2009-05; kat 3 yok).
 - S-A2: LSTM-AE, train 2006-12-16 – 2009-04-30, early stopping 2009-05.
-Komut: python -m src.train_summer_dev [--max_epochs 1]  (1 epoch = smoke test)
+Komut: python -m experiments.archive.train_summer_dev [--max_epochs 1]  (1 epoch = smoke test)
 """
 
 import argparse

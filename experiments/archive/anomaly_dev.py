@@ -4,14 +4,14 @@ Kurallar:
 - Kümeler: kış-dev (= val_dev, 2009-10 – 2009-12) ve yaz-dev (= OOF kat 3, 2009-06 – 2009-09).
   val_hold ve test bu modülde HİÇ kullanılmaz.
 - Kış-dev: final protokolün modelleri ve OOF std'si (tüm train ile).
-- Yaz-dev: kat 3'ü görmemiş zincir (src/train_summer_dev.py): Optuna öncesi tahmin modelleri,
+- Yaz-dev: kat 3'ü görmemiş zincir (experiments/archive/train_summer_dev.py): Optuna öncesi tahmin modelleri,
   kat 1–2 OOF std'si, yeniden fit edilmiş A1, yeniden eğitilmiş A2; σ tablosu ve spike sınırı
   yalnız 2009-05-31'e kadarki veriden.
 - Seçim (pencere, eşik) yalnız ORTA senaryoda, iki kümenin kopyaları birlikte; kolay ve zor
   aynı pencere/eşikle ayrıca raporlanır.
 
 Bu betik (Aşama 2) mevcut yöntemlerin yeni protokoldeki başlangıç noktasını üretir.
-Komut: python -m src.anomaly_dev
+Komut: python -m experiments.archive.anomaly_dev
 """
 
 import argparse

@@ -3,7 +3,7 @@
 f_t = (y_t < taban) VE (y_{t−1} < taban); taban = train 0,5. yüzdeliği (yalnız train).
 Alarm = (A3-s2s-hmean / q_A3 ≥ 1,1636) VEYA f_t. Orta senaryo + drop duyarlılık senaryosu
 (drop değeri = train 5. yüzdeliği). Hiçbir eşik seçilmez. val_hold ve test KULLANILMAZ.
-Komut: python -m src.anomaly_floor_channel
+Komut: python -m experiments.archive.anomaly_floor_channel
 """
 
 import argparse
@@ -13,11 +13,11 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from src.anomaly_candidates import S0_SCALED_THRESHOLD, decide, summarize
-from src.anomaly_dev import SET_KEYS, prepare_set
-from src.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_metrics, paired
-from src.anomaly_eval_audit import sha256
-from src.anomaly_short_event import change_table, score_copies, signal_frame
+from experiments.archive.anomaly_candidates import S0_SCALED_THRESHOLD, decide, summarize
+from experiments.archive.anomaly_dev import SET_KEYS, prepare_set
+from experiments.archive.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_metrics, paired
+from experiments.archive.anomaly_eval_audit import sha256
+from experiments.archive.anomaly_short_event import change_table, score_copies, signal_frame
 from src.data.inject_anomalies import ANOMALY_TYPES
 from src.data.load import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import with_context

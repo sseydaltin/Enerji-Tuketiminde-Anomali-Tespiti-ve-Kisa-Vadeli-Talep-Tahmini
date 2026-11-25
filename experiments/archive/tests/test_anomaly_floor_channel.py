@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from src.anomaly_floor_channel import combined, floor_flags
+from experiments.archive.anomaly_floor_channel import combined, floor_flags
 
 
 def test_floor_needs_two_consecutive_low_hours_and_only_past():
@@ -27,8 +27,8 @@ def test_experimental_config_matches_script_constants():
 
     import yaml
 
-    from src.anomaly_candidates import S0_SCALED_THRESHOLD
-    from src.anomaly_floor_channel import FLOOR_QUANTILE, SENSITIVITY_QUANTILE
+    from experiments.archive.anomaly_candidates import S0_SCALED_THRESHOLD
+    from experiments.archive.anomaly_floor_channel import FLOOR_QUANTILE, SENSITIVITY_QUANTILE
 
     path = Path(__file__).resolve().parents[1] / "configs/experimental_s0_floor.yaml"
     config = yaml.safe_load(path.read_text(encoding="utf-8"))["experimental_s0_floor"]

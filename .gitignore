@@ -22,7 +22,7 @@ data/processed/*
 # --- Model ağırlıkları: eğitim betikleriyle yeniden üretilir (yedek repo dışında) ---
 models/*.pt
 models/eld/*.pt
-# Gözetimli anomali dedektörü (sentetik eğitim): python -m src.anomaly_supervised ile yeniden üretilir
+# Gözetimli anomali dedektörü (sentetik eğitim): python -m experiments.archive.anomaly_supervised ile yeniden üretilir
 models/anomaly_supervised/
 
 # --- Kayıtlı val/test tahminleri (yeniden üretilebilir, büyük) ---

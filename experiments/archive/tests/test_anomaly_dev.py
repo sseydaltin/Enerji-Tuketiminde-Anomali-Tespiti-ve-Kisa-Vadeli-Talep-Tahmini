@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from src.anomaly_dev import dev_scenario_settings, dev_splits, set_config
+from experiments.archive.anomaly_dev import dev_scenario_settings, dev_splits, set_config
 from src.anomaly_protocol import scenario_settings
 from src.data.load import load_config
 

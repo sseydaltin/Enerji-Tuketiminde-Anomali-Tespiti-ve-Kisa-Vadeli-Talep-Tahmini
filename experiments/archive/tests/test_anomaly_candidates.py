@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.anomaly_candidates import c1_score, day_type, fit_floor, robust_profile
+from experiments.archive.anomaly_candidates import c1_score, day_type, fit_floor, robust_profile
 
 T = "Global_active_power"
 

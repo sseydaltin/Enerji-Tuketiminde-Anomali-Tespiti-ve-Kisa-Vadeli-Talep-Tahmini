@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from src.anomaly_eval_audit import alarm_mask, copy_row
+from experiments.archive.anomaly_eval_audit import alarm_mask, copy_row
 
 
 def test_false_blocks_split_into_background_and_new():

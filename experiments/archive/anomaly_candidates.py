@@ -5,7 +5,7 @@ aynı saat ve aynı gün tipindeki (hafta içi / hafta sonu-tatil) gözlemleri, 
 C2: max(A3-s2s-hmean / q_A3, C1 / q_C1).
 Referanslar S0-yerel, A0, A3-s2s-norm aynı kopyalarda, kayıtlı ayarlarıyla. Kümeler kış-dev + yaz-dev,
 orta senaryo; val_hold ve test KULLANILMAZ. Tahmin modeli eğitilmez.
-Komut: python -m src.anomaly_candidates
+Komut: python -m experiments.archive.anomaly_candidates
 """
 
 import argparse
@@ -15,9 +15,9 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from src.anomaly_dev import SET_KEYS, prepare_set, score_set
-from src.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_metrics, paired
-from src.anomaly_eval_audit import sha256
+from experiments.archive.anomaly_dev import SET_KEYS, prepare_set, score_set
+from experiments.archive.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_metrics, paired
+from experiments.archive.anomaly_eval_audit import sha256
 from src.data.inject_anomalies import ANOMALY_TYPES
 from src.data.load import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import score_frame, smooth_scores, with_context

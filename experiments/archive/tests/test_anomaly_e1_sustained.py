@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from src.anomaly_e1_sustained import scores_for, sustained
+from experiments.archive.anomaly_e1_sustained import scores_for, sustained
 
 
 def make_signals(z):

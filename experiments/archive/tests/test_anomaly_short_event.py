@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from src.anomaly_short_event import (
+from experiments.archive.anomaly_short_event import (
     EXPERIMENTS,
     change_scores,
     change_table,

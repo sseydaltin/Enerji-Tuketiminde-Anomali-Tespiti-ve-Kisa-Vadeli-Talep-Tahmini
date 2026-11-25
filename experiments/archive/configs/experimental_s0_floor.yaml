@@ -2,7 +2,7 @@
 # Final anomali yöntemi A3-s2s-norm'dur (configs/config.yaml, results/tables/anomaly_protocol_selection.csv).
 # Kanıt ve sınırlar: docs/anomaly_floor_channel.md. Drop kazancı, enjekte değerin (0,05 kW) taban
 # altında kalmasına bağlıdır; drop değeri tabanın üstünde olunca kazanç sıfırdır. Bağımsız doğrulama yok.
-# Çalıştırma: python -m src.anomaly_floor_channel   (bu değerler src/anomaly_floor_channel.py ile aynıdır)
+# Çalıştırma: python -m experiments.archive.anomaly_floor_channel   (bu değerler experiments/archive/anomaly_floor_channel.py ile aynıdır)
 experimental_s0_floor:
   status: "deneysel — geliştirme verisinde değerlendirildi"
   short_channel:

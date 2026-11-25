@@ -3,7 +3,7 @@
 Protokol: docs/anomaly_or_channels.md. Birleşimden sonra yumuşatma yok; eşdeğer skor
 r = max(a/T1, c/T2), alarm r ≥ 1. Kümeler kış-dev + yaz-dev, orta senaryo; val_hold ve test
 KULLANILMAZ. Tahmin modeli eğitilmez. Eşikler aynı geliştirme kopyalarında seçildi (seçim yanlılığı).
-Komut: python -m src.anomaly_or_channels
+Komut: python -m experiments.archive.anomaly_or_channels
 """
 
 import argparse
@@ -12,10 +12,16 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from src.anomaly_candidates import S0_SCALED_THRESHOLD, decide, evaluation_arrays, prepare, summarize
-from src.anomaly_dev import SET_KEYS
-from src.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_metrics, paired
-from src.anomaly_eval_audit import sha256
+from experiments.archive.anomaly_candidates import (
+    S0_SCALED_THRESHOLD,
+    decide,
+    evaluation_arrays,
+    prepare,
+    summarize,
+)
+from experiments.archive.anomaly_dev import SET_KEYS
+from experiments.archive.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_metrics, paired
+from experiments.archive.anomaly_eval_audit import sha256
 from src.data.inject_anomalies import ANOMALY_TYPES
 from src.data.load import PROJECT_ROOT, load_config
 from src.utils.anomaly_metrics import event_metrics, runs

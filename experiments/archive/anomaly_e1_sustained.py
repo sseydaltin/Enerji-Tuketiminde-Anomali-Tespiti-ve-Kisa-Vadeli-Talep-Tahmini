@@ -4,7 +4,7 @@ Skor: E1-w = max(A3 / q_A3, u^(w) / q_u), u^(w)_t = |ort(z̄_{t−w+1}, …, z̄
 ortalama normalize artık (= spike − drop). q'lar train OOF saatlerinin 99. yüzdeliği.
 Adaylar w ∈ {3, 6}; referans S0-yerel (A3-s2s-hmean, Aşama 3 eşiği, bu makinedeki ağırlıklar).
 Kümeler kış-dev + yaz-dev, orta senaryo; val_hold ve test KULLANILMAZ. Tahmin modeli eğitilmez.
-Komut: python -m src.anomaly_e1_sustained
+Komut: python -m experiments.archive.anomaly_e1_sustained
 """
 
 import argparse
@@ -16,9 +16,9 @@ import pandas as pd
 from scipy import stats
 from sklearn.metrics import average_precision_score
 
-from src.anomaly_dev import SET_KEYS, prepare_set
-from src.anomaly_eval_audit import sha256
-from src.anomaly_short_event import change_table, score_copies, signal_frame
+from experiments.archive.anomaly_dev import SET_KEYS, prepare_set
+from experiments.archive.anomaly_eval_audit import sha256
+from experiments.archive.anomaly_short_event import change_table, score_copies, signal_frame
 from src.data.inject_anomalies import ANOMALY_TYPES
 from src.data.load import PROJECT_ROOT, load_config
 from src.evaluate_anomaly import with_context

@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from src.anomaly_or_channels import added_false_alarms, attribution, or_score
+from experiments.archive.anomaly_or_channels import added_false_alarms, attribution, or_score
 
 
 def test_or_score_equals_or_of_channel_decisions():

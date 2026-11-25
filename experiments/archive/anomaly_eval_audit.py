@@ -13,7 +13,7 @@ Kümeler kış-dev ve yaz-dev, orta senaryo (seçim senaryosu); val_hold ve test
   olarak ayrıca sayılır ve metriklerden çıkarılmaz.
 Ek teşhis (yalnız S0): bir anomali tipini kusursuz yakalayan "kâhin" eklenseydi olay F1 ne olurdu.
 
-Komut: python -m src.anomaly_eval_audit
+Komut: python -m experiments.archive.anomaly_eval_audit
 Çıktılar: results/tables/anomaly_eval_audit_{per_seed,summary,background,oracle}.csv,
           results/tables/repro_manifest.csv
 """
@@ -28,8 +28,8 @@ import pandas as pd
 import sklearn
 import torch
 
-from src.anomaly_dev import SET_KEYS, prepare_set, score_set
-from src.anomaly_short_event import (
+from experiments.archive.anomaly_dev import SET_KEYS, prepare_set, score_set
+from experiments.archive.anomaly_short_event import (
     EXPERIMENTS,
     change_table,
     combined_score,

@@ -5,7 +5,7 @@ Yöntem değişikliği: tek bir skoru eşiklemek yerine, yalnız geçmişten hes
 dönemlerinden ÖNCEKİ OOF dönemine enjekte edilen çeşitlendirilmiş sentetik anomalilerle eğitilir.
 Eşik, eğitim döneminin iç doğrulama kopyalarında seçilir ve dev değerlendirmesinden önce dondurulur.
 val_hold ve test KULLANILMAZ. Tahmin modeli eğitilmez (kayıtlı OOF ve ana ağırlıklar).
-Komut: python -m src.anomaly_supervised
+Komut: python -m experiments.archive.anomaly_supervised
 """
 
 import argparse
@@ -22,12 +22,21 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from src.anomaly_candidates import S0_SCALED_THRESHOLD, decide, evaluation_arrays, fit_floor, prepare, robust_profile, day_type, summarize
-from src.anomaly_dev import SET_KEYS, dev_scenario_settings, prepare_set
-from src.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_metrics, paired
-from src.anomaly_eval_audit import sha256
-from src.anomaly_floor_channel import combined, floor_flags
-from src.anomaly_short_event import change_table, signal_frame
+from experiments.archive.anomaly_candidates import (
+    S0_SCALED_THRESHOLD,
+    decide,
+    evaluation_arrays,
+    fit_floor,
+    prepare,
+    robust_profile,
+    day_type,
+    summarize,
+)
+from experiments.archive.anomaly_dev import SET_KEYS, dev_scenario_settings, prepare_set
+from experiments.archive.anomaly_e1_sustained import MANIFEST_ITEMS, Log, copy_metrics, paired
+from experiments.archive.anomaly_eval_audit import sha256
+from experiments.archive.anomaly_floor_channel import combined, floor_flags
+from experiments.archive.anomaly_short_event import change_table, signal_frame
 from src.data.inject_anomalies import ANOMALY_TYPES, inject_anomalies, sigma_for
 from src.data.load import PROJECT_ROOT, load_config
 from src.models.residual_detector import (
