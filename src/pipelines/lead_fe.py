@@ -16,9 +16,13 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import GroupKFold
 
+import torch
+from sklearn.metrics import average_precision_score
+
 from src.datasets.lead.evaluate import evaluate, f1_max_threshold
-from src.datasets.lead.features import fe_columns, fe_group
-from src.pipelines.lead_models import (a3_score_grid, fit_lgb, log_run, negative_subsample, record, train_a3)
+from src.datasets.lead.features import CALENDAR, fe_columns, fe_group
+from src.pipelines.lead_models import (a3_score_grid, device, fit_lgb, log_run, negative_subsample, record,
+                                       run_a3, run_deep, run_ensemble, run_rules, sequence_array, train_a3)
 
 GROUP_ORDER = ["G1", "G2", "G3", "G4", "G5", "G6", "G7"]
 CV_SLICES = ("genel", "gap_edge", "frozen", "other")
@@ -64,10 +68,10 @@ def l1_params(ctx, seed, variant):
     return json.loads(row["params"].iloc[0])
 
 
-def cv_folds(ctx, seed):
+def cv_folds(ctx, seed, kind="bina"):
     """Train binalarında binaya göre gruplu 3 kat. Çıktı: (train satır indeksleri, [(fit, tutulan) kat indeksleri],
     kat başına tutulan binalar). GroupKFold karıştırmaz: aynı seed → aynı katlar (G7 OOF ile ortak)."""
-    split = ctx.split("bina", seed)
+    split = ctx.split(kind, seed)
     train_idx = np.flatnonzero(ctx.rows(split["train"]))
     k = ctx.config["budget"]["cv_folds"]
     folds = list(GroupKFold(k).split(train_idx, groups=ctx.building[train_idx]))
@@ -76,38 +80,39 @@ def cv_folds(ctx, seed):
 
 
 # ----------------------------------------------------------------------------- G7: L4-semi OOF
-def stacked_l4semi(ctx, seed):
+def stacked_l4semi(ctx, seed, kind="bina"):
     """G7 skoru ızgara sırasında [B·H]: train binaları OOF, val binaları tam-train L4-semi, test binaları NaN.
 
     OOF: her kat için L4-semi, o katın binaları HARİÇ diğer train binalarıyla eğitilir (ölçek de onlardan);
     tutulan bina kullanılmadığı için erken durdurma yok, epoch sayısı tam-train L4-semi'nin en iyi epoch'u.
     Val binalarının skoru kayıtlı L4-semi koşusundan (results/lead/scores/, val satır sırası). Sonuç önbelleğe
-    yazılır (results/lead/scores/g7_bina_{seed}.npy).
+    yazılır (results/lead/scores/g7_{kind}_{seed}.npy). kind="site": siteye göre bölmenin kendi train/val'i.
+    Not: tam-train L4-semi'nin val erken durdurması val etiketli saatleri kayıptan çıkarır (val etiketi görür).
     """
-    cache = ctx.scores_dir / f"g7_bina_{seed}.npy"
+    cache = ctx.scores_dir / f"g7_{kind}_{seed}.npy"
     if cache.is_file():
         return np.load(cache)
     started = time.time()
-    split = ctx.split("bina", seed)
+    split = ctx.split(kind, seed)
     runs = pd.read_csv(ctx.tables.parent / "experiments.csv")
-    epochs = int(runs[(runs["model"] == "L4-semi") & (runs["bolme"] == "bina") & (runs["seed"] == seed)]
+    epochs = int(runs[(runs["model"] == "L4-semi") & (runs["bolme"] == kind) & (runs["seed"] == seed)]
                  ["best_epoch"].iloc[0])
     B, H = len(ctx.buildings), ctx.n_hours
     grid_scores = np.full((B, H), np.nan, dtype=np.float32)
-    _, _, held = cv_folds(ctx, seed)
+    _, _, held = cv_folds(ctx, seed, kind)
     for f, held_b in enumerate(held):
         fit_b = np.setdiff1d(split["train"], held_b)
         model, array, _, _ = train_a3(ctx, fit_b, seed + f, semi=True, fixed_epochs=epochs)
         scores, rows = a3_score_grid(ctx, model, array, held_b)
         grid_scores[rows] = scores
-        print(f"  G7 OOF seed {seed} kat {f}: {len(fit_b)} binayla eğitildi, {len(held_b)} bina skorlandı "
+        print(f"  G7 OOF {kind} seed {seed} kat {f}: {len(fit_b)} binayla eğitildi, {len(held_b)} bina skorlandı "
               f"({time.time() - started:.0f} s)", flush=True)
     val = ctx.rows(split["val"])
-    val_scores = np.load(ctx.scores_dir / f"bina_{seed}_L4-semi_-.npy")
+    val_scores = np.load(ctx.scores_dir / f"{kind}_{seed}_L4-semi_-.npy")
     grid_scores.reshape(-1)[ctx.obs[val]] = val_scores        # val satırları: kayıtlı L4-semi skoru
     flat = grid_scores.reshape(-1)
     np.save(cache, flat)
-    log_run(ctx, {"model": "G7-OOF", "set": "-", "bolme": "bina", "seed": seed,
+    log_run(ctx, {"model": "G7-OOF", "set": "-", "bolme": kind, "seed": seed,
                   "params": json.dumps({"fixed_epochs": epochs}), "best_epoch": epochs,
                   "train_time_s": round(time.time() - started, 1)})
     return flat
@@ -277,18 +282,23 @@ def run_fe(ctx, seeds):
 
 
 # ----------------------------------------------------------------------------- L1-FE (val, seed başına bir kez)
-def run_l1_fe(ctx, seeds, variants=("full", "behavior")):
-    """Ablasyonda seçilen setle L1-FE: L1 ayarları, bütün train binalarında eğitim, val'de erken durdurma ve eşik."""
-    store = FeatureStore(ctx)
+def selected_groups(ctx, seed):
+    """Bina bölmesinde o seed'in ablasyonla seçtiği gruplar (site kontrolü de bunları kullanır)."""
     runs = pd.read_csv(ctx.tables.parent / "experiments.csv")
+    row = runs[(runs["model"] == "L-FE-ablasyon") & (runs["bolme"] == "bina") & (runs["seed"] == seed)]
+    return json.loads(row["params"].iloc[0])["secilen"]
+
+
+def run_l1_fe(ctx, seeds, variants=("full", "behavior"), kind="bina", store=None):
+    """Ablasyonda seçilen setle L1-FE: L1 ayarları, bütün train binalarında eğitim, val'de erken durdurma ve eşik."""
+    store = store or FeatureStore(ctx)
     settings, budget = ctx.config["lightgbm"], ctx.config["budget"]
     for seed in seeds:
-        row = runs[(runs["model"] == "L-FE-ablasyon") & (runs["seed"] == seed)]
-        groups = json.loads(row["params"].iloc[0])["secilen"]
-        split = ctx.split("bina", seed)
+        groups = selected_groups(ctx, seed)
+        split = ctx.split(kind, seed)
         train_idx = np.flatnonzero(ctx.rows(split["train"]))
         val = ctx.rows(split["val"])
-        stacked = stacked_l4semi(ctx, seed) if "G7" in groups else None
+        stacked = stacked_l4semi(ctx, seed, kind) if "G7" in groups else None
         for variant in variants:
             started = time.time()
             X, columns, categorical = store.matrix(groups, variant, stacked)
@@ -296,9 +306,106 @@ def run_l1_fe(ctx, seeds, variants=("full", "behavior")):
             fit_rows = negative_subsample(train_idx, ctx.y, budget["negative_fraction"], seed)
             model = fit_lgb(X[fit_rows], ctx.y[fit_rows], X[val], ctx.y[val], params, seed, settings, categorical)
             scores = model.predict_proba(X[val])[:, 1]
-            record(ctx, "L1-FE", variant, "bina", seed, f1_max_threshold(ctx.y[val], scores), val, scores,
+            record(ctx, "L1-FE", variant, kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores,
                    {"gruplar": groups, "best_iteration": int(model.best_iteration_ or 0)})
-            log_run(ctx, {"model": "L1-FE", "set": variant, "bolme": "bina", "seed": seed,
+            log_run(ctx, {"model": "L1-FE", "set": variant, "bolme": kind, "seed": seed,
                           "params": json.dumps({"gruplar": groups, **params}),
                           "best_epoch": int(model.best_iteration_ or 0),
                           "train_time_s": round(time.time() - started, 1)})
+
+
+# ----------------------------------------------------------------------------- L2-FE, L5-FE, site kontrolü (§18.3)
+def composite_metric(ctx):
+    """Optuna amacı ve erken durdurma ölçütü: (genel PR-AUC + `other` PR-AUC) / 2.
+
+    `other` PR-AUC: bütün normal saatler + `other` alt türündeki anomali saatleri (değerlendirmedeki dilim tanımı).
+    """
+    subtype = ctx.labels["subtype"].to_numpy()
+
+    def metric(rows, scores):
+        y, st = ctx.y[rows], subtype[rows]
+        other = (st == "normal") | (st == "other")
+        return 0.5 * (average_precision_score(y, scores) + average_precision_score(y[other], scores[other]))
+    return metric
+
+
+def fe_sequence_array(ctx, store, kind, seed, variant, groups, stacked):
+    """L2-FE girdisi [B, H, C] (GPU, float32): L2'nin kanalları + seçilen grupların öznitelikleri (takvim hariç).
+
+    Sızıntı önlemleri: kırpma sınırları (%1–%99) ve ortalama/std YALNIZ train binalarının gözlenen saatlerinden;
+    NaN → 0 (= train ortalaması). primary_use (G6) sıra bilgisi taşımasın diye tek-sıcak (one-hot) kanallara açılır.
+    """
+    split = ctx.split(kind, seed)
+    base = sequence_array(ctx, split["train"], variant)               # [B, H, 1(+1)+7]
+    B, H = len(ctx.buildings), ctx.n_hours
+    columns = [c for c in fe_columns(groups, variant) if c not in CALENDAR and c != "primary_use"]
+    parts = [fe_group(ctx.grid, g, variant, primary_use=store.primary_use, stacked=stacked) for g in groups]
+    X = pd.concat(parts, axis=1)[columns].to_numpy(np.float32)       # [B·H, F]
+    train_rows = (np.isin(ctx.grid["building_id"].to_numpy(), split["train"])
+                  & (ctx.grid["observed"].to_numpy() == 1))
+    low = np.nanpercentile(X[train_rows], 1, axis=0)
+    high = np.nanpercentile(X[train_rows], 99, axis=0)
+    X = np.clip(X, low, high)                                        # aşırı z değerleri (IQR≈0) GRU'yu bozmasın
+    mean, std = np.nanmean(X[train_rows], axis=0), np.nanstd(X[train_rows], axis=0) + 1e-6
+    X = np.nan_to_num((X - mean) / std, nan=0.0).astype(np.float32)
+    extra = [X.reshape(B, H, -1)]
+    if "G6" in groups:
+        codes = ctx.grid["building_id"].map(store.primary_use).to_numpy().reshape(B, H)
+        n_use = max(store.primary_use.values()) + 1
+        extra.append(np.eye(n_use, dtype=np.float32)[codes])         # [B, H, kullanım türü sayısı]
+    extra = torch.tensor(np.concatenate(extra, axis=2), device=device())
+    return torch.cat([base, extra], dim=2)
+
+
+def memory_estimate_gb(ctx, channels, window, batch=512):
+    """Tahmini bellek (GB): dizi [B, H, C] + bir eğitim partisinin pencereleri + değerlendirme partisi (8192)."""
+    array = len(ctx.buildings) * ctx.n_hours * channels * 4
+    windows = (batch + 8192) * window * channels * 4
+    return (array + windows) / 1e9
+
+
+def run_l2_fe(ctx, seeds, variants=("full", "behavior"), kind="bina", n_trials=None, store=None):
+    """L2-FE: GRU, seed'in seçtiği öznitelikler zaman adımı başına. bina: Optuna (bileşik amaç); site: bina
+    bölmesinin aynı seed/varyant ayarları (Optuna yok)."""
+    store = store or FeatureStore(ctx)
+    runs = pd.read_csv(ctx.tables.parent / "experiments.csv")
+    for seed in seeds:
+        groups = selected_groups(ctx, seed)
+        stacked = stacked_l4semi(ctx, seed, kind) if "G7" in groups else None
+        for variant in variants:
+            array = fe_sequence_array(ctx, store, kind, seed, variant, groups, stacked)
+            gb = memory_estimate_gb(ctx, array.shape[2], ctx.config["deep"]["window"])
+            print(f"  L2-FE {kind}/{seed}/{variant}: kanal {array.shape[2]}, tahmini bellek {gb:.2f} GB", flush=True)
+            if gb > 6.0:                                             # §18.3: 6 GB'ı aşarsa pencere 24
+                ctx.config["deep"]["window"] = 24
+                print("  bellek > 6 GB: pencere 24 saate düşürüldü", flush=True)
+            params = None
+            if kind != "bina":
+                row = runs[(runs["model"] == "L2-FE") & (runs["set"] == variant) & (runs["bolme"] == "bina")
+                           & (runs["seed"] == seed)]
+                params = json.loads(row["params"].iloc[0])
+            run_deep(ctx, "L2", kind, seed, variant, params=params, n_trials=n_trials, array=array,
+                     name="L2-FE", metric=composite_metric(ctx), use_loader=True,
+                     extra={"gruplar": groups, "kanal": int(array.shape[2]), "bellek_gb": round(gb, 2)})
+            del array
+            torch.cuda.empty_cache()
+
+
+def run_l5_fe(ctx, seeds, variants=("full", "behavior"), kind="bina"):
+    """L5-FE: w·L1-FE + (1−w)·L2-FE, aynı varyant; w val PR-AUC ile (§8 L5 kuralı)."""
+    for seed in seeds:
+        for variant in variants:
+            run_ensemble(ctx, kind, seed, variant, members=("L1-FE", "L2-FE"), name="L5-FE")
+
+
+def run_site_fe(ctx, seeds, variants=("full", "behavior")):
+    """Siteye göre bölme kontrolü (§18.3): L0 kuralları (A0 dahil), L4, L4-semi (G7 için), L1-FE, L2-FE, L5-FE.
+    Öznitelik grupları ve ayarlar bina bölmesinin aynı seed'inden; eşik ve erken durdurma site val'inde."""
+    store = FeatureStore(ctx)
+    for seed in seeds:
+        run_rules(ctx, "site", seed)
+        run_a3(ctx, "site", seed)
+        run_a3(ctx, "site", seed, semi=True)                          # G7'nin site val skoru ve OOF epoch'u
+    run_l1_fe(ctx, seeds, variants, kind="site", store=store)
+    run_l2_fe(ctx, seeds, variants, kind="site", store=store)
+    run_l5_fe(ctx, seeds, variants, kind="site")

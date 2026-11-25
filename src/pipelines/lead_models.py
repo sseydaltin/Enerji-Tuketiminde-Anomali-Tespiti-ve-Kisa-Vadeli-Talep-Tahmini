@@ -22,6 +22,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.metrics import average_precision_score
 from sklearn.model_selection import GroupKFold
 from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
 
 from src.core.config import PROJECT_ROOT
 from src.core.results_io import resolve_path
@@ -280,8 +281,12 @@ def predict_logits(model, array, b, t, length, batch=8192):
 
 
 def train_classifier(make_model, array, fit_rows, stop_rows, ctx, params, max_epochs, patience, seed,
-                     trial=None, step=0):
-    """Ağırlıklı BCE ile eğitir; stop_rows'ta PR-AUC ile erken durdurur. Çıktı: (en iyi PR-AUC, durum, epoch)."""
+                     trial=None, step=0, metric=None, use_loader=False):
+    """Ağırlıklı BCE ile eğitir; stop_rows'ta ölçütle erken durdurur. Çıktı: (en iyi ölçüt, durum, epoch).
+
+    metric(rows, scores): erken durdurma ölçütü; None → genel PR-AUC (L2). use_loader=True (L2-FE): karışık
+    satır indeksleri DataLoader'dan (num_workers=0) gelir, pencereler her parti için ayrı üretilir.
+    """
     set_seed(seed)
     dev = device()
     model = make_model().to(dev)
@@ -296,15 +301,21 @@ def train_classifier(make_model, array, fit_rows, stop_rows, ctx, params, max_ep
     best, best_state, best_epoch, wait = -1.0, None, 0, 0
     for epoch in range(1, max_epochs + 1):
         model.train()
-        order = torch.randperm(len(y_fit), generator=generator).to(dev)
-        for i in range(0, len(order), params["batch_size"]):
-            batch = order[i:i + params["batch_size"]]
+        if use_loader:
+            loader = DataLoader(TensorDataset(torch.arange(len(y_fit))), batch_size=params["batch_size"],
+                                shuffle=True, generator=generator, num_workers=0)
+            batches = (idx.to(dev) for (idx,) in loader)
+        else:
+            order = torch.randperm(len(y_fit), generator=generator).to(dev)
+            batches = (order[i:i + params["batch_size"]] for i in range(0, len(order), params["batch_size"]))
+        for batch in batches:
             optimizer.zero_grad()
             loss = loss_fn(model(windows(array, b_fit[batch], t_fit[batch], L)), y_fit[batch])
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), ctx.config["deep"]["grad_clip"])
             optimizer.step()
-        score = average_precision_score(ctx.y[stop_rows], predict_logits(model, array, b_stop, t_stop, L))
+        logits = predict_logits(model, array, b_stop, t_stop, L)
+        score = metric(stop_rows, logits) if metric else average_precision_score(ctx.y[stop_rows], logits)
         if trial is not None:
             trial.report(score, step + epoch)
             if trial.should_prune():
@@ -339,11 +350,18 @@ def model_factory(architecture, channels, p):
     return lambda: CNNGRUClassifier(channels, p["hidden"], p["layers"], p["dropout"], p["filters"], p["kernel"])
 
 
-def run_deep(ctx, architecture, kind, seed, feature_set, params=None, n_trials=None):
-    """L2 / L3: Optuna (train binalarında gruplu CV, MedianPruner, epoch sınırı) → son eğitim → val."""
+def run_deep(ctx, architecture, kind, seed, feature_set, params=None, n_trials=None, array=None, name=None,
+             metric=None, use_loader=False, extra=None):
+    """L2 / L3: Optuna (train binalarında gruplu CV, MedianPruner, epoch sınırı) → son eğitim → val.
+
+    L2-FE (§18.3) için: array = öznitelik kanallı dizi, name = "L2-FE", metric = bileşik ölçüt (Optuna amacı ve
+    erken durdurma), use_loader = DataLoader ile parti; extra = kayda eklenecek bilgi (öznitelik grupları).
+    """
     started = time.time()
     split = ctx.split(kind, seed)
-    array = sequence_array(ctx, split["train"], feature_set)
+    name = name or architecture
+    if array is None:
+        array = sequence_array(ctx, split["train"], feature_set)
     channels = array.shape[2]
     deep, budget = ctx.config["deep"], ctx.config["budget"]
     train_idx = np.flatnonzero(ctx.rows(split["train"]))
@@ -359,7 +377,8 @@ def run_deep(ctx, architecture, kind, seed, feature_set, params=None, n_trials=N
                 fit_rows = negative_subsample(train_idx[a], ctx.y, budget["negative_fraction"], seed + f)
                 best, _, _ = train_classifier(model_factory(architecture, channels, p), array, fit_rows,
                                               train_idx[b], ctx, p, deep["optuna_max_epochs"], 2, seed,
-                                              trial=trial, step=f * deep["optuna_max_epochs"])
+                                              trial=trial, step=f * deep["optuna_max_epochs"],
+                                              metric=metric, use_loader=use_loader)
                 scores.append(best)
             return float(np.mean(scores))
 
@@ -370,7 +389,8 @@ def run_deep(ctx, architecture, kind, seed, feature_set, params=None, n_trials=N
 
     fit_rows = negative_subsample(train_idx, ctx.y, budget["negative_fraction"], seed)
     _, state, epoch = train_classifier(model_factory(architecture, channels, params), array, fit_rows, val_idx,
-                                       ctx, params, deep["max_epochs"], deep["patience"], seed)
+                                       ctx, params, deep["max_epochs"], deep["patience"], seed,
+                                       metric=metric, use_loader=use_loader)
     model = model_factory(architecture, channels, params)().to(device())
     model.load_state_dict(state)
     dev = device()
@@ -378,9 +398,9 @@ def run_deep(ctx, architecture, kind, seed, feature_set, params=None, n_trials=N
                             torch.tensor(ctx.t_pos[val_idx], device=dev), deep["window"])
     scores = 1 / (1 + np.exp(-logits))
     val = ctx.rows(split["val"])
-    record(ctx, architecture, feature_set, kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores,
-           {"best_epoch": epoch})
-    log_run(ctx, {"model": architecture, "set": feature_set, "bolme": kind, "seed": seed,
+    record(ctx, name, feature_set, kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores,
+           {"best_epoch": epoch, **(extra or {})})
+    log_run(ctx, {"model": name, "set": feature_set, "bolme": kind, "seed": seed,
                   "params": json.dumps(params), "best_epoch": epoch, "train_time_s": round(time.time() - started, 1)})
     return params
 
@@ -512,15 +532,19 @@ def run_a3(ctx, kind, seed, semi=False):
 
 
 # ----------------------------------------------------------------------------- L5 ve Isolation Forest
-def run_ensemble(ctx, kind, seed, feature_set):
-    """L5: w·L1 + (1−w)·L2 (aynı öznitelik seti); w val PR-AUC ile {0, 0,1, …, 1} ızgarasından."""
+def run_ensemble(ctx, kind, seed, feature_set, members=("L1", "L2"), name="L5"):
+    """L5: w·L1 + (1−w)·L2 (aynı öznitelik seti); w val PR-AUC ile {0, 0,1, …, 1} ızgarasından.
+
+    L5-FE: members=("L1-FE", "L2-FE"), name="L5-FE".
+    """
     val = ctx.rows(ctx.split(kind, seed)["val"])
-    l1 = np.load(ctx.scores_dir / f"{kind}_{seed}_L1_{feature_set}.npy")
-    l2 = np.load(ctx.scores_dir / f"{kind}_{seed}_L2_{feature_set}.npy")
+    l1 = np.load(ctx.scores_dir / f"{kind}_{seed}_{members[0]}_{feature_set}.npy")
+    l2 = np.load(ctx.scores_dir / f"{kind}_{seed}_{members[1]}_{feature_set}.npy")
     grid = np.round(np.arange(0, 1.01, 0.1), 1)
     w = max(grid, key=lambda w: average_precision_score(ctx.y[val], w * l1 + (1 - w) * l2))
     scores = w * l1 + (1 - w) * l2
-    record(ctx, "L5", feature_set, kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores, {"w_L1": float(w)})
+    record(ctx, name, feature_set, kind, seed, f1_max_threshold(ctx.y[val], scores), val, scores,
+           {"w_L1": float(w)})
 
 
 def run_isolation_forest(ctx, kind, seed):
