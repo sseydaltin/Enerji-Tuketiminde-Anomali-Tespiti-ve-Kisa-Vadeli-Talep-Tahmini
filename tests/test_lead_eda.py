@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.datasets.lead.eda import anomaly_events, coverage, length_bins, reading_flags
+from src.datasets.lead.eda import anomaly_events, coverage, gap_neighbors, length_bins, reading_flags
 
 
 def _frame(rows):
@@ -46,3 +46,10 @@ def test_length_bins():
     """Uzunluk kutuları sınırları dahil eder."""
     bins = length_bins(pd.Series([1, 2, 3, 5, 6, 24, 25, 169]))
     assert list(bins.astype(str)) == ["1", "2", "3–5", "3–5", "6–12", "13–24", "25–72", ">168"]
+
+
+def test_gap_neighbors():
+    """Eksik saatin iki yanındaki satırlar işaretlenir; ızgaranın genel başı/sonu boşluk sayılmaz."""
+    df = _frame([(1, 0, 1, 0), (1, 1, 1, 0), (1, 3, 1, 0), (1, 4, 1, 0),   # saat 2 eksik
+                 (2, 1, 1, 0), (2, 2, 1, 0)])                              # bina 2: saat 0, 3, 4 eksik
+    assert list(gap_neighbors(df)) == [False, True, True, False, True, True]

@@ -19,7 +19,7 @@ import pandas as pd
 from src.core.config import PROJECT_ROOT, load_config
 from src.core.console import setup_console
 from src.core.results_io import resolve_path
-from src.datasets.lead.eda import anomaly_events, coverage, length_bins, reading_flags
+from src.datasets.lead.eda import anomaly_events, coverage, gap_neighbors, length_bins, reading_flags
 from src.datasets.lead.load import clean, load_raw
 
 CONFIG_FILE = PROJECT_ROOT / "configs/lead.yaml"
@@ -132,6 +132,32 @@ def frozen_sensitivity(df, run_length, tables_dir, min_runs=(2, 3, 6, 12, 24)):
     table = pd.DataFrame(rows)
     table.to_csv(tables_dir / "frozen_sensitivity.csv", index=False)
     print(table.round(4).to_string(index=False), "\n")
+
+
+def gap_table(df, events, tables_dir):
+    """Veri boşluğu kenarı ile etiket ilişkisi: anomali/normal saatlerin ve olayların ne kadarı eksik saate komşu?
+
+    Olay, ilk saatinden önceki veya son saatinden sonraki saat eksikse "boşluğa komşu" sayılır
+    (olayın içi boşluksuz olduğu için bu, ilk ve son satırın gap_neighbors bayrağına eşittir).
+    Neden: Etiket incelemesinde tek saatlik etiketlerin sık sık boşluk kenarında durduğu görüldü.
+    """
+    near = gap_neighbors(df)
+    is_anomaly = df["anomaly"].to_numpy() == 1
+    row = pd.Series(np.arange(len(df)), index=pd.MultiIndex.from_frame(df[["building_id", "timestamp"]]))
+    first = row.reindex(pd.MultiIndex.from_frame(events[["building_id", "start"]])).to_numpy()
+    last = row.reindex(pd.MultiIndex.from_frame(events[["building_id", "end"]])).to_numpy()
+    event_near = near[first] | near[last]
+    single = events["length_hours"].to_numpy() == 1
+    rows = [("anomali saatleri", is_anomaly.sum(), near[is_anomaly].mean()),
+            ("normal saatler", (~is_anomaly).sum(), near[~is_anomaly].mean()),
+            ("anomali olayları (tümü)", len(events), event_near.mean()),
+            ("tek saatlik olaylar", single.sum(), event_near[single].mean()),
+            ("çok saatlik olaylar", (~single).sum(), event_near[~single].mean()),
+            ("eksik saate komşu saatlerde anomali oranı", near.sum(), is_anomaly[near].mean())]
+    table = pd.DataFrame(rows, columns=["grup", "n", "oran"])
+    table.to_csv(tables_dir / "gap_adjacency.csv", index=False)
+    print(table.round(4).to_string(index=False))
+    print()
 
 
 def summary_figures(building, dist, zero_frozen, figures_dir):
@@ -249,6 +275,7 @@ def stage_eda(config):
     building, dist, zero_frozen, summary, missing = summary_tables(raw, df, cov, events, flags, p["tables_dir"])
     events.to_csv(p["tables_dir"] / "anomaly_events.csv", index=False)
     frozen_sensitivity(df, flags["run_length"].to_numpy(), p["tables_dir"])
+    gap_table(df, events, p["tables_dir"])
     summary_figures(building, dist, zero_frozen, p["figures_dir"])
     sample = sample_review(df, events, config)
     sample.to_csv(p["tables_dir"] / "label_review_sample.csv", index=False)

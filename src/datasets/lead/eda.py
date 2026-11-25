@@ -84,3 +84,19 @@ def length_bins(lengths):
     edges = [0, 1, 2, 5, 12, 24, 72, 168, np.inf]
     labels = ["1", "2", "3–5", "6–12", "13–24", "25–72", "73–168", ">168"]
     return pd.cut(lengths, bins=edges, labels=labels)
+
+
+def gap_neighbors(df):
+    """Her satır için: bir önceki veya bir sonraki saat EKSİK mi (aynı binada)? [N] bool.
+
+    Eksik saat: verinin genel ilk–son saat ızgarasında olup temiz tabloda bulunmayan saat.
+    Binanın ilk/son saati ızgaranın başı/sonu değilse o kenar da eksik komşu sayılır.
+    Neden: Etiket incelemesinde tek saatlik etiketlerin sık sık veri boşluğunun kenarında
+    durduğu görüldü; bunun ne kadar yaygın olduğunu ölçmek için.
+    """
+    start, end = df["timestamp"].min(), df["timestamp"].max()
+    same_building_prev = df["building_id"].eq(df["building_id"].shift())
+    same_building_next = df["building_id"].eq(df["building_id"].shift(-1))
+    prev_ok = (same_building_prev & df["timestamp"].diff().eq(HOUR)) | df["timestamp"].eq(start)
+    next_ok = (same_building_next & (-df["timestamp"].diff(-1)).eq(HOUR)) | df["timestamp"].eq(end)
+    return (~prev_ok | ~next_ok).to_numpy()
