@@ -160,7 +160,44 @@ def main():
               "ayrışması\" olarak yazılır.",
               "5. Val skorlarında val erken durdurmasından gelen hafif iyimserlik (§8.2, val özeti) test yönündeki farkı açıklamaz "
               "(o, val'i yüksek gösterirdi); farkın yönü tersidir.", ""]
-    lines += ["## 7. Notlar", ""] + [f"- **{m}:** {MODEL_NOTES[m]}" for m in sorted({m for m, _ in TEST_MODELS}) if m in MODEL_NOTES]
+    # 7. Test sonrası gözlem (kullanıcı isteğiyle; test sonrası, hiçbir seçimi değiştirmez)
+    fin = st[(st.model == FINAL_MODEL[0]) & (st.set == FINAL_MODEL[1])].set_index("dilim")
+    fe = st[(st.model == "L1-FE") & (st.set == "full")].set_index("dilim")
+    fin_v = sv[(sv.model == FINAL_MODEL[0]) & (sv.set == FINAL_MODEL[1])].set_index("dilim")
+    fe_v = sv[(sv.model == "L1-FE") & (sv.set == "full")].set_index("dilim")
+    lines += ["## 7. Test sonrası gözlem", "",
+              "> Bu bölüm test sonuçları görüldükten **sonra** yazıldı. Hiçbir seçimi, eşiği ya da ayarı değiştirmez.", "",
+              f"**Final model değişmeden kalır: {FINAL_MODEL[0]} / {FINAL_MODEL[1]}** (val'de §18.2 + §21 ile seçildi; protokol §13: "
+              "test sonucuna göre hiçbir şey değiştirilmez).", "",
+              "**L1-FE full testte daha iyi genelleşti:**", "",
+              "| model | other PR-AUC val | other PR-AUC test | genel PR-AUC val | genel PR-AUC test |", "|---|---|---|---|---|",
+              f"| {FINAL_MODEL[0]} / {FINAL_MODEL[1]} (final) | {pm(fin_v.loc['other', 'pr_auc'], fin_v.loc['other', 'pr_auc_std'])} | "
+              f"{pm(fin.loc['other', 'pr_auc'], fin.loc['other', 'pr_auc_std'])} | {pm(fin_v.loc['genel', 'pr_auc'], fin_v.loc['genel', 'pr_auc_std'])} | "
+              f"{pm(fin.loc['genel', 'pr_auc'], fin.loc['genel', 'pr_auc_std'])} |",
+              f"| L1-FE / full | {pm(fe_v.loc['other', 'pr_auc'], fe_v.loc['other', 'pr_auc_std'])} | "
+              f"{pm(fe.loc['other', 'pr_auc'], fe.loc['other', 'pr_auc_std'])} | {pm(fe_v.loc['genel', 'pr_auc'], fe_v.loc['genel', 'pr_auc_std'])} | "
+              f"{pm(fe.loc['genel', 'pr_auc'], fe.loc['genel', 'pr_auc_std'])} |", "",
+              f"Testte L1-FE full `other` PR-AUC'de {fe.loc['other', 'pr_auc']:.3f} ± {fe.loc['other', 'pr_auc_std']:.3f}, final model "
+              f"{fin.loc['other', 'pr_auc']:.3f} ± {fin.loc['other', 'pr_auc_std']:.3f}; genel PR-AUC'de {fe.loc['genel', 'pr_auc']:.3f} ve "
+              f"{fin.loc['genel', 'pr_auc']:.3f}. Val'de iki model gürültü düzeyindeydi (§21.2) ve seçim kuralı basitlik sırasıyla L1 behavior'ı seçti.", "",
+              "**Ders:** tek bir val kümesi (seed başına 40 bina) bu büyüklükteki farkları ayırt edemedi. Seçim, aynı 40 bina üzerinde "
+              "yapılan tek bir ölçüme dayandı; val parçasının bileşimi (aşağıda) sonucu modeller arasındaki farktan daha çok etkiledi. "
+              "**Öneri (gelecek çalışma):** model seçimi train+val binalarında **bina bazlı (gruplu) çapraz doğrulama** ile yapılmalı "
+              "(ör. 5 kat × birkaç tekrar; her katta farklı binalar tutulur); farklar kat başına eşleştirilmiş olarak ve daha fazla "
+              "bağımsız ölçümle değerlendirilmeli. L-FE ablasyonu ve I-turu bu yapıyı (3 kat) zaten train içinde kullandı; final seçim de "
+              "aynı yapıya taşınmalıydı.", "",
+              "**Bulgu: `other` skorları bina bileşimine çok duyarlı.** Aynı modelin `other` PR-AUC'si parçadan parçaya büyük ölçüde "
+              "değişiyor; kurallar ve etiketsiz modeller de aynı yönde etkileniyor. Val ve test parçalarının bileşimi "
+              "(`test_split_composition.csv`):", "",
+              "| seed | parça | bina | other tabanı | frozen payı | other payı | paylaşılan olay payı | paylaşılan other olay payı | other'ın ilk 3 binadaki payı |",
+              "|---|---|---|---|---|---|---|---|---|"]
+    for r in comp[comp.parca.isin(["val", "test"])].itertuples():
+        lines.append(f"| {r.seed} | {r.parca} | {r.n_bina} | {r.other_taban:.4f} | {r.frozen_pay:.3f} | {r.other_pay:.3f} | "
+                     f"{r.paylasilan_olay_pay:.3f} | {r.other_paylasilan_pay:.3f} | {r.other_ilk3_bina_pay:.3f} |")
+    lines += ["", "`other` saatlerinin %28–39'u parçanın yalnız 3 binasında; bu yüzden 40 binalık bir parçada birkaç binanın davranışı "
+              "`other` sonucunu belirliyor. Final modelin `other` PR-AUC'sinin seed'ler arası std'si testte "
+              f"{fin.loc['other', 'pr_auc_std']:.3f}, ortalamanın yarısından fazla.", ""]
+    lines += ["## 8. Notlar", ""] + [f"- **{m}:** {MODEL_NOTES[m]}" for m in sorted({m for m, _ in TEST_MODELS}) if m in MODEL_NOTES]
     lines += ["- L3 (CNN+GRU) eğitilmedi (§17). Site bölmesinde test yapılmadı (yalnız val sağlamlık kontrolüydü)."]
     (PROJECT_ROOT / "docs" / "lead_sonuclar.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines[:40]))
