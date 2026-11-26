@@ -1,7 +1,7 @@
 """Demo sayfalarının ortak görünümü: Türkçe etiketler, renkler ve Plotly şablonu.
 
 Bu modül yalnız sunum katmanıdır; hiçbir metrik hesaplamaz. Etiketlerin ve
-renklerin tek yerde durması, dört sayfanın aynı dili konuşmasını sağlar.
+renklerin tek yerde durması, bütün sayfaların aynı dili konuşmasını sağlar.
 """
 
 import plotly.graph_objects as go
