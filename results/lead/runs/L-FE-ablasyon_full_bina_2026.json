@@ -1,0 +1,1 @@
+{"model": "L-FE-ablasyon", "set": "full", "bolme": "bina", "seed": 2026, "params": "{\"secilen\": [\"G0\", \"G1\", \"G2\", \"G4\", \"G5\", \"G7\"]}", "best_epoch": null, "train_time_s": 818.3}

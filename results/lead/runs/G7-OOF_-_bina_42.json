@@ -1,0 +1,1 @@
+{"model": "G7-OOF", "set": "-", "bolme": "bina", "seed": 42, "params": "{\"fixed_epochs\": 28}", "best_epoch": 28, "train_time_s": 564.7}

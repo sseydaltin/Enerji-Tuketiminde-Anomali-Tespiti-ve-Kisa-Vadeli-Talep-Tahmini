@@ -1,0 +1,1 @@
+{"model": "L2-FE", "set": "full", "bolme": "bina", "seed": 7, "params": "{\"hidden\": 64, \"layers\": 2, \"dropout\": 0.29339685359898077, \"lr\": 0.001036614131801362, \"batch_size\": 256}", "best_epoch": 1, "train_time_s": 417.1}
