@@ -41,6 +41,8 @@ Notlar:
 
 ## 3. Final model önerisi (§18.2)
 
+> **Güncelleme (2026-11-26, kullanıcı kararları, protokol §21; test öncesi):** sinir ağı tercihi yalnız sinir ağının gerçekten katkı verdiği modellere uygulanır (L5 toplulukları ancak bütün seed'lerde 1 − w > 0 ise). L5-FE full'de seed 42 ve 2026'da w = 1 olduğu için tercih düşer; §18.2 kuralı aynen uygulanınca C2 = {L1 behavior, L1-I full, L1-FE full, L5-FE full} içinden basitlik sırası (L1 ailesi; aile içinde FE'siz < FE; eşitlikte `other` PR-AUC) **L1 behavior**'ı seçer. **Final model: L1 behavior.** Aşağıdaki ilk öneri (L5-FE full) tarihçe için korunur. Seed sayısı 3 kalır; `other` PR-AUC'nin 3 seed'le modelleri ayırt etmemesi bir **bulgudur**. L4-semi'nin val etiketiyle erken durdurulması kabul edildi: **G7 içeren modellerin (L1-FE, L2-FE, L5-FE, L1-I, L2-I, L1-OFF) val değerleri hafif iyimser olabilir; test etkilenmez.**
+
 **Önerilen: L5-FE / full** (`other` PR-AUC 0.053, genel PR-AUC 0.668).
 
 Kuralın adımları (`val_selection_v2.csv`):
@@ -113,6 +115,8 @@ Gözlemler:
 - [ ] `pytest` geçiyor; çalışma dalı temiz; `results/lead/` commit'li.
 
 ## 7. Açık sorular
+
+> **Yanıtlandı (2026-11-26):** 1 → seed 3 kalır, bulgu olarak yazılır. 2 → final L1 behavior (§21.2). 3 → kabul, tablolara not. 4 → künye: "An Integrated Framework of Feature Engineering and Machine Learning for Large-Scale Energy Anomaly Detection", *Energy Engineering* (Tech Science Press), c. 123, s. 3 (yazar, yıl, sayfa doğrulanmalı). 5 → val raporu için L1-I'nin değerleri ayrıca verilir; final kuralla belirlendi.
 
 1. `other` PR-AUC 3 seed'le modelleri ayırt edemiyor. Birincil metrik böyle kalsın mı, yoksa (test öncesi) daha fazla bölme seed'i mi eklensin?
 2. Sinir ağı tercihi L5-FE full'ü seçiyor, ama iki seed'de L5-FE = L1-FE. Öneri L5-FE full olarak mı kalsın, yoksa "gerçekten sinir ağı katkısı olan" bir koşul (ör. w_L1 < 1) mi eklensin?

@@ -1,6 +1,6 @@
 # LEAD1.0 protokolü — model eğitiminden ve testten ÖNCE yazıldı
 
-Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi. Güncelleme 2 (2026-11-25, test öncesi; L0, L1, L4, L2 ve IF val sonuçlarından sonra): L3 atlandı, yerine öznitelik mühendisliği aşaması L-FE (§17). Güncelleme 3 (2026-11-25, test öncesi; L-FE ablasyonu ve L1-FE val sonuçlarından sonra): çerçeve, birincil metrik `other` PR-AUC, yeni seçim kuralı (§18). Güncelleme 4 (2026-11-26, test öncesi; val kapanışından sonra): literatür kıyas satırı L1-OFF (offline, §19). Güncelleme 5 (2026-11-26, test öncesi; val kapanışı ve L1-OFF'tan sonra): `other` odaklı iyileştirme turu (P1, P4, P5, P2; §20).
+Dal: `seyda/lead` · Tarih: 2026-11-25 · Durum: **sabitlendi, henüz uygulanmadı** (L2 ve sonrası). Güncelleme 1 (2026-11-25, uygulamadan önce): site bilgisi, mutlak tarih yasağı, siteye göre bölme, paylaşılan/tekil dilimi, hesaplama bütçesi. Güncelleme 2 (2026-11-25, test öncesi; L0, L1, L4, L2 ve IF val sonuçlarından sonra): L3 atlandı, yerine öznitelik mühendisliği aşaması L-FE (§17). Güncelleme 3 (2026-11-25, test öncesi; L-FE ablasyonu ve L1-FE val sonuçlarından sonra): çerçeve, birincil metrik `other` PR-AUC, yeni seçim kuralı (§18). Güncelleme 4 (2026-11-26, test öncesi; val kapanışından sonra): literatür kıyas satırı L1-OFF (offline, §19). Güncelleme 5 (2026-11-26, test öncesi; val kapanışı ve L1-OFF'tan sonra): `other` odaklı iyileştirme turu (P1, P4, P5, P2; §20). Güncelleme 6 (2026-11-26, test öncesi): sinir ağı tercihinin netleştirilmesi, final model ve test kapsamı (§21).
 
 Bu belge, LEAD1.0 (Kaggle "energy-anomaly-detection" `train.csv`) üzerindeki modelleme ve değerlendirmenin kurallarını **deney yapılmadan önce** sabitler. Bu belgeye aykırı bir seçim yapılırsa sonuç geçersiz sayılır. Kural değişikliği gerekirse tarih ve gerekçeyle `docs/deney_gunlugu.md`'ye yazılır; eski sonuçlar silinmez.
 
@@ -231,7 +231,7 @@ Hepsi genel ve alt tür bazında (§3), 3 bölme seed'inin ortalaması ± std ol
 Bütün karşılaştırmalar val'de, bina bölmesinin 3 seed'i üzerinde, bölme başına **eşleştirilmiş fark** ile yapılır; gürültü düzeyi |ort(Δ)| ≤ 2·std(Δ)/√n (n = 3). Isolation Forest yarışa girmez.
 1. **`other` PR-AUC:** ortalaması en yüksek model bulunur; ona göre farkı gürültü düzeyinde olan modeller aday kümesi C1'dir.
 2. **Genel PR-AUC:** C1 içinde genel PR-AUC ortalaması en yüksek model bulunur; ona göre farkı gürültü düzeyinde olan C1 modelleri C2'dir.
-3. **Sinir ağı tercihi:** C2'de sinir ağı içeren bir model (L2 ailesi: L2, L2-FE; L4 ailesi: L4, L4-semi; L5 ailesi: L5, L5-FE) varsa seçim yalnız bunlar arasından yapılır. Gerekçe: ders "Uygulamalı Sinir Ağları"dır; sinir ağı, ağaç modeliyle istatistiksel olarak ayırt edilemeyen bir sonuç veriyorsa ders kapsamı için tercih edilir. Bu tercih yalnız gürültü düzeyindeki farklarda geçerlidir; anlamlı biçimde kötü bir sinir ağı seçilmez.
+3. **Sinir ağı tercihi** (Güncelleme 6 ile netleşti, §21.1: yalnız sinir ağının gerçekten katkı verdiği modeller)**:** C2'de sinir ağı içeren bir model (L2 ailesi: L2, L2-FE; L4 ailesi: L4, L4-semi; L5 ailesi: L5, L5-FE) varsa seçim yalnız bunlar arasından yapılır. Gerekçe: ders "Uygulamalı Sinir Ağları"dır; sinir ağı, ağaç modeliyle istatistiksel olarak ayırt edilemeyen bir sonuç veriyorsa ders kapsamı için tercih edilir. Bu tercih yalnız gürültü düzeyindeki farklarda geçerlidir; anlamlı biçimde kötü bir sinir ağı seçilmez.
 4. **Basitlik sırası:** kalan adaylardan basitlik sırasına göre en basiti (L0 < L4 < L1 < L2 < L5; aile içinde FE'siz < FE). Eşitlikte `other` PR-AUC ortalaması yüksek olan.
 
 ### 18.3 Kalan işler (hepsi yalnız val)
@@ -280,3 +280,34 @@ Bütün karşılaştırmalar val'de, bina bölmesinin 3 seed'i üzerinde, bölme
 - Her adım için CV tablosu (kat ort. ± std) ve son val tablosu: `other`, genel, frozen, gap_edge; PR-AUC ve ROC-AUC.
 - Davranışsal dilimde (`other`) en önemli 10 öznitelik (SHAP, tutulan katlarda).
 - Sonuçlar §18.2 seçim tablosuna eklenir (yeni satırlar: L1-I, L2-I). Sonra durulur; test yalnız açık onayla.
+
+## 21. Güncelleme 6 (2026-11-26, test öncesi): sinir ağı tercihinin netleştirilmesi, final model, test kapsamı
+
+**Ne zaman yazıldı:** val kapanışı, L1-OFF ve I-turundan sonra, test kümesine dokunulmadan. Kararlar kullanıcının.
+
+### 21.1 Sinir ağı tercihi (§18.2 madde 3) netleştirmesi
+- Tercih **yalnız sinir ağının gerçekten katkı verdiği** modellere uygulanır. L2/L3/L4 aileleri doğrudan sinir ağıdır. L5 toplulukları (w·L1 + (1−w)·L2) ancak **bütün seed'lerde** sinir ağı ağırlığı 1 − w > 0 ise sinir ağı sayılır; bir seed'de w = 1 ise topluluk o seed'de fiilen L1'dir (`lead_models.contributes_neural`, pytest).
+- Gerekçe: L5-FE full'de seed 42 ve 2026'da w_L1 = 1,0; L5-FE full iki seed'de L1-FE ile aynıdır.
+
+### 21.2 Final model
+- §18.2 kuralı aynen uygulanır (kullanıcı kararı): C1 (`other` PR-AUC) bütün modeller; C2 (genel PR-AUC, gürültü düzeyi) = L1 behavior, L1-I full, L1-FE full, L5-FE full; sinir ağı katkısı olan model C2'de yok → basitlik (L1 ailesi; aile içinde FE'siz < FE; eşitlikte `other` PR-AUC) → **final: L1 behavior** (`val_selection_v2.csv`).
+- Raporlanacak bulgu: `other` PR-AUC 3 seed'le (seed başına 40 val binası) modelleri ayırt etmiyor; taban (L0-normal) dahil bütün modeller en iyiyle gürültü düzeyinde. Seed sayısı 3 kalır.
+
+### 21.3 L4-semi ve G7
+- L4-semi'nin val etiketiyle erken durdurulması **kabul** edildi. Val tablolarına not: "G7 içeren modellerin val değerleri hafif iyimser olabilir; test etkilenmez."
+
+### 21.4 Literatür
+- Tech Science: "An Integrated Framework of Feature Engineering and Machine Learning for Large-Scale Energy Anomaly Detection", *Energy Engineering* (Tech Science Press), c. 123, s. 3; ROC-AUC 0,952. **Yazar, yıl ve sayfa doğrulanmalı.**
+- LEAD1.0 veri makalesi PyOD sonuçları: nokta F1 ≈ 0,40–0,43 (gün düzeyi, rastgele bölme) — yalnız IF satırıyla kıyas.
+
+### 21.5 Test kapsamı (tek sefer; §13)
+- **Bina bölmesi, 3 seed** (42, 7, 2026); her seed'in 40 test binası bir kez. **Site bölmesinde test yok** (yalnız val sağlamlık kontrolüydü).
+- Modeller: **final L1 behavior**; karşılaştırma: L1-FE full, L1-FE behavior, L0-R3, L0-A0, L4, L4-semi, L2-FE (full, behavior), L5-FE (full, behavior), Isolation Forest; literatür kıyası: L1-OFF (offline).
+- **Testte hiçbir şey seçilmez:** ayarlar, ağaç sayıları/epoch'lar (val'de bulunanlar), eşikler (val F1-max), R3'ün k'sı, L5-FE ağırlıkları, öznitelik grupları (seed başına), G7 OOF ve ölçek istatistikleri val aşamasındaki **aynı** eğitilmiş modellerden ya da aynı prosedürün aynı seed'le yeniden üretiminden gelir (§21.6).
+- Test binalarının G7 değeri: bütün train binalarıyla eğitilmiş L4-semi'nin (val'de erken durdurulmuş, val aşamasıyla aynı model/epoch) skoru. Test etiketi hiçbir yerde kullanılmaz (yalnız ölçüm).
+- Bütün dilimler (genel, gap_edge, frozen, other, paylaşılan, tekil) ve bütün metrikler (ROC-AUC, PR-AUC, P/R/F1, olay recall, bina bazında F1); val ile test yan yana; literatür kıyas tablosu koşul farklarıyla.
+- **Sonuçlara göre hiçbir şey değiştirilmez.** Val'den belirgin sapmalar varsa olası nedenler yazılır.
+- Çıktı: `docs/lead_sonuclar.md`, `results/lead/tables/test_*`.
+
+### 21.6 Yeniden üretim (uygulama notu)
+- Val aşamasında model nesneleri diske kaydedilmedi (yalnız val skorları). Test kodu her modeli **val aşamasındaki aynı prosedür, aynı seed, aynı ayarlar ve aynı veriyle** yeniden eğitir; val skorlarını yeniden üretir ve kayıtlı val skorlarıyla karşılaştırır (`test_val_reproduction.csv`). Ancak val'de birebir (ya da GPU belirsizliği sınırında) yeniden üretilen modeller için test skoru raporlanır; yeniden üretilemeyen model olursa bu açıkça yazılır.

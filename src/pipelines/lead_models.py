@@ -636,8 +636,12 @@ LITERATURE = [
     ("Kaggle LEAD birincisi (Fu, Arjunan & Miller 2022 [2])", "0,9866",
      "206 görülmemiş bina, etiketleri gizli Kaggle testi (biz: 200 etiketli binayı 120/40/40 bölüyoruz, val); "
      "nedensel kısıt yok, iki yönlü öznitelik serbest (biz: ana sonuç nedensel); private LB; yalnız ROC-AUC"),
-    ("Tech Science yayını (kullanıcının verdiği değer)", "0,952",
-     "künye, bölme ve öznitelik koşulları repoda kayıtlı değil — DOĞRULANMALI"),
+    ("\"An Integrated Framework of Feature Engineering and Machine Learning for Large-Scale Energy Anomaly "
+     "Detection\", Energy Engineering (Tech Science Press), c. 123, s. 3 (yazar, yıl, sayfa doğrulanmalı)", "0,952",
+     "bölme ve öznitelik koşulları repoda kayıtlı değil — DOĞRULANMALI; nedensellik kısıtı bilinmiyor"),
+    ("LEAD1.0 veri makalesi, PyOD yöntemleri (Gulati & Arjunan 2022 [1])", "nokta F1 ≈ 0,40–0,43 (ROC-AUC yok)",
+     "denetimsiz; 24 saatlik gün düzeyi etiket; normal/anomali günleri train/val/test'e RASTGELE dağıtılmış; "
+     "bizimle kıyas yalnız Isolation Forest satırının F1'i üzerinden"),
 ]
 OUT_OF_RACE = ("IF", "L1-OFF")                                  # seçime girmeyen referans satırları
 NEURAL_FAMILIES = {"L2", "L3", "L4", "L5"}                     # sinir ağı içeren aileler (§18.2)
@@ -645,13 +649,13 @@ SIMPLICITY_V2 = ["L0", "L4", "L1", "L2", "L3", "L5"]            # §18.2; aile i
 FINAL_SLICES = ["other", "genel", "gap_edge", "frozen", "paylasilan", "tekil"]   # "other" başta (§18.1)
 MODEL_NOTES = {
     "IF": "yalnız literatür referansı; seçime girmez",
-    "L1-OFF": "OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez",
-    "L4-semi": "val erken durdurması val etiketli saatleri kayıptan çıkarır (val etiketini görür)",
-    "L1-FE": "G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den)",
-    "L2-FE": "G7 seçilen seed'lerde L4-semi OOF artığı (val değeri val-ES'li L4-semi'den)",
-    "L5-FE": "L1-FE + L2-FE; ağırlık val genel PR-AUC ile",
-    "L1-I": "I-turu (§20): LightGBM hattı, adımlar train CV'de; val'de ES yok",
-    "L2-I": "I-turu (§20): GRU hattı, adımlar train CV'de; val'de ES yok",
+    "L1-OFF": "OFFLINE (geleceğe bakan öznitelikler); yalnız literatür kıyası, seçime girmez; G7 içeren modellerin val değerleri hafif iyimser olabilir (L4-semi val etiketiyle erken durduruldu); test etkilenmez",
+    "L4-semi": "val erken durdurması val etiketli saatleri kayıptan çıkarır (val etiketini görür); kullanıcı kabulü, test etkilenmez",
+    "L1-FE": "G7 içeren modellerin val değerleri hafif iyimser olabilir (L4-semi val etiketiyle erken durduruldu); test etkilenmez",
+    "L2-FE": "G7 içeren modellerin val değerleri hafif iyimser olabilir (L4-semi val etiketiyle erken durduruldu); test etkilenmez",
+    "L5-FE": "L1-FE + L2-FE; ağırlık val genel PR-AUC ile; G7 içeren modellerin val değerleri hafif iyimser olabilir (L4-semi val etiketiyle erken durduruldu); test etkilenmez",
+    "L1-I": "I-turu (§20): LightGBM hattı, adımlar train CV'de; val'de ES yok; G7 içeren modellerin val değerleri hafif iyimser olabilir (L4-semi val etiketiyle erken durduruldu); test etkilenmez",
+    "L2-I": "I-turu (§20): GRU hattı, adımlar train CV'de; val'de ES yok; G7 içeren modellerin val değerleri hafif iyimser olabilir (L4-semi val etiketiyle erken durduruldu); test etkilenmez",
 }
 
 
@@ -663,6 +667,24 @@ def paired_ties(pivot, best, candidates):
         bound = 2 * diff.std(ddof=1) / np.sqrt(len(diff))
         out[key] = (float(diff.mean()), float(bound), bool(abs(diff.mean()) <= bound + 1e-12))
     return out
+
+
+def contributes_neural(results, key, kind="bina"):
+    """§18.2 (netleştirme, 2026-11-26): sinir ağı tercihi yalnız sinir ağının GERÇEKTEN katkı verdiği modellere.
+
+    L2/L3/L4 aileleri doğrudan sinir ağıdır. L5 toplulukları (w·L1 + (1−w)·L2) ancak bütün seed'lerde
+    sinir ağı ağırlığı 1 − w > 0 ise sayılır; bir seed'de w = 1 ise topluluk o seed'de fiilen L1'dir.
+    """
+    model, fset = key
+    fam = family(model)
+    if fam not in NEURAL_FAMILIES:
+        return False
+    if fam != "L5":
+        return True
+    rows = results[(results["model"] == model) & (results["set"] == fset) & (results["bolme"] == kind)
+                   & (results["dilim"] == "genel")]
+    weights = [json.loads(e).get("w_L1", 1.0) for e in rows["extra"]]
+    return len(weights) > 0 and all(w < 1.0 for w in weights)
 
 
 def select_model_v2(results, kind="bina"):
@@ -685,7 +707,7 @@ def select_model_v2(results, kind="bina"):
     best_genel = genel[c1].mean().idxmax()
     t_genel = paired_ties(genel, best_genel, c1)
     c2 = [k for k in c1 if t_genel[k][2]]
-    neural = [k for k in c2 if family(k[0]) in NEURAL_FAMILIES]
+    neural = [k for k in c2 if contributes_neural(results, k, kind)]
     pool = neural or c2
 
     def rank(key):
@@ -698,7 +720,8 @@ def select_model_v2(results, kind="bina"):
                      "other_fark": t_other[k][0], "other_2se": t_other[k][1], "C1_other_gurultu": k in c1,
                      "genel_fark": t_genel[k][0] if k in t_genel else np.nan,
                      "genel_2se": t_genel[k][1] if k in t_genel else np.nan, "C2_genel_gurultu": k in c2,
-                     "sinir_agi": family(k[0]) in NEURAL_FAMILIES, "secilen": k == chosen})
+                     "sinir_agi": family(k[0]) in NEURAL_FAMILIES,
+                     "sinir_agi_katkisi": contributes_neural(results, k, kind), "secilen": k == chosen})
     return pd.DataFrame(rows).sort_values("other_pr_auc", ascending=False).reset_index(drop=True)
 
 

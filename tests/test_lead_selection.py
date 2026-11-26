@@ -12,7 +12,7 @@ def _results(rows):
         for seed, o, g in zip((42, 7, 2026), other, genel):
             out += [{"model": model, "set": fset, "bolme": "bina", "seed": seed, "dilim": "other", "pr_auc": o},
                     {"model": model, "set": fset, "bolme": "bina", "seed": seed, "dilim": "genel", "pr_auc": g}]
-    return pd.DataFrame(out)
+    return pd.DataFrame(out).assign(extra="{}")
 
 
 def _chosen(rows):
@@ -43,3 +43,19 @@ def test_simplicity_breaks_remaining_ties():
     rows = {("L1-FE", "full"): ([0.050, 0.060, 0.040], [0.60, 0.70, 0.50]),
             ("L1", "full"): ([0.049, 0.058, 0.043], [0.61, 0.68, 0.52])}
     assert _chosen(rows) == ("L1", "full")
+
+
+def test_ensemble_without_neural_weight_gets_no_preference():
+    """§18.2 netleştirme: bir seed'de w_L1 = 1 olan L5 topluluğu sinir ağı sayılmaz → basitlik L1'i seçer."""
+    rows = {("L1-FE", "full"): ([0.050, 0.060, 0.040], [0.60, 0.70, 0.50]),
+            ("L5-FE", "full"): ([0.051, 0.061, 0.040], [0.61, 0.70, 0.50])}
+    table = _results(rows)
+    table["extra"] = "{}"
+    weights = {42: 1.0, 7: 0.7, 2026: 1.0}
+    mask = table["model"] == "L5-FE"
+    table.loc[mask, "extra"] = table.loc[mask, "seed"].map(lambda s: '{"w_L1": %s}' % weights[s])
+    chosen = select_model_v2(table)
+    assert chosen[chosen["secilen"]].iloc[0]["model"] == "L1-FE"
+    table.loc[mask, "extra"] = '{"w_L1": 0.8}'                     # her seed'de GRU katkısı var → L5 tercih
+    chosen = select_model_v2(table)
+    assert chosen[chosen["secilen"]].iloc[0]["model"] == "L5-FE"
