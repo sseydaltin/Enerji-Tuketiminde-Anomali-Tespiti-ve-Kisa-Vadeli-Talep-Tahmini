@@ -16,7 +16,7 @@ Projede üç veri seti var:
 |---|---|---|---|
 | **Hane** (UCI IHEPC) | 24 saatlik talep tahmini + anomali | Gerçek etiket yok, sentetik anomali | Tahmin: haftalık naif yönteme göre MAE %26 daha iyi. Anomali olay F1 0,384 (hedef 0,70 karşılanmadı) |
 | **Şebeke** (UCI ElectricityLoadDiagrams, ELD) | Toplam yük tahmini + anomali | Sentetik | MAPE %3,24, R² 0,974, olay F1 0,927 |
-| **LEAD** (ASHRAE GEP III'ten türetilmiş, 200 bina) | **Gerçek etiketli** anomali tespiti | Gerçek | Final model L1 behavior (LightGBM). En iyi nedensel model ROC-AUC 0,954 |
+| **LEAD** (ASHRAE GEP III'ten türetilmiş, 200 bina) | **Gerçek etiketli** anomali tespiti | Gerçek | Final model L1 behavior (LightGBM), test ROC-AUC 0,899. Testte en yüksek nedensel değer L5-FE full ROC-AUC 0,956 (test sonrası gözlem) |
 
 **LEAD neden eklendi?** Hane verisinde gerçek anomali etiketi yok ve sentetik etiketlerle anomali skoru yükseltilemedi. Hoca gerçek etiketli bir veri seti eklemeyi önerdi.
 
