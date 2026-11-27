@@ -75,7 +75,9 @@ def _controls(dataset, days, table):
     if st.session_state.get(key) not in days:
         st.session_state[key] = median_day(table)
         st.session_state[f"forecast_note_{dataset}"] = "Varsayılan gün: iyileşmesi medyana en yakın test günü."
-    day_col, random_col, easy_col, hard_col = st.columns([3, 1, 1, 1], vertical_alignment="bottom")
+    day_col, buttons_col = st.columns([3, 3], vertical_alignment="bottom")
+    buttons = buttons_col.container(horizontal=True)          # üç düğme her genişlikte yan yana
+    random_col = easy_col = hard_col = buttons
     # Takvim yerine liste: yalnız geçmişi ve hedefi eksiksiz günler seçilebilsin diye.
     day = day_col.selectbox(
         "Test günü", days, key=key, format_func=_display_day, on_change=_clear_note, args=(dataset,),
@@ -162,7 +164,7 @@ def _make_figure(result, day, dataset_label, digits):
     start = result["target_times"][0]
     figure.add_shape(
         type="line", x0=start, x1=start, xref="x", y0=0, y1=1, yref="paper",
-        line={"color": ACTUAL_COLOR, "width": 1.5, "dash": "dot"},
+        line={"color": ACTUAL_COLOR, "width": 2.0, "dash": "dot"},
     )
     figure.add_annotation(
         x=start, y=1, xref="x", yref="paper", text="Tahmin başlangıcı",
@@ -206,7 +208,7 @@ def _distribution_figure(table, day, dataset_label):
     ):
         figure.add_shape(
             type="line", x0=x, x1=x, xref="x", y0=0, y1=1, yref="paper",
-            line={"color": ACTUAL_COLOR, "width": 1.5, "dash": dash},
+            line={"color": ACTUAL_COLOR, "width": 2.0, "dash": dash},
         )
         figure.add_annotation(
             x=x, y=y, xref="x", yref="paper", text=label, showarrow=False,

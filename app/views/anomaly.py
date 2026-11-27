@@ -85,7 +85,7 @@ def _make_figure(result, anomaly_type, method, show_extra=False, x_range=None):
         figure.add_trace(go.Scatter(
             x=index, y=result["injected_kw"].where(labelled), mode="lines+markers",
             name=f"Sentetik {ANOMALY_LABELS[anomaly_type]}", showlegend=False,   # bant lejantta anlatılır
-            line={"color": ANOMALY_COLOR, "width": 1.5}, marker={"color": ANOMALY_COLOR, "size": 4},
+            line={"color": ANOMALY_COLOR, "width": 2.0}, marker={"color": ANOMALY_COLOR, "size": 4},
         ), row=1, col=1)
 
     scores = result["scores"][method]
@@ -100,10 +100,10 @@ def _make_figure(result, anomaly_type, method, show_extra=False, x_range=None):
     ), row=2, col=1)
     # Eşik bir şekildir (lejantta görünmez); anlamı boş bir izle lejanda yazılır.
     figure.add_trace(go.Scatter(
-        x=[None], y=[None], mode="lines", name="Eşik", line={"color": ACTUAL_COLOR, "dash": "dash", "width": 1.5},
+        x=[None], y=[None], mode="lines", name="Eşik", line={"color": ACTUAL_COLOR, "dash": "dash", "width": 2.0},
     ), row=2, col=1)
     figure.add_hline(
-        y=threshold, line_dash="dash", line_color=ACTUAL_COLOR, line_width=1.5, row=2, col=1,
+        y=threshold, line_dash="dash", line_color=ACTUAL_COLOR, line_width=2.0, row=2, col=1,
         annotation_text=f"Eşik {number(threshold)}",
         annotation_position="top right",
     )
@@ -113,7 +113,7 @@ def _make_figure(result, anomaly_type, method, show_extra=False, x_range=None):
         # Yumuşatılmış skorla tetiklenmeyen alarm, eşiğin altında görünmesin diye ham skorda çizilir.
         marker_scores = scores.where(scores >= experimental["t1"], result["raw_scores"][method])
         figure.add_hline(
-            y=experimental["t2"], line_dash="dot", line_color=BASELINE_COLOR, line_width=1.5, row=2, col=1,
+            y=experimental["t2"], line_dash="dot", line_color=BASELINE_COLOR, line_width=2.0, row=2, col=1,
             annotation_text=f"Ham skor eşiği {number(experimental['t2'])}", annotation_position="top right",
         )
         if experimental["k"] is not None:
@@ -376,7 +376,7 @@ def render(dataset=None):
     end = pd.Timestamp(end_day) + pd.Timedelta(hours=23)
     seed = int(config["protocol"]["scenarios"][scenario]["seeds"][split][0])
     if inject:
-        st.warning("Kırmızı bantlar sentetiktir, gerçek ölçüm değildir. Orijinal veri değişmez; enjeksiyon kopya üzerinde yapılır.")
+        st.warning("Renkli bantlar sentetiktir, gerçek ölçüm değildir. Orijinal veri değişmez; enjeksiyon kopya üzerinde yapılır.")
 
     try:
         result = analyze_test_range(

@@ -374,16 +374,17 @@ Hem doğrulama hem test kümesinin **kopyasına** (seed'ler aşağıda; ilk prot
 
 ### 4.14 Demoyu başka bilgisayarda çalıştırmak için
 
-Veri, model ağırlıkları ve kayıtlı skorlar git'e girmez (`.gitignore`). Bunlar ayrı bir zip'te dağıtılır: **`demo_paketi_2026-11-27.zip`** (repo dışında, ekibin Drive klasöründe; 321 dosya, ~242 MB; içinde `MANIFEST_SHA256.txt`).
+Veri, model ağırlıkları ve kayıtlı skorlar git'e girmez (`.gitignore`). Ağırlıklar ve LEAD skorları **GitHub Release [`v3.0-final`](https://github.com/sseydaltin/Enerji-Tuketiminde-Anomali-Tespiti-ve-Kisa-Vadeli-Talep-Tahmini/releases/tag/v3.0-final)** sayfasında iki zip olarak verilir (her birinde `MANIFEST_SHA256.txt`). **Release'te hiçbir ham ya da işlenmiş veri dosyası yoktur** (`data/`, Kaggle `train.csv` vb.); veri her bilgisayarda kaynağından indirilip koddan üretilir.
 
-| Zip'teki klasör | İçerik | Kullanan |
+| Release dosyası | İçerik | Kullanan |
 |---|---|---|
-| `models/*.pt`, `models/eld/*.pt` | hane ve ELD checkpoint'leri (F5-opt, F10-opt, seed'leri, OOF katları, A2, diğer kadro) | demo (Talep Tahmini, Anomali, Model Bilgisi), `notebooks/01_hane`, `02_sebeke` |
-| `results/predictions/`, `results/eld/predictions/` | kayıtlı val/test tahminleri (`.npz`) | notebook'lar (XGBoost val tahmini, dizi kontrolleri) |
-| `results/lead/scores/` | LEAD kayıtlı val ve tek seferlik test skorları (`.npy`) | demo (Gerçek Etiketli Veri sayfası), `notebooks/03_lead` |
-| `data/processed/hourly.parquet`, `eld_hourly.parquet` | işlenmiş hane ve ELD verisi (UCI, CC BY 4.0) | demo, notebook'lar |
+| `modeller_v3.0-final.zip` | `models/*.pt`, `models/eld/*.pt`: hane ve ELD checkpoint'leri (F5-opt, F10-opt, seed'leri, OOF katları, A2, diğer kadro) | demo (Talep Tahmini, Anomali, Model Bilgisi), `notebooks/01_hane`, `02_sebeke` |
+| `lead_skorlari_v3.0-final.zip` | `results/lead/scores/*.npy`: LEAD kayıtlı val ve tek seferlik test skorları | demo (Gerçek Etiketli Veri), `notebooks/03_lead` |
 
-**LEAD verisi zip'te yok:** Kaggle yarışma verisi yeniden dağıtılmaz. Kaggle hesabıyla [energy-anomaly-detection](https://www.kaggle.com/competitions/energy-anomaly-detection) verisini indirip `train.csv` ve `train_features.csv`'yi `data/raw/lead/` altına koyun, sonra:
+**Veri (Release'te yok, kaynağından):**
+- Hane: `python -m src.datasets.household.load` ve `python -m src.datasets.household.preprocess` (UCI IHEPC, README §5).
+- Şebeke: `python -m src.datasets.eld.eld` (UCI ELD).
+- LEAD: Kaggle hesabıyla [energy-anomaly-detection](https://www.kaggle.com/competitions/energy-anomaly-detection) verisini indirip `train.csv` ve `train_features.csv`'yi `data/raw/lead/` altına koyun (yarışma verisi yeniden dağıtılmaz), sonra:
 
 ```bash
 python -m src.pipelines.lead_run --stage clean                                   # data/processed/lead_clean.parquet
@@ -391,14 +392,24 @@ python -m src.pipelines.lead_run --stage sites --features data/raw/lead/train_fe
 ```
 
 **Adımlar** (proje kökünde):
-1. Repoyu klonlayın ve ortamı kurun (§5 Kurulum): `pip install -r requirements.txt`.
-2. Zip'i **proje köküne** açın; klasör yapısı korunur (`models/`, `results/…`, `data/processed/`). Var olan dosyaların üzerine yazmayın.
-3. (İsteğe bağlı) bütünlük: `MANIFEST_SHA256.txt`'teki özetler dosyalarla karşılaştırılabilir.
-4. LEAD sayfası için yukarıdaki iki LEAD komutunu çalıştırın (eğitim yok; yalnız temizlik ve site eşleşmesi).
+1. Repoyu klonlayın, `v3.0-final` etiketine geçin ve ortamı kurun (§5 Kurulum): `pip install -r requirements.txt`.
+2. Release sayfasından iki zip'i indirin ve **proje köküne** açın; klasör yapısı korunur (`models/`, `results/lead/scores/`). Var olan dosyaların üzerine yazmayın.
+3. (İsteğe bağlı) bütünlük: her zip'teki `MANIFEST_SHA256.txt` özetleri dosyalarla karşılaştırılabilir.
+4. Veriyi yukarıdaki komutlarla üretin (eğitim yok; yalnız indirme, temizlik, saatliğe indirgeme).
 5. `pytest -q` → hepsi geçmeli (veri/skor yoksa ilgili demo testleri atlanır).
 6. `python -m streamlit run app/streamlit_app.py --server.address localhost`.
 
 Demo eğitim yapmaz ve çalışma anında dış servisten veri indirmez. Dosya eksikse ilgili sayfa hangi dosyanın eksik olduğunu yazar.
+
+### 4.15 Sunum günü kontrol listesi
+
+1. **Bir gün önce:** `pip install -r requirements-dev.txt` ve bir kez `python -m playwright install chromium` (sunum kontrolü için).
+2. **Sunumdan önce:** `python scripts/sunum_kontrol.py` → demoyu ayrı portta başlatır; Talep Tahmini, Anomali Tespiti ve Gerçek Etiketli Veri sayfalarını açıp hata olmadığını doğrular ve yükleme sürelerini yazar. Bütün satırlar "TAMAM" olmalı.
+3. **Yedek görüntüler:** `python scripts/sunum_kontrol.py --ekran-goruntusu` → `docs/sunum/yedek/` altına her sayfanın 1280×720 iki görüntüsü (sayfa üstü ve ana grafik). Demo çökerse bunlar slayta konur.
+4. **Demoyu açın:** `python -m streamlit run app/streamlit_app.py --server.address localhost` → tarayıcıda http://localhost:8501. İlk açılışta Talep Tahmini modelleri yüklediği için ~10–15 s sürebilir; sunumdan önce her sayfayı bir kez açıp önbelleği ısıtın.
+5. **Projeksiyon:** tarayıcı yakınlaştırmasını %100–110 tutun; tam ekran (F11).
+6. **İnternet gerekmez;** veri, ağırlıklar ve skorlar yerelde olmalı (§4.14).
+7. **Kod sorularına:** `docs/sunum/kod_haritasi.md` (ekrandaki her parçanın dosyası ve fonksiyonu; veri hazırlama ve bölme bölümü Dilara anlatır).
 
 ---
 

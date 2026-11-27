@@ -22,9 +22,9 @@ SUBTYPE_COLORS = theme.SUBTYPES      # LEAD alt türleri
 HIGHLIGHT_ROW = "#E6ECF3"            # tablolarda final model satırı (vurgu renginin açığı)
 CARD_HEIGHT = 112                    # delta olan ve olmayan kartlar aynı boyda dursun
 
-LINE_ACTUAL = {"color": ACTUAL_COLOR, "width": 1.8}
-LINE_MODEL = {"color": MODEL_COLOR, "width": 2.2}
-LINE_BASELINE = {"color": BASELINE_COLOR, "width": 1.6, "dash": "dash"}
+LINE_ACTUAL = {"color": ACTUAL_COLOR, "width": 2.2}     # projeksiyon için bir tık kalın
+LINE_MODEL = {"color": MODEL_COLOR, "width": 2.6}
+LINE_BASELINE = {"color": BASELINE_COLOR, "width": 2.0, "dash": "dash"}
 
 DATASET_LABELS = {"household": "Hane (tek ev)", "eld": "Şebeke (160 müşteri)"}
 

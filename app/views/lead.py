@@ -61,7 +61,7 @@ def make_figure(frame, building, thresholds, models=None, window=None, alarm_mod
     for row, key in enumerate(models, start=2):
         values = part[f"{key[0]}|{key[1]}"]
         figure.add_trace(go.Scatter(x=part["timestamp"], y=values, mode="lines", name=LEAD_MODELS[key],
-                                    showlegend=False, line={"color": MODEL_COLORS[key], "width": 1.4}), row=row, col=1)
+                                    showlegend=False, line={"color": MODEL_COLORS[key], "width": 1.8}), row=row, col=1)
         figure.add_hline(y=thresholds[key], line={"color": ACTUAL_COLOR, "dash": "dash", "width": 1}, row=row, col=1)
         finite = values[np.isfinite(values)]
         if len(finite):                                        # uç değerler grafiği ezmesin: üst sınır %99,5'lik
@@ -117,7 +117,7 @@ def render(dataset=None):
                "200 ticari binanın elle etiketlenmiş anomalileri (2016, saatlik). Bir test binasında tüketim, alt "
                "türlerine göre renkli gerçek etiketler ve final modelin alarm verdiği saatler gösterilir; skorlar tek "
                "seferlik final testin kayıtlı çıktısıdır.")
-    seed_col, building_col, easy_col, hard_col = st.columns([2, 3, 1, 1], vertical_alignment="bottom")
+    seed_col, building_col, buttons_col = st.columns([2, 3, 2], vertical_alignment="bottom")
     seed = seed_col.selectbox("Bölme (seed)", SEEDS, format_func=lambda s: f"Bina bölmesi, seed {s}")
     missing = missing_files(seed)
     if missing:
@@ -132,8 +132,9 @@ def render(dataset=None):
     if st.session_state.get(key) not in counts.index:
         st.session_state[key] = median_building(f1)
         st.session_state[f"lead-reason-{seed}"] = "median"
-    easy_col.button("Kolay örnek", width="stretch", on_click=_pick_building, args=(seed, f1, "easy"))
-    hard_col.button("Zor örnek", width="stretch", on_click=_pick_building, args=(seed, f1, "hard"))
+    with buttons_col.container(horizontal=True):            # iki düğme her genişlikte yan yana
+        st.button("Kolay örnek", width="stretch", on_click=_pick_building, args=(seed, f1, "easy"))
+        st.button("Zor örnek", width="stretch", on_click=_pick_building, args=(seed, f1, "hard"))
     building = building_col.selectbox("Test binası", counts.index.tolist(), key=key,
                                       format_func=lambda b: f"Bina {b} — {counts[b]} anomali saati",
                                       on_change=lambda: st.session_state.update({f"lead-reason-{seed}": "user"}))

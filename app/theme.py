@@ -30,7 +30,7 @@ SUBTYPES = {"gap_edge": "#E69F00",   # boşluk kenarı: turuncu
 FONT = "Inter, 'Segoe UI', 'Source Sans Pro', Arial, sans-serif"
 
 pio.templates["demo"] = go.layout.Template(layout={
-    "font": {"family": FONT, "size": 13, "color": TEXT},
+    "font": {"family": FONT, "size": 14, "color": TEXT},          # projeksiyon için okunaklı
     "title": {"font": {"size": 15, "color": TEXT}, "x": 0, "xanchor": "left", "yref": "container", "y": 0.98,
               "yanchor": "top"},          # başlık en üstte; lejant onun altında, çizim alanının üstünde
     "paper_bgcolor": SURFACE,
@@ -38,13 +38,14 @@ pio.templates["demo"] = go.layout.Template(layout={
     "separators": ",.",                                   # Türkçe ondalık virgülü
     "colorway": [FINAL, COMPARISON, THIRD, BASELINE, ACTUAL],
     "hovermode": "x unified",
-    "hoverlabel": {"bgcolor": SURFACE, "bordercolor": BORDER, "font": {"family": FONT, "size": 12}},
+    "hoverlabel": {"bgcolor": SURFACE, "bordercolor": BORDER, "font": {"family": FONT, "size": 13}},
     "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0, "title": {"text": ""},
-               "font": {"size": 12}},
+               "font": {"size": 13}},
     "margin": {"l": 56, "r": 16, "t": 96, "b": 60},
+    # Eksen etiketleri en az 13 px, eksen başlıkları 14 px (projeksiyon okunurluğu).
     "xaxis": {"showgrid": False, "zeroline": False, "linecolor": BORDER, "ticks": "outside", "tickcolor": BORDER,
-              "tickfont": {"color": MUTED}},
+              "tickfont": {"color": MUTED, "size": 13}, "title": {"font": {"size": 14}}},
     "yaxis": {"gridcolor": GRID, "gridwidth": 1, "zeroline": False, "rangemode": "tozero",
-              "tickfont": {"color": MUTED}},
-}, data={"scatter": [go.Scatter(line={"width": 1.8})]})   # ince çizgiler: bütün çizgi grafiklerinin varsayılanı
+              "tickfont": {"color": MUTED, "size": 13}, "title": {"font": {"size": 14}}},
+}, data={"scatter": [go.Scatter(line={"width": 2.2})]})   # ince çizgiler: bütün çizgi grafiklerinin varsayılanı
 pio.templates.default = "demo"
