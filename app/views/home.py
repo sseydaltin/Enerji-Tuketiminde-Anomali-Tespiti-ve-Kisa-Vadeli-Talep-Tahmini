@@ -73,5 +73,5 @@ def render(links=None):
               links.get("lead"), "Gerçek Etiketli Veri sayfası")
     except (FileNotFoundError, OSError, ValueError, KeyError) as error:
         columns[2].error(f"Kayıtlı LEAD sonuçları okunamadı: {error}")
-    st.caption("Ekip: Dilara YILDIRIM · Şeyda ALTIN — YMÜ425 Uygulamalı Sinir Ağları, Fırat Üniversitesi, 2026–2027 Güz. "
+    st.caption("Ekip: Şeyda ALTIN · Dilara YILDIRIM — YMÜ425 Uygulamalı Sinir Ağları, Fırat Üniversitesi, 2026–2027 Güz. "
                "Demo eğitim yapmaz; bütün sayılar kayıtlı final dosyalarından gelir.")

@@ -36,7 +36,7 @@ def main():
             st.page_link(page, label=page.title, icon=page.icon)
         st.divider()
         st.caption("YMÜ425 Uygulamalı Sinir Ağları · Fırat Üniversitesi · 2026–2027 Güz  \n"
-                   "Dilara YILDIRIM · Şeyda ALTIN")
+                   "Şeyda ALTIN · Dilara YILDIRIM")
     navigation.run()
 
 
