@@ -1,25 +1,30 @@
-"""Demo sayfalarının ortak görünümü: Türkçe etiketler, renkler ve Plotly şablonu.
+"""Demo sayfalarının ortak görünümü: Türkçe etiketler, renkler, sayfa düzeni yardımcıları.
 
-Bu modül yalnız sunum katmanıdır; hiçbir metrik hesaplamaz. Etiketlerin ve
-renklerin tek yerde durması, bütün sayfaların aynı dili konuşmasını sağlar.
+Bu modül yalnız sunum katmanıdır; hiçbir metrik hesaplamaz. Renkler ve Plotly şablonu `app/theme.py`'de,
+özel CSS `app/style.css`'tedir; burada aynı adlarla sayfalara verilir (eski adlar korunur).
 """
 
-import plotly.graph_objects as go
-import plotly.io as pio
+from html import escape
+from pathlib import Path
+
 import streamlit as st
 
-# Renklerin anlamı sabittir: aynı renk her grafikte aynı şeyi gösterir.
-ACTUAL_COLOR = "#374151"     # gerçek değer: koyu gri
-MODEL_COLOR = "#1F4E9E"      # final model: mavi
-BASELINE_COLOR = "#A9B1BC"   # baseline: açık gri (çizgide kesikli)
-ANOMALY_COLOR = "#D32F2F"    # anomali: kırmızı
-SECOND_COLOR = "#0B9E8F"     # final olmayan karşılaştırma modeli: camgöbeği
-HIGHLIGHT_ROW = "#E3EBF7"    # tablolarda final model satırı
-CARD_HEIGHT = 112            # delta olan ve olmayan kartlar aynı boyda dursun
+from app import theme
 
-LINE_ACTUAL = {"color": ACTUAL_COLOR, "width": 2}
-LINE_MODEL = {"color": MODEL_COLOR, "width": 2.5}
-LINE_BASELINE = {"color": BASELINE_COLOR, "width": 2, "dash": "dash"}
+# Renklerin anlamı sabittir: aynı renk her grafikte aynı şeyi gösterir (app/theme.py).
+ACTUAL_COLOR = theme.ACTUAL          # gerçek değer: koyu gri
+MODEL_COLOR = theme.FINAL            # final model: yumuşak lacivert (tek vurgu rengi)
+BASELINE_COLOR = theme.BASELINE      # baseline: açık gri (çizgide kesikli)
+ANOMALY_COLOR = theme.ANOMALY        # anomali: vermilyon (yalnız anomali vurgusu)
+SECOND_COLOR = theme.COMPARISON      # final olmayan karşılaştırma modeli: mavi-yeşil
+THIRD_COLOR = theme.THIRD            # üçüncü model: yumuşak mor
+SUBTYPE_COLORS = theme.SUBTYPES      # LEAD alt türleri
+HIGHLIGHT_ROW = "#E6ECF3"            # tablolarda final model satırı (vurgu renginin açığı)
+CARD_HEIGHT = 112                    # delta olan ve olmayan kartlar aynı boyda dursun
+
+LINE_ACTUAL = {"color": ACTUAL_COLOR, "width": 2.2}     # projeksiyon için bir tık kalın
+LINE_MODEL = {"color": MODEL_COLOR, "width": 2.6}
+LINE_BASELINE = {"color": BASELINE_COLOR, "width": 2.0, "dash": "dash"}
 
 DATASET_LABELS = {"household": "Hane (tek ev)", "eld": "Şebeke (160 müşteri)"}
 
@@ -49,35 +54,68 @@ ANOMALY_LABELS = {
     "pattern": "Gece örüntüsü",
 }
 
-# separators=",." → grafiklerde Türkçe ondalık virgülü.
-pio.templates["enerji"] = go.layout.Template(layout={
-    "font": {"family": "Arial, Helvetica, sans-serif", "size": 13, "color": ACTUAL_COLOR},
-    "title": {"font": {"size": 15}, "x": 0, "xanchor": "left"},
-    "paper_bgcolor": "white",
-    "plot_bgcolor": "white",
-    "separators": ",.",
-    "colorway": [MODEL_COLOR, ACTUAL_COLOR, SECOND_COLOR, BASELINE_COLOR],
-    "hovermode": "x unified",
-    "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.0, "x": 0, "title": {"text": ""}},
-    "margin": {"l": 60, "r": 20, "t": 70, "b": 50},
-    "xaxis": {"showgrid": False, "zeroline": False, "linecolor": "#D5D9E0", "ticks": "outside", "tickcolor": "#D5D9E0"},
-    "yaxis": {"gridcolor": "#EEF0F3", "zeroline": False, "rangemode": "tozero"},
-})
-pio.templates.default = "enerji"
+STYLE_FILE = Path(__file__).with_name("style.css")
 
 
 def apply_page_style():
-    """Üst boşluğu daraltır; böylece grafik ilk ekrana sığar."""
-    st.markdown(
-        """
-        <style>
-        .block-container {padding-top: 1.4rem; padding-bottom: 2rem;}
-        h1 {font-size: 2rem !important; padding-bottom: 0.4rem !important;}
-        [data-testid="stMetricValue"] {font-size: 1.65rem;}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Tek CSS dosyasını (app/style.css) sayfaya ekler: kart kenarları, yazı boyutları, sayfa genişliği."""
+    st.markdown(f"<style>{STYLE_FILE.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+
+
+def page_intro(title, text):
+    """Sayfa başlığı ve altında 1–2 cümlelik "Bu sayfada ne görüyorsunuz?" kutusu."""
+    st.title(title)
+    st.markdown(f"<div class='page-intro'><b>Bu sayfada ne görüyorsunuz?</b> {text}</div>", unsafe_allow_html=True)
+
+
+def dataset_strip(key_suffix, label="Veri seti"):
+    """Sayfanın üstünde yatay veri seti seçimi. Seçim sayfalar arasında korunur (session_state['dataset']).
+
+    Widget anahtarı sayfaya özeldir; ortak değer ayrı tutulur. Neden: başka sayfada çizilmeyen widget'ın durumu
+    Streamlit tarafından silinir, ortak anahtar bu yüzden widget'a bağlanmaz.
+    """
+    st.session_state.setdefault("dataset", "household")
+    widget = f"dataset_{key_suffix}"
+
+    def sync():
+        st.session_state["dataset"] = st.session_state[widget]
+    choice = st.segmented_control(label, options=list(DATASET_LABELS), format_func=DATASET_LABELS.get,
+                                  default=st.session_state["dataset"], key=widget, on_change=sync)
+    return choice or st.session_state["dataset"]
+
+
+def kpi_cards(cards):
+    """En çok 3 KPI kartı: cards = [(etiket, değer metni, tek satırlık açıklama), ...].
+
+    İç içe sütun kullanılmaz: kartlar CSS ızgarasıyla dizilir (app/style.css, .kpi-grid); dar ekranda kendiliğinden
+    alt alta geçer, metin harf harf kırılmaz. Değerler çağıran sayfada kayıtlı dosyalardan hazırlanır.
+    """
+    if len(cards) > 3:
+        raise ValueError("Bir sayfada en çok 3 KPI kartı gösterilir.")
+    items = "".join(f"<div class='kpi-card'><div class='kpi-label'>{escape(label)}</div>"
+                    f"<div class='kpi-value'>{escape(value)}</div><div class='kpi-desc'>{escape(desc)}</div></div>"
+                    for label, value, desc in cards)
+    st.markdown(f"<div class='kpi-grid'>{items}</div>", unsafe_allow_html=True)
+
+
+def kpi_row(cards):
+    """Geriye uyumlu ad: kpi_cards ile aynı (etiket, değer, açıklama)."""
+    kpi_cards(cards)
+
+
+def compact_table(frame, columns, styler=None, key=None, selectable=False):
+    """Yatay kaydırma gerektirmeyen tablo: uzun sütun adları kısaltılır, tam ad sütun ipucunda (help) durur.
+
+    columns: {asıl ad: (kısa ad, ipucu)}; listede olmayan sütunlar adıyla kalır. styler: kısa adlı tabloya
+    uygulanacak biçimlendirme fonksiyonu (DataFrame → Styler). selectable: tek satır seçimi (olay tablosu).
+    Çıktı: st.dataframe dönüşü (seçim bilgisi için). Değerler değişmez; yalnız başlıklar değişir.
+    """
+    shown = frame.rename(columns={name: short for name, (short, _) in columns.items()})
+    config = {short: st.column_config.Column(short, help=hint) for short, hint in columns.values() if hint}
+    data = styler(shown) if styler else shown
+    options = {"on_select": "rerun", "selection_mode": "single-row", "key": key} if selectable else {}
+    height = 36 * (len(frame) + 1) + 4          # bütün satırlar görünsün: tablo içinde dikey kaydırma olmasın
+    return st.dataframe(data, hide_index=True, width="stretch", height=height, column_config=config, **options)
 
 
 def number(value, digits=3):
@@ -95,8 +133,8 @@ def show_chart(figure, alt):
 
     theme=None: Streamlit'in kendi teması şablonumuzu ezmesin diye.
     """
-    # Streamlit zemini ikincil tema rengiyle boyamasın diye beyaz açıkça verilir.
-    figure.update_layout(plot_bgcolor="white", paper_bgcolor="white")
+    # Grafik zemini tema yüzeyi (beyaz kart); Streamlit teması şablonu ezmesin diye theme=None.
+    figure.update_layout(plot_bgcolor=theme.SURFACE, paper_bgcolor=theme.SURFACE)
     st.plotly_chart(
         figure,
         width="stretch",

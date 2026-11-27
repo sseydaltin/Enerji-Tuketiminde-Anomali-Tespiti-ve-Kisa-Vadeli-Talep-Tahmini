@@ -3,6 +3,7 @@
 İç deney kodları (F13, A3 ...) yalnız bu sayfada, parantez içinde görünür.
 """
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -11,12 +12,16 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from app.model_info_services import load_model_info
+from src.core.config import PROJECT_ROOT, load_config
 from app.results_services import load_results_bundle
-from app.ui import ACTUAL_COLOR, DATASET_LABELS, METHOD_LABELS, MODEL_COLOR, SECOND_COLOR, number, show_chart
+from app import theme
+from app.ui import (ACTUAL_COLOR, DATASET_LABELS, METHOD_LABELS, MODEL_COLOR, SECOND_COLOR, THIRD_COLOR, compact_table,
+                    dataset_strip,
+                    number, page_intro, show_chart)
 
 SPLIT_LABELS = {"train": "Eğitim", "val": "Doğrulama", "test": "Test"}
-# Kırmızı anomalilere ayrıldığı için test kümesi turuncudur.
-SPLIT_COLORS = {"train": MODEL_COLOR, "val": SECOND_COLOR, "test": "#E0872B"}
+# Vermilyon anomaliye, turuncu LEAD alt türüne ayrıldığı için test kümesi yumuşak mordur (app/theme.py).
+SPLIT_COLORS = {"train": MODEL_COLOR, "val": SECOND_COLOR, "test": THIRD_COLOR}
 LOSS_LABELS = {"huber": "Huber", "l1": "L1 (MAE)"}
 
 
@@ -48,7 +53,7 @@ def _seq2seq_figure(lookback, horizon, n_features, hidden, layers):
         figure.add_shape(
             type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
             line={"color": MODEL_COLOR if is_model else ACTUAL_COLOR, "width": 1.5},
-            fillcolor="#E3EBF7" if is_model else "#F4F6F9",
+            fillcolor="#E6ECF3" if is_model else "#F3F3EE",
         )
         figure.add_annotation(
             x=(x0 + x1) / 2, y=(y0 + y1) / 2, text=f"<b>{title}</b><br>{detail}",
@@ -125,7 +130,7 @@ def _split_timeline(household, eld):
                 hovertemplate=f"{label}<br>{name}: {settings['start']} – {settings['end']}<extra></extra>",
             ))
             shown.add(split)
-    figure.update_xaxes(title_text="Yıl", tickformat="%Y", dtick="M12", showgrid=True, gridcolor="#EEF0F3")
+    figure.update_xaxes(title_text="Yıl", tickformat="%Y", dtick="M12", showgrid=True, gridcolor=theme.GRID)
     figure.update_yaxes(showgrid=False, rangemode="normal")
     figure.update_layout(
         height=280, hovermode="closest", margin={"l": 150, "r": 20, "t": 80, "b": 45},
@@ -139,20 +144,20 @@ def _flow_figure():
     figure = go.Figure()
 
     lanes = (
-        (425, 705, "EĞİTİM: ölçekleme, model eğitimi ve OOF kalibrasyonu", "#f3f7fb"),
-        (225, 395, "DOĞRULAMA: ağırlık, model ve anomali ayarı seçimi", "#f6f8fc"),
-        (35, 185, "FİNAL TEST: dondurulmuş seçimlerle tek değerlendirme", "#f3f7fb"),
+        (425, 705, "EĞİTİM: ölçekleme, model eğitimi ve OOF kalibrasyonu", theme.BACKGROUND),
+        (225, 395, "DOĞRULAMA: ağırlık, model ve anomali ayarı seçimi", "#F3F3EE"),
+        (35, 185, "FİNAL TEST: dondurulmuş seçimlerle tek değerlendirme", theme.BACKGROUND),
     )
     for bottom, top, label, color in lanes:
         figure.add_shape(
             type="rect", x0=10, x1=990, y0=bottom, y1=top,
-            line={"color": "#d7e0ea", "width": 1},
+            line={"color": theme.BORDER, "width": 1},
             fillcolor=color, layer="below",
         )
         figure.add_annotation(
             x=28, y=top - 18, text=f"<b>{label}</b>",
             showarrow=False, xanchor="left",
-            font={"size": 13, "color": "#34445a"},
+            font={"size": 13, "color": theme.MUTED},
         )
 
     nodes = {
@@ -186,7 +191,7 @@ def _flow_figure():
             x=x2, y=y2, ax=x1, ay=y1,
             xref="x", yref="y", axref="x", ayref="y",
             text="", showarrow=True, arrowhead=2, arrowsize=1,
-            arrowwidth=1.7, arrowcolor="#536b86",
+            arrowwidth=1.7, arrowcolor=theme.MUTED,
             standoff=8, startstandoff=8,
         )
 
@@ -240,7 +245,7 @@ def _flow_figure():
         figure.add_shape(
             type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
             line={"color": MODEL_COLOR, "width": 1.5},
-            fillcolor="#ffffff",
+            fillcolor=theme.SURFACE,
             layer="above",
         )
         figure.add_annotation(
@@ -249,7 +254,7 @@ def _flow_figure():
             text=f"<b>{title}</b><br>{detail}",
             showarrow=False,
             align="center",
-            font={"size": 12, "color": "#172b4d"},
+            font={"size": 12, "color": theme.TEXT},
         )
 
     figure.update_layout(
@@ -363,7 +368,7 @@ def _models_section(info):
             )
 
     st.subheader("Hiperparametreler")
-    st.table(_hyperparameter_table(checkpoints).style.hide(axis="index"))
+    st.table(_hyperparameter_table(checkpoints).style.hide(axis="index"))   # 3 dar sütun
     st.caption(
         "Değerler ağırlık dosyalarından okunur ve Optuna en iyi deneme CSV'leriyle doğrulanır "
         "(optuna_lstm_best.csv, optuna_seq2seq_best.csv)."
@@ -506,8 +511,8 @@ def _experiment_section(info):
             "Yöntem (kod)": summary["method"],
             "Olay F1": [f"{number(m)} ± {number(d)}" for m, d in zip(summary["event_f1_mean"], summary["event_f1_std"])],
             "Olay recall": summary["event_recall_mean"].map(number),
-            "Olay precision": summary["event_precision_mean"].map(number),
-            "Yanlış alarm (kopya başına)": summary["false_alarms_mean"].map(lambda value: number(value, 1)),
+            "Olay prec.": summary["event_precision_mean"].map(number),          # kısa başlık: yatay kaydırma olmasın
+            "Yanlış alarm/kopya": summary["false_alarms_mean"].map(lambda value: number(value, 1)),
         })
         st.table(table.style.hide(axis="index"))
 
@@ -565,16 +570,109 @@ def _protocol_section(info):
         st.caption("Kaynaklar: docs/final_sonuclar.md, docs/hane_vs_sebeke.md.")
 
 
-def render(dataset="household"):
+LEAD_GROUP_TEXT = {   # protokol §17.2 (docs/lead_protokol.md); sütun listeleri src/datasets/lead/features.py
+    "G0": "Temel (Colab): okuma, log, takvim (döngüsel), 1/24/168 saat gecikme ve farkları",
+    "G1": "Değer değişimi: farklar, değişim oranı, değişti bayrağı, farklı değer sayısı",
+    "G2": "Kayan istatistik: 6/24/168 saatlik ort., std, min, maks., medyan, IQR; robust z",
+    "G3": "Ölçekten bağımsız: log(değer / son 168 saatin medyanı)",
+    "G4": "Profil sapması: aynı hafta-saatinin geçmiş ortalamasına göre z",
+    "G5": "Eksiklik bağlamı: son 24/168 saatte eksik saat, son boşluk yaşı ve uzunluğu",
+    "G6": "Bina türü (primary_use)",
+    "G7": "Tahmin artığı: Seq2Seq'in (L4-semi) katlar dışı 1 adım hatası",
+}
+
+
+def _lead_split_figure(splits):
+    """Bina bölmesi şeması: her seed'de 200 binanın train / val / test dağılımı (yatay yığılmış çubuk)."""
+    part = splits[splits["bolme"] == "bina"].groupby(["seed", "parca"]).size().unstack("parca")
+    figure = go.Figure()
+    for split in ("train", "val", "test"):
+        figure.add_trace(go.Bar(y=[f"seed {seed}" for seed in part.index], x=part[split], orientation="h",
+                                name=f"{SPLIT_LABELS[split]} ({int(part[split].iloc[0])} bina)",
+                                marker_color=SPLIT_COLORS[split], hovertemplate="%{x} bina<extra></extra>"))
+    figure.update_xaxes(title_text="Bina sayısı", range=[0, 200])
+    figure.update_yaxes(rangemode="normal")
+    figure.update_layout(barmode="stack", height=260, hovermode="closest",
+                         title="LEAD bina bölmesi: binalar parçalar arasında ayrık (aynı bina iki parçada yok)")
+    return figure
+
+
+def _lead_section():
+    """LEAD sekmesi: final ve karşılaştırma modelinin öznitelikleri, L4 mimarisi, seçim kuralı, bina bölmesi."""
+    from src.datasets.lead.features import BEHAVIOR, FE_GROUPS, FULL
+    config = load_config(PROJECT_ROOT / "configs" / "lead.yaml")
+    tables = PROJECT_ROOT / "results" / "lead" / "tables"
+    st.subheader("Final model: LightGBM, behavior seti (L1 behavior)")
+    st.markdown(f"Eksiklik ve sabitlik bilgisi taşıyan sütunlar çıkarılmış Colab öznitelikleri ({len(BEHAVIOR)} sütun), "
+                "yalnız geçmişe bakar; Optuna ayarları train binalarında gruplu CV ile seçildi. Sütunlar: "
+                + ", ".join(f"`{c}`" for c in BEHAVIOR) + ".")
+    st.subheader("Karşılaştırma: LightGBM + öznitelik grupları (L1-FE full)")
+    runs = pd.read_csv(tables.parent / "experiments.csv")
+    chosen = runs[(runs["model"] == "L-FE-ablasyon") & (runs["bolme"] == "bina")]
+    picks = {int(r.seed): json.loads(r.params)["secilen"] for r in chosen.itertuples()}
+    rows = []
+    for group, text in LEAD_GROUP_TEXT.items():
+        n = len(FULL) if group == "G0" else len(FE_GROUPS[group])
+        rows.append({"Grup": group, "İçerik": text, "Sütun": n,
+                     **{f"s{seed}": "✓" if group in groups else "" for seed, groups in sorted(picks.items())}})
+    columns = {f"s{seed}": (f"s{seed}", f"Seed {seed}: grup ileri ablasyonda (yalnız train CV) seçildi mi?")
+               for seed in picks}
+    columns["Sütun"] = ("Sütun", "Gruptaki öznitelik sayısı (full varyantı).")
+    compact_table(pd.DataFrame(rows), columns)
+    st.caption("Her seed kendi train binalarında 3 katlı gruplu CV ile ileri ablasyon yaptı; val'e bakılmadı "
+               "(protokol §17). Kaynak: results/lead/experiments.csv (L-FE-ablasyon satırları).")
+    st.subheader("Etiketsiz model: Seq2Seq tahmin artığı (L4)")
+    a3, deep = config["a3"], config["deep"]
+    st.markdown("\n".join([
+        f"- **Mimari:** Seq2Seq-LSTM (hanedeki F10 yapısı): {a3['layers']} katman, {a3['hidden']} gizli birim, "
+        f"dropout {number(a3['dropout'], 2)}; girdi son {deep['window']} saat (ölçekli log okuma, eksiklik maskesi, "
+        f"takvim), çıktı {a3['horizon']} saat.",
+        f"- **Eğitim:** train binalarının bütün saatleri, etiket kullanmadan; en çok {a3['max_epochs']} epoch, "
+        f"val tahmin MAE'siyle erken durdurma (sabır {a3['patience']}).",
+        f"- **Skor:** 1 adım ileri mutlak hata / son {a3['residual_scale_hours']} saatin medyan hatası "
+        "(yalnız geçmiş). L4-semi aynı model, etiketli anomali saatleri eğitimden çıkarılmış.",
+    ]))
+    st.subheader("Seçim kuralı (yalnız val)")
+    st.markdown("\n".join([
+        "1. Davranışsal (other) PR-AUC en yüksek modele göre farkı gürültü düzeyinde olanlar "
+        "(|ort. fark| ≤ 2·std/√3, 3 seed eşleştirilmiş).",
+        "2. Bunlar içinde genel PR-AUC'de aynı kural.",
+        "3. Kalanlarda sinir ağı **gerçekten katkı veriyorsa** (topluluklarda her seed'de GRU ağırlığı > 0) tercih edilir.",
+        "4. Sonra basitlik sırası. Sonuç: **L1 behavior**. Test bir kez çalıştırıldı; sonucu seçimi değiştirmedi.",
+    ]))
+    st.subheader("Bina bölmesi")
+    show_chart(_lead_split_figure(pd.read_csv(tables / "splits.csv")),
+               alt="LEAD bina bölmesi: üç seed için train, val ve test bina sayıları")
+    st.caption("Bölme bina düzeyinde ve seed'lidir (42, 7, 2026); ölçek ve modeller yalnız train binalarına fit edilir. "
+               "Kaynak: results/lead/tables/splits.csv.")
+
+
+def render(dataset=None):
     """Kaynakları okur ve eğitim/tahmin başlatmadan model bilgi sayfasını gösterir."""
-    st.title("Model Bilgisi")
+    page_intro("Model Bilgisi", "Final modellerin mimarisi ve hiperparametreleri, veri bölmesi, anomali yöntemleri ve deney "
+               "protokolü. Değerler kod, config ve ağırlık dosyalarının kendisinden okunur; teknik ayrıntılar açılır "
+               "bölümlerdedir.")
+    dataset = dataset or dataset_strip("model_info")
     try:
         info = _cached_model_info()
     except (FileNotFoundError, ValueError, KeyError) as error:
         st.error(f"Model bilgileri kaynak dosyalardan doğrulanamadı: {error}")
         return
     st.caption("Salt bilgilendirme: model eğitimi, tahmin veya sonuçların yeniden hesaplanması yapılmaz.")
+    # Bölüm seçimi: yalnız seçili bölüm çizilir (sekmelerde hepsi birden çizilirdi; sayfa daha az yoğun kalır).
+    section = st.segmented_control("Bölüm", ["Hane ve Şebeke", "LEAD (gerçek etiket)"], default="Hane ve Şebeke",
+                                   key="model-info-section") or "Hane ve Şebeke"
+    if section == "Hane ve Şebeke":
+        _main_sections(info, dataset)
+        return
+    try:
+        _lead_section()
+    except (FileNotFoundError, OSError, KeyError, ValueError) as error:
+        st.error(f"LEAD model bilgileri kayıtlı dosyalardan okunamadı: {error}")
 
+
+def _main_sections(info, dataset):
+    """Hane ve Şebeke sekmesi (önceki sayfa içeriği, değişmeden)."""
     _models_section(info)
     st.subheader("Veri bölmesi")
     show_chart(

@@ -9,7 +9,7 @@ import pytest
 
 from app.lead_services import (LEAD_MODELS, building_subtype_table, lead_paths, load_test_frame, load_thresholds,
                                missing_files, slice_results)
-from app.pages.lead import make_figure, results_table
+from app.views.lead import make_figure, results_table
 
 SEED = 42
 

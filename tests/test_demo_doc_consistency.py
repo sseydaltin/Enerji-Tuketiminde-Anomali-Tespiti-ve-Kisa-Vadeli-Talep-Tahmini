@@ -12,8 +12,8 @@ import pandas as pd
 import pytest
 
 from app.eld_services import HARD_DAY, eld_paths, eld_test_predictions, predict_eld_day
-from app.pages.forecast import overall_result_text
-from app.pages.results import _anomaly_table, _cross_dataset_table, _forecast_table
+from app.views.forecast import overall_result_text
+from app.views.results import _anomaly_table, _cross_dataset_table, _forecast_table
 from app.results_services import load_results_bundle
 from app.services import (
     best_decile_days,

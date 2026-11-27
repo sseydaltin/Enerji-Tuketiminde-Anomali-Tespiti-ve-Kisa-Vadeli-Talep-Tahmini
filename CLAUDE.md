@@ -45,7 +45,7 @@ src/pipelines/            # train_forecast, tune_optuna, train_oof, ensemble, se
                           # anomaly_protocol, anomaly_dual, eld_run, final_tables, compare_hane_sebeke
 src/*.py, src/data/*.py   # GEÇİCİ: yalnız eski `python -m` komutları için yönlendirme (kod içermez)
 experiments/archive/      # final sonuç üretmeyen deneyler + testleri (çalışır; çekirdek buradan import ETMEZ)
-app/                      # Streamlit demo (streamlit_app.py, pages/, *_services.py, ui.py)
+app/                      # Streamlit demo (streamlit_app.py, views/, *_services.py, ui.py, theme.py, style.css)
 notebooks/01_eda.ipynb
 scripts/verify_frozen_results.py
 tests/                    # pytest (pytest.ini: tests + experiments/archive/tests)

@@ -22,6 +22,9 @@ from app.anomaly_services import (
 )
 from app.services import load_f13_models, load_household_data
 from app.ui import (
+    compact_table,
+    kpi_cards,
+    page_intro,
     ACTUAL_COLOR,
     ANOMALY_COLOR,
     ANOMALY_LABELS,
@@ -39,6 +42,8 @@ from src.core.inject_anomalies import ANOMALY_TYPES
 from src.core.anomaly_metrics import runs
 
 NO_INJECTION = "none"
+EVENT_TABLE_KEY = "anomaly-events"     # olay tablosundaki seçim (grafik o olaya gider)
+WINDOW_DAYS = 7                        # varsayılan görünüm: seçili olayın çevresindeki 7 gün
 DEFAULT_TYPE = "level_shift"
 INJECTION_LABELS = {**ANOMALY_LABELS, NO_INJECTION: "Yok (gerçek ölçüm)"}
 SCENARIO_LABELS = {"main": "Ana (σ tabanlı)", "hard": "Zor (katsayı tabanlı)"}
@@ -50,13 +55,13 @@ EVENT_COLORS = {
 }
 
 
-def _make_figure(result, anomaly_type, method):
+def _make_figure(result, anomaly_type, method, show_extra=False, x_range=None):
     """Tüketimi ve seçili yöntemin skorunu ortak zaman ekseninde çizer.
 
-    Girdi: analyze_test_range çıktısı, enjekte tür (yoksa None) ve yöntem kodu.
-    Çıktı: 2 satırlı Plotly figürü: üstte kW, altta ham ve yumuşatılmış skor + eşik.
-    Eşik yumuşatılmış skora uygulanır. Enjekte olaylar iki satırda da kırmızı yarı
-    saydam bant, alarm saatleri yumuşatılmış skor üzerinde noktadır.
+    Girdi: analyze_test_range çıktısı, enjekte tür (yoksa None), yöntem kodu; show_extra = ham skor ve
+    doldurulmuş saatler de çizilsin mi (varsayılan gizli); x_range = (başlangıç, bitiş) görünüm aralığı (None: tüm dönem).
+    Çıktı: 2 satırlı Plotly figürü: üstte kW, altta yumuşatılmış skor + eşik. Lejant en çok 4 öğe: gerçek ölçüm,
+    enjekte anomali (bant), alarm verilen saat, eşik. Eşik yumuşatılmış skora uygulanır.
     """
     figure = make_subplots(
         rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.07, row_heights=[0.42, 0.58],
@@ -67,7 +72,7 @@ def _make_figure(result, anomaly_type, method):
         name="Gerçek ölçüm", line=LINE_ACTUAL,
     ), row=1, col=1)
     imputed = result["real_kw"].where(result["imputed"])
-    if imputed.notna().any():
+    if show_extra and imputed.notna().any():
         figure.add_trace(go.Scatter(
             x=index, y=imputed, mode="markers", name="Doldurulmuş saat (skor dışı)",
             marker={"color": BASELINE_COLOR, "size": 6},
@@ -79,21 +84,26 @@ def _make_figure(result, anomaly_type, method):
         # Yalnız enjekte saatler kırmızı çizilir; gerçek seri okunur kalsın diye gerisi boştur.
         figure.add_trace(go.Scatter(
             x=index, y=result["injected_kw"].where(labelled), mode="lines+markers",
-            name=f"Sentetik {ANOMALY_LABELS[anomaly_type]}",
-            line={"color": ANOMALY_COLOR, "width": 1.5}, marker={"color": ANOMALY_COLOR, "size": 4},
+            name=f"Sentetik {ANOMALY_LABELS[anomaly_type]}", showlegend=False,   # bant lejantta anlatılır
+            line={"color": ANOMALY_COLOR, "width": 2.0}, marker={"color": ANOMALY_COLOR, "size": 4},
         ), row=1, col=1)
 
     scores = result["scores"][method]
     threshold = result["thresholds"][method]
+    if show_extra:
+        figure.add_trace(go.Scatter(
+            x=index, y=result["raw_scores"][method], mode="lines", name="Ham skor", showlegend=False,
+            line={"color": BASELINE_COLOR, "width": 1},
+        ), row=2, col=1)
     figure.add_trace(go.Scatter(
-        x=index, y=result["raw_scores"][method], mode="lines", name="Ham skor",
-        line={"color": BASELINE_COLOR, "width": 1},
+        x=index, y=scores, mode="lines", name="Yumuşatılmış skor", line=LINE_MODEL, showlegend=False,
     ), row=2, col=1)
+    # Eşik bir şekildir (lejantta görünmez); anlamı boş bir izle lejanda yazılır.
     figure.add_trace(go.Scatter(
-        x=index, y=scores, mode="lines", name="Yumuşatılmış skor", line=LINE_MODEL,
+        x=[None], y=[None], mode="lines", name="Eşik", line={"color": ACTUAL_COLOR, "dash": "dash", "width": 2.0},
     ), row=2, col=1)
     figure.add_hline(
-        y=threshold, line_dash="dash", line_color=ACTUAL_COLOR, line_width=1.5, row=2, col=1,
+        y=threshold, line_dash="dash", line_color=ACTUAL_COLOR, line_width=2.0, row=2, col=1,
         annotation_text=f"Eşik {number(threshold)}",
         annotation_position="top right",
     )
@@ -103,7 +113,7 @@ def _make_figure(result, anomaly_type, method):
         # Yumuşatılmış skorla tetiklenmeyen alarm, eşiğin altında görünmesin diye ham skorda çizilir.
         marker_scores = scores.where(scores >= experimental["t1"], result["raw_scores"][method])
         figure.add_hline(
-            y=experimental["t2"], line_dash="dot", line_color=BASELINE_COLOR, line_width=1.5, row=2, col=1,
+            y=experimental["t2"], line_dash="dot", line_color=BASELINE_COLOR, line_width=2.0, row=2, col=1,
             annotation_text=f"Ham skor eşiği {number(experimental['t2'])}", annotation_position="top right",
         )
         if experimental["k"] is not None:
@@ -113,7 +123,7 @@ def _make_figure(result, anomaly_type, method):
             )
     flagged = flagged_hours(result, method)
     figure.add_trace(go.Scatter(
-        x=index[flagged], y=marker_scores.to_numpy()[flagged], mode="markers", name="İşaretlenen saat",
+        x=index[flagged], y=marker_scores.to_numpy()[flagged], mode="markers", name="İşaretlenen saat",   # alarm
         marker={"color": ANOMALY_COLOR, "size": 7, "line": {"color": "white", "width": 1}},
     ), row=2, col=1)
 
@@ -128,7 +138,7 @@ def _make_figure(result, anomaly_type, method):
                 )
         # add_vrect lejanda görünmez; bandın anlamı boş bir izle lejanda yazılır.
         figure.add_trace(go.Scatter(
-            x=[None], y=[None], mode="markers", name="Enjekte edilen anomali",
+            x=[None], y=[None], mode="markers", name="Enjekte edilen anomali",   # bant
             marker={"color": ANOMALY_COLOR, "symbol": "square", "size": 12, "opacity": 0.3},
         ))
 
@@ -136,6 +146,8 @@ def _make_figure(result, anomaly_type, method):
     figure.update_yaxes(title_text="Skor (birimsiz)", hoverformat=".3f", row=2, col=1)
     figure.update_xaxes(tickformat="%d.%m", hoverformat="%d.%m.%Y %H:%M")
     figure.update_xaxes(title_text="Zaman (gün.ay)", row=2, col=1)
+    if x_range is not None:
+        figure.update_xaxes(range=list(x_range))
     figure.update_layout(
         title=f"{DATASET_LABELS['household']}, {SPLIT_LABELS[result.get('split', 'test')]}: {METHOD_LABELS[method]} ve eşik",
         height=560,
@@ -145,47 +157,38 @@ def _make_figure(result, anomaly_type, method):
 
 
 def _metric_cards(result, method, outcomes, false_alarms):
-    """Gösterge kartlarını çizer; gerçek etiket yokken başarı sayısı iddia etmez.
-
-    Enjeksiyon kapalıyken doğrulanmış anomali etiketi bulunmadığından yakalanan olay
-    ve yanlış alarm hesaplanamaz; kartlarda bu nedenle "—" görünür.
-    """
+    """Üç KPI kartı; gerçek etiket yokken (enjeksiyon kapalı) başarı sayısı iddia edilmez ("—")."""
     injected = result["seed"] is not None
     blocks = len(runs(flagged_hours(result, method)))
-    columns = st.columns(4)
-    if injected:
-        caught = int((outcomes["Durum"] == CAUGHT).sum())
-        columns[0].metric("Yakalanan olay / toplam olay", f"{caught} / {len(outcomes)}", border=True, height=CARD_HEIGHT)
-        columns[1].metric("Yanlış alarm sayısı", false_alarms, border=True, height=CARD_HEIGHT)
-    else:
-        no_label = "Gerçek ölçümde anomali etiketi yoktur; değerlendirme için enjeksiyon seçin."
-        columns[0].metric("Yakalanan olay / toplam olay", "—", help=no_label, border=True, height=CARD_HEIGHT)
-        columns[1].metric("Yanlış alarm sayısı", "—", help=no_label, border=True, height=CARD_HEIGHT)
-    columns[2].metric(
-        "Toplam alarm", blocks, help="Eşiği aşan ardışık saatler tek alarm sayılır.",
-        border=True, height=CARD_HEIGHT,
-    )
-    columns[3].metric(
-        "Eşik (yumuşatılmış skor)", number(result["thresholds"][method]),
-        help="Doğrulama kümesinde seçilmiştir; test verisine göre değiştirilmez.",
-        border=True, height=CARD_HEIGHT,
-    )
+    caught = f"{int((outcomes['Durum'] == CAUGHT).sum())} / {len(outcomes)}" if injected else "—"
+    kpi_cards([
+        ("Yakalanan olay", caught,
+         "Enjekte olayların kaçı alarmla yakalandı." if injected else "Gerçek ölçümde etiket yok; enjeksiyon seçin."),
+        ("Yanlış alarm", str(false_alarms) if injected else "—",
+         f"Hiçbir olayla örtüşmeyen alarm (toplam {blocks} alarm)."),
+        ("Eşik", number(result["thresholds"][method]), "Doğrulama kümesinde seçildi; testte değişmez."),
+    ])
+
+
+EVENT_COLUMNS = {   # olay ve alarm tablolarında kısa başlık → ipucu
+    "Süre (saat)": ("Süre (sa)", "Olayın süresi (saat)."),
+    "Ham skor (en yüksek)": ("Ham maks.", "Olay boyunca ham skorun en yüksek değeri."),
+    "Yumuşatılmış skor (en yüksek)": ("Yumuş. maks.", "Olay boyunca yumuşatılmış skorun en yüksek değeri; eşik buna uygulanır."),
+    "Olay bitince alarm": ("Geç alarm", "Alarm olay bittikten sonra mı geldi (katı tanımda kaçırılmış sayılır)."),
+    "Enjekte olayla örtüşüyor": ("Olayla örtüşme", "Alarm bir enjekte olayla kesişiyor mu."),
+}
 
 
 def _event_table(outcomes):
-    """Enjekte olay tablosunu gösterir: yakalandı yeşil, kaçırıldı kırmızı."""
-    styled = (
-        outcomes.style
-        .map(EVENT_COLORS.get, subset=["Durum"])
-        .format({
-            "Başlangıç": "{:%d.%m.%Y %H:%M}",
-            "Bitiş": "{:%d.%m.%Y %H:%M}",
-            "Ham skor (en yüksek)": lambda value: number(value),
-            "Yumuşatılmış skor (en yüksek)": lambda value: number(value),
-        }, na_rep="—")
-        .hide(axis="index")
-    )
-    st.dataframe(styled, width="stretch", hide_index=True)
+    """Enjekte olay tablosu (yakalandı yeşil, kaçırıldı kırmızı); bir satır seçilince grafik o olaya gider."""
+    def style(frame):
+        return (frame.style.map(EVENT_COLORS.get, subset=["Durum"])
+                .format({"Başlangıç": "{:%d.%m %H:%M}", "Yumuş. maks.": lambda value: number(value)},
+                        na_rep="—").hide(axis="index"))
+    # Dar ekranda yatay kaydırma olmasın: Bitiş (= başlangıç + süre) ve ham skor tepesi ("Tüm alarmlar") burada yok.
+    shown = outcomes[["Başlangıç", "Tür", "Süre (saat)", "Yumuşatılmış skor (en yüksek)", "Durum", "Olay bitince alarm"]]
+    compact_table(shown, EVENT_COLUMNS, styler=style, key=EVENT_TABLE_KEY, selectable=True)
+    st.caption("Bitiş = başlangıç + süre. Ham skorun en yüksek değeri \"Tüm alarmlar\" tablosundadır.")
 
 
 def _alarm_table(result, method):
@@ -203,25 +206,23 @@ def _alarm_table(result, method):
         raw.loc[start:end].max() for start, end in zip(alarms["Başlangıç"], alarms["Bitiş"])
     ])
     alarms["Enjekte olayla örtüşüyor"] = alarms["Enjekte olayla örtüşüyor"].map({True: "Evet", False: "Hayır"})
-    styled = alarms.style.format({
-        "Başlangıç": "{:%d.%m.%Y %H:%M}",
-        "Bitiş": "{:%d.%m.%Y %H:%M}",
-        "Ham skor (en yüksek)": lambda value: number(value),
-        "Yumuşatılmış skor (en yüksek)": lambda value: number(value),
-        "Eşik": lambda value: number(value),
-    }).hide(axis="index")
-    st.dataframe(styled, width="stretch", hide_index=True)
+    def style(frame):
+        return frame.style.format({"Başlangıç": "{:%d.%m %H:%M}", "Bitiş": "{:%d.%m %H:%M}",
+                                   "Ham maks.": lambda value: number(value),
+                                   "Yumuş. maks.": lambda value: number(value)}).hide(axis="index")
+    # Eşik sütunu sabit olduğu için gösterilmez (KPI kartında); dar ekranda yatay kaydırma olmasın.
+    compact_table(alarms.drop(columns=["Eşik"], errors="ignore"), EVENT_COLUMNS, styler=style)
 
 
 def _controls(frame, config, calibration):
-    """Yöntem, enjeksiyon, senaryo, şiddet ve tarih kontrollerini tek satırda gösterir.
+    """Üstte yöntem ve anomali türü; senaryo, şiddet ve tarihler "Gelişmiş ayarlar" açılır bölümünde.
 
     Çıktı: yöntem, tip, senaryo, şiddet, başlangıç, bitiş, küme, o kümenin günleri.
     Tarih aralığı varsayılan olarak tüm dönemdir: yakalanan/toplam kartı ve tablo, seçilmiş
     bir kesit değil, kopyanın bütün olaylarını gösterir. Deneysel yöntem test kümesinde
     çalıştırılmadığı için seçilince dönem val-hold olur; bu yüzden tarih anahtarları kümeye bağlıdır.
     """
-    method_col, type_col, scenario_col, severity_col, start_col, end_col = st.columns([4, 2, 2, 2, 2, 2])
+    method_col, type_col = st.columns([3, 2])
     options = list(METHODS) + (list(EXPERIMENTAL_METHODS) if calibration.get("experimental") else [])
     method = method_col.selectbox(
         "Yöntem", options=options, index=options.index(FINAL_METHOD),
@@ -230,10 +231,12 @@ def _controls(frame, config, calibration):
     split = EXPERIMENT_SPLIT if method in EXPERIMENTAL_METHODS else "test"
     days = complete_test_days(frame, config, split)
     anomaly_type = type_col.selectbox(
-        "Enjeksiyon tipi", options=list(INJECTION_LABELS),
+        "Anomali türü", options=list(INJECTION_LABELS),
         index=list(INJECTION_LABELS).index(DEFAULT_TYPE),
         format_func=INJECTION_LABELS.get, key="anomaly-type",
     )
+    advanced = st.expander("Gelişmiş ayarlar: senaryo, şiddet, tarih aralığı")
+    scenario_col, severity_col, start_col, end_col = advanced.columns(4)
     scenario = scenario_col.selectbox(
         "Senaryo", options=list(SCENARIO_LABELS), format_func=SCENARIO_LABELS.get,
         disabled=anomaly_type == NO_INJECTION, key="anomaly-scenario",
@@ -269,9 +272,10 @@ def _capture_table(tables_dir):
         for mean, std in zip(table["Yakalama oranı (ort)"], table["Yakalama oranı (std)"])
     ]
     table["Yanlış alarm (ort)"] = table["Yanlış alarm (ort)"].map(lambda value: number(value, 1))
-    st.table(table[[
-        "Tip", "Yöntem", "Seed başına yakalanan / toplam", "Yakalama oranı", "Yanlış alarm (ort)",
-    ]].style.hide(axis="index"))
+    compact_table(table[["Tip", "Yöntem", "Seed başına yakalanan / toplam", "Yakalama oranı", "Yanlış alarm (ort)"]],
+                  {"Seed başına yakalanan / toplam": ("Yakalanan", "Seed başına yakalanan / toplam olay."),
+                   "Yakalama oranı": ("Oran", "Yakalama oranı (5 seed ort. ± std)."),
+                   "Yanlış alarm (ort)": ("Yanlış alarm", "Seed başına ortalama yanlış alarm.")})
     st.caption(
         "Her koşuda yalnız o tip enjekte edilir, tüm test dönemi, ana senaryo, şiddet ×1, 5 seed. "
         "Bu tablo demo denetimi içindir, final sonuç değildir; raporlanan tablolar dört tipi birlikte "
@@ -336,9 +340,12 @@ def _details(result, method, inject, scenario, seed, severity):
     )
 
 
-def render(dataset="household"):
+def render(dataset=None):
     """Hane test döneminin anomali sayfasını çizer; canlı analiz yalnız hanede vardır."""
-    st.title("Anomali Tespiti")
+    page_intro("Anomali Tespiti", "Hane test döneminde seçilen yöntemin anomali skoru ve eşiği gösterilir. İsterseniz gerçek "
+               "ölçümün bir kopyasına sentetik anomali eklenir (orijinal veri değişmez); kartlar yakalanan olayları ve "
+               "yanlış alarmları sayar.")
+    dataset = dataset or st.session_state.get("dataset", "household")
     if dataset != "household":
         st.info(
             f"Canlı anomali analizi yalnız {DATASET_LABELS['household']} için hazırlanmıştır; aşağıda hane "
@@ -369,7 +376,7 @@ def render(dataset="household"):
     end = pd.Timestamp(end_day) + pd.Timedelta(hours=23)
     seed = int(config["protocol"]["scenarios"][scenario]["seeds"][split][0])
     if inject:
-        st.warning("Kırmızı bantlar sentetiktir, gerçek ölçüm değildir. Orijinal veri değişmez; enjeksiyon kopya üzerinde yapılır.")
+        st.warning("Renkli bantlar sentetiktir, gerçek ölçüm değildir. Orijinal veri değişmez; enjeksiyon kopya üzerinde yapılır.")
 
     try:
         result = analyze_test_range(
@@ -383,9 +390,25 @@ def render(dataset="household"):
 
     outcomes, false_alarms = event_outcomes(result, method)
     _metric_cards(result, method, outcomes, false_alarms)
+    full_col, extra_col = st.columns(2)
+    full_period = full_col.toggle("Tüm dönemi göster", value=outcomes.empty, key="anomaly-full")
+    show_extra = extra_col.toggle("Ham skoru göster", value=False, key="anomaly-extra",
+                                  help="Ham (yumuşatılmamış) skoru ve doldurulmuş (skor dışı) saatleri de çizer.")
+    x_range, focus_note = None, "Tüm dönem gösteriliyor."
+    if not full_period and not outcomes.empty:
+        selection = st.session_state.get(EVENT_TABLE_KEY)
+        rows = list(selection.selection.rows) if selection is not None else []
+        position = rows[0] if rows and rows[0] < len(outcomes) else 0
+        event = outcomes.iloc[position]
+        center = event["Başlangıç"] + (event["Bitiş"] - event["Başlangıç"]) / 2
+        half = pd.Timedelta(days=WINDOW_DAYS / 2)
+        x_range = (center - half, center + half)
+        focus_note = (f"Görünüm: {position + 1}. olayın ({event['Başlangıç']:%d.%m.%Y}) çevresindeki {WINDOW_DAYS} gün. "
+                      "Başka bir olaya gitmek için aşağıdaki tablodan bir satır seçin.")
+    st.caption(focus_note)
     show_chart(
-        _make_figure(result, anomaly_type if inject else None, method),
-        alt=f"{METHOD_LABELS[method]} ham ve yumuşatılmış skoru, eşik çizgisi, enjekte anomaliler ve işaretlenen saatler",
+        _make_figure(result, anomaly_type if inject else None, method, show_extra=show_extra, x_range=x_range),
+        alt=f"{METHOD_LABELS[method]} yumuşatılmış skoru, eşik çizgisi, enjekte anomaliler ve alarm verilen saatler",
     )
 
     if inject:

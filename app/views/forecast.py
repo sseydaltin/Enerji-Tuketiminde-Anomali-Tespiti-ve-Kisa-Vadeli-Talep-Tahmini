@@ -20,6 +20,9 @@ from app.services import (
     worst_decile_days,
 )
 from app.ui import (
+    kpi_cards,
+    dataset_strip,
+    page_intro,
     ACTUAL_COLOR,
     BASELINE_COLOR,
     CARD_HEIGHT,
@@ -72,7 +75,9 @@ def _controls(dataset, days, table):
     if st.session_state.get(key) not in days:
         st.session_state[key] = median_day(table)
         st.session_state[f"forecast_note_{dataset}"] = "Varsayılan gün: iyileşmesi medyana en yakın test günü."
-    day_col, random_col, easy_col, hard_col = st.columns([3, 1, 1, 1], vertical_alignment="bottom")
+    day_col, buttons_col = st.columns([3, 3], vertical_alignment="bottom")
+    buttons = buttons_col.container(horizontal=True)          # üç düğme her genişlikte yan yana
+    random_col = easy_col = hard_col = buttons
     # Takvim yerine liste: yalnız geçmişi ve hedefi eksiksiz günler seçilebilsin diye.
     day = day_col.selectbox(
         "Test günü", days, key=key, format_func=_display_day, on_change=_clear_note, args=(dataset,),
@@ -113,36 +118,25 @@ def overall_result_text(forecast, digits):
 
 
 def _metric_cards(result, baseline_mae, digits):
-    """Seçili günün dört kartını çizer; iyileşme kartında delta yeşil/kırmızıdır.
+    """Seçili günün üç KPI kartı (model MAE, SN168'e göre iyileşme, günlük toplam hata).
 
     İyileşme = 100 × (SN168 MAE − Topluluk MAE) / SN168 MAE; pozitifse model daha iyidir.
     """
     model_mae = result["metrics"]["MAE"]
     total_error = daily_total_error_pct(result["actual_kw"], result["f13_kw"])
-    columns = st.columns(4)
-    columns[0].metric("Seçili gün: Topluluk MAE", f"{number(model_mae, digits)} kW", border=True, height=CARD_HEIGHT)
-    columns[1].metric(
-        "Seçili gün: Günlük toplam tüketim hatası",
-        "Tanımsız" if not np.isfinite(total_error) else f"%{number(total_error, 1)}",
-        border=True,
-        height=CARD_HEIGHT,
-    )
-    columns[2].metric("Seçili gün: SN168 MAE", f"{number(baseline_mae, digits)} kW", border=True, height=CARD_HEIGHT)
     if baseline_mae > 0:
         gain = 100.0 * (baseline_mae - model_mae) / baseline_mae
-        difference = baseline_mae - model_mae
-        # Streamlit, "-" ile başlayan deltayı kırmızı ve aşağı oklu gösterir.
-        delta = (
-            f"{number(difference, digits)} kW daha az hata" if difference >= 0
-            else f"-{number(-difference, digits)} kW daha fazla hata"
-        )
-        columns[3].metric(
-            "Seçili gün: SN168'e göre iyileşme",
-            f"{'-' if gain < 0 else ''}%{number(abs(gain), 1)}",
-            delta=delta, border=True, height=CARD_HEIGHT,
-        )
+        gain_text = f"{'-' if gain < 0 else ''}%{number(abs(gain), 1)}"
     else:
-        columns[3].metric("Seçili gün: SN168'e göre iyileşme", "Tanımsız", border=True, height=CARD_HEIGHT)
+        gain_text = "Tanımsız"
+    kpi_cards([
+        ("Topluluk MAE (seçili gün)", f"{number(model_mae, digits)} kW",
+         "Günün 24 saatinde ortalama mutlak hata."),
+        ("SN168'e göre iyileşme", gain_text,
+         f"Haftalık naif yönteme göre ne kadar daha iyi (SN168 MAE {number(baseline_mae, digits)} kW)."),
+        ("Günlük toplam hata", "Tanımsız" if not np.isfinite(total_error) else f"%{number(total_error, 1)}",
+         "Günün toplam tüketimi ne kadar şaştı."),
+    ])
 
 
 def _make_figure(result, day, dataset_label, digits):
@@ -170,7 +164,7 @@ def _make_figure(result, day, dataset_label, digits):
     start = result["target_times"][0]
     figure.add_shape(
         type="line", x0=start, x1=start, xref="x", y0=0, y1=1, yref="paper",
-        line={"color": ACTUAL_COLOR, "width": 1.5, "dash": "dot"},
+        line={"color": ACTUAL_COLOR, "width": 2.0, "dash": "dot"},
     )
     figure.add_annotation(
         x=start, y=1, xref="x", yref="paper", text="Tahmin başlangıcı",
@@ -214,7 +208,7 @@ def _distribution_figure(table, day, dataset_label):
     ):
         figure.add_shape(
             type="line", x0=x, x1=x, xref="x", y0=0, y1=1, yref="paper",
-            line={"color": ACTUAL_COLOR, "width": 1.5, "dash": dash},
+            line={"color": ACTUAL_COLOR, "width": 2.0, "dash": dash},
         )
         figure.add_annotation(
             x=x, y=y, xref="x", yref="paper", text=label, showarrow=False,
@@ -236,10 +230,8 @@ def _distribution_section(table, day, dataset_label):
     """Tek günün tüm testi temsil edip etmediğini gösteren özeti ve dağılımı çizer."""
     wins = int((table["model_mae"] < table["baseline_mae"]).sum())
     st.subheader("Test günlerinin tamamı")
-    columns = st.columns(3)
-    columns[0].metric("Modelin önde olduğu gün", f"{wins} / {len(table)}", border=True)
-    columns[1].metric("SN168'in önde olduğu gün", f"{len(table) - wins} / {len(table)}", border=True)
-    columns[2].metric("Medyan günlük iyileşme", f"%{number(table['gain_pct'].median(), 1)}", border=True)
+    st.markdown(f"Model **{wins} / {len(table)}** günde, SN168 **{len(table) - wins} / {len(table)}** günde önde; "
+                f"medyan günlük iyileşme **%{number(table['gain_pct'].median(), 1)}**.")
     show_chart(
         _distribution_figure(table, day, dataset_label),
         alt=f"{dataset_label} test günlerinde SN168'e göre günlük MAE iyileşmesinin dağılımı",
@@ -313,9 +305,12 @@ def _eld_source():
     return config, days, table, lambda day: predict_eld_day(frame, config, results, day)
 
 
-def render(dataset="household"):
-    """Seçili veri seti için tahmin sayfasını çizer."""
-    st.title("Talep Tahmini")
+def render(dataset=None):
+    """Seçili veri seti için tahmin sayfasını çizer (veri seti üstteki şeritten)."""
+    page_intro("Talep Tahmini", "Bir test gününde topluluk modelinin (Seq2Seq + LSTM) 24 saatlik tahmini, gerçek tüketim "
+               "ve mevsimsel naif referansla (SN168) karşılaştırılır. Kartlar seçili günün hatasını, kartların üstündeki "
+               "satır ise test geneli için kayıtlı final sonucu gösterir.")
+    dataset = dataset or dataset_strip("forecast")
     dataset_label = DATASET_LABELS[dataset]
     digits = DIGITS[dataset]
     try:
@@ -338,7 +333,7 @@ def render(dataset="household"):
     note = st.session_state.get(f"forecast_note_{dataset}") or ""
     try:
         overall = overall_result_text(load_results_bundle(dataset)["forecast"], digits)
-        st.markdown(f"{overall} &nbsp; <span style='color:#6B7280'>{note}</span>", unsafe_allow_html=True)
+        st.markdown(f"{overall} &nbsp; <span style='color:#6B7075'>{note}</span>", unsafe_allow_html=True)
     except (FileNotFoundError, OSError, ValueError, KeyError) as error:
         st.error(f"Kayıtlı test geneli sonucu okunamadı: {error}")
 
