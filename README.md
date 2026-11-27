@@ -372,6 +372,34 @@ Hem doğrulama hem test kümesinin **kopyasına** (seed'ler aşağıda; ilk prot
 - Şebeke verisi ve ağırlıkları repoya girmez; yoksa Talep Tahmini bunu bildirir ve Şebeke yalnız kayıtlı sonuçlarla gösterilir. Canlı anomali analizi yalnız hane içindir. XGBoost ağırlık dosyası yoksa canlı tahmin yapılmaz; kayıtlı deney sonuçları gösterilir.
 - **A5 normalizasyon referansı — bilinen kaynak/izlenebilirlik farkı:** `src/pipelines/evaluate_anomaly.py` içindeki genel `fit_combination` varsayılanı tam `val` iken, final test yolu `src/pipelines/anomaly_protocol.py` içinde `reference_split="val_dev"` değerini açıkça geçirir. Final protokol dokümanı ve deney notu da val-dev'i belirtir; final test CSV'lerinde referans kümesini kaydeden ayrı alan veya bağımsız çalışma zamanı günlüğü yoktur. Bu nedenle sonuç final kod yolu ve deney notlarıyla desteklenir, ancak CSV metadata'sından tek başına doğrulanamaz.
 
+### 4.14 Demoyu başka bilgisayarda çalıştırmak için
+
+Veri, model ağırlıkları ve kayıtlı skorlar git'e girmez (`.gitignore`). Bunlar ayrı bir zip'te dağıtılır: **`demo_paketi_2026-11-27.zip`** (repo dışında, ekibin Drive klasöründe; 321 dosya, ~242 MB; içinde `MANIFEST_SHA256.txt`).
+
+| Zip'teki klasör | İçerik | Kullanan |
+|---|---|---|
+| `models/*.pt`, `models/eld/*.pt` | hane ve ELD checkpoint'leri (F5-opt, F10-opt, seed'leri, OOF katları, A2, diğer kadro) | demo (Talep Tahmini, Anomali, Model Bilgisi), `notebooks/01_hane`, `02_sebeke` |
+| `results/predictions/`, `results/eld/predictions/` | kayıtlı val/test tahminleri (`.npz`) | notebook'lar (XGBoost val tahmini, dizi kontrolleri) |
+| `results/lead/scores/` | LEAD kayıtlı val ve tek seferlik test skorları (`.npy`) | demo (Gerçek Etiketli Veri sayfası), `notebooks/03_lead` |
+| `data/processed/hourly.parquet`, `eld_hourly.parquet` | işlenmiş hane ve ELD verisi (UCI, CC BY 4.0) | demo, notebook'lar |
+
+**LEAD verisi zip'te yok:** Kaggle yarışma verisi yeniden dağıtılmaz. Kaggle hesabıyla [energy-anomaly-detection](https://www.kaggle.com/competitions/energy-anomaly-detection) verisini indirip `train.csv` ve `train_features.csv`'yi `data/raw/lead/` altına koyun, sonra:
+
+```bash
+python -m src.pipelines.lead_run --stage clean                                   # data/processed/lead_clean.parquet
+python -m src.pipelines.lead_run --stage sites --features data/raw/lead/train_features.csv   # yalnız site_id, primary_use
+```
+
+**Adımlar** (proje kökünde):
+1. Repoyu klonlayın ve ortamı kurun (§5 Kurulum): `pip install -r requirements.txt`.
+2. Zip'i **proje köküne** açın; klasör yapısı korunur (`models/`, `results/…`, `data/processed/`). Var olan dosyaların üzerine yazmayın.
+3. (İsteğe bağlı) bütünlük: `MANIFEST_SHA256.txt`'teki özetler dosyalarla karşılaştırılabilir.
+4. LEAD sayfası için yukarıdaki iki LEAD komutunu çalıştırın (eğitim yok; yalnız temizlik ve site eşleşmesi).
+5. `pytest -q` → hepsi geçmeli (veri/skor yoksa ilgili demo testleri atlanır).
+6. `python -m streamlit run app/streamlit_app.py --server.address localhost`.
+
+Demo eğitim yapmaz ve çalışma anında dış servisten veri indirmez. Dosya eksikse ilgili sayfa hangi dosyanın eksik olduğunu yazar.
+
 ---
 
 ## 5. Repo yapısı ve komutlar
