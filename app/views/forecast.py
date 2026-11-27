@@ -20,6 +20,7 @@ from app.services import (
     worst_decile_days,
 )
 from app.ui import (
+    kpi_cards,
     dataset_strip,
     page_intro,
     ACTUAL_COLOR,
@@ -115,36 +116,25 @@ def overall_result_text(forecast, digits):
 
 
 def _metric_cards(result, baseline_mae, digits):
-    """Seçili günün dört kartını çizer; iyileşme kartında delta yeşil/kırmızıdır.
+    """Seçili günün üç KPI kartı (model MAE, SN168'e göre iyileşme, günlük toplam hata).
 
     İyileşme = 100 × (SN168 MAE − Topluluk MAE) / SN168 MAE; pozitifse model daha iyidir.
     """
     model_mae = result["metrics"]["MAE"]
     total_error = daily_total_error_pct(result["actual_kw"], result["f13_kw"])
-    columns = st.columns(4)
-    columns[0].metric("Seçili gün: Topluluk MAE", f"{number(model_mae, digits)} kW", border=True, height=CARD_HEIGHT)
-    columns[1].metric(
-        "Seçili gün: Günlük toplam tüketim hatası",
-        "Tanımsız" if not np.isfinite(total_error) else f"%{number(total_error, 1)}",
-        border=True,
-        height=CARD_HEIGHT,
-    )
-    columns[2].metric("Seçili gün: SN168 MAE", f"{number(baseline_mae, digits)} kW", border=True, height=CARD_HEIGHT)
     if baseline_mae > 0:
         gain = 100.0 * (baseline_mae - model_mae) / baseline_mae
-        difference = baseline_mae - model_mae
-        # Streamlit, "-" ile başlayan deltayı kırmızı ve aşağı oklu gösterir.
-        delta = (
-            f"{number(difference, digits)} kW daha az hata" if difference >= 0
-            else f"-{number(-difference, digits)} kW daha fazla hata"
-        )
-        columns[3].metric(
-            "Seçili gün: SN168'e göre iyileşme",
-            f"{'-' if gain < 0 else ''}%{number(abs(gain), 1)}",
-            delta=delta, border=True, height=CARD_HEIGHT,
-        )
+        gain_text = f"{'-' if gain < 0 else ''}%{number(abs(gain), 1)}"
     else:
-        columns[3].metric("Seçili gün: SN168'e göre iyileşme", "Tanımsız", border=True, height=CARD_HEIGHT)
+        gain_text = "Tanımsız"
+    kpi_cards([
+        ("Topluluk MAE (seçili gün)", f"{number(model_mae, digits)} kW",
+         "Günün 24 saatinde ortalama mutlak hata."),
+        ("SN168'e göre iyileşme", gain_text,
+         f"Haftalık naif yönteme göre ne kadar daha iyi (SN168 MAE {number(baseline_mae, digits)} kW)."),
+        ("Günlük toplam hata", "Tanımsız" if not np.isfinite(total_error) else f"%{number(total_error, 1)}",
+         "Günün toplam tüketimi ne kadar şaştı."),
+    ])
 
 
 def _make_figure(result, day, dataset_label, digits):
@@ -238,10 +228,8 @@ def _distribution_section(table, day, dataset_label):
     """Tek günün tüm testi temsil edip etmediğini gösteren özeti ve dağılımı çizer."""
     wins = int((table["model_mae"] < table["baseline_mae"]).sum())
     st.subheader("Test günlerinin tamamı")
-    columns = st.columns(3)
-    columns[0].metric("Modelin önde olduğu gün", f"{wins} / {len(table)}", border=True)
-    columns[1].metric("SN168'in önde olduğu gün", f"{len(table) - wins} / {len(table)}", border=True)
-    columns[2].metric("Medyan günlük iyileşme", f"%{number(table['gain_pct'].median(), 1)}", border=True)
+    st.markdown(f"Model **{wins} / {len(table)}** günde, SN168 **{len(table) - wins} / {len(table)}** günde önde; "
+                f"medyan günlük iyileşme **%{number(table['gain_pct'].median(), 1)}**.")
     show_chart(
         _distribution_figure(table, day, dataset_label),
         alt=f"{dataset_label} test günlerinde SN168'e göre günlük MAE iyileşmesinin dağılımı",

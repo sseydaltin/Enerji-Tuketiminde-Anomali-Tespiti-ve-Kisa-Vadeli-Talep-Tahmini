@@ -4,6 +4,7 @@ Bu modül yalnız sunum katmanıdır; hiçbir metrik hesaplamaz. Renkler ve Plot
 özel CSS `app/style.css`'tedir; burada aynı adlarla sayfalara verilir (eski adlar korunur).
 """
 
+from html import escape
 from pathlib import Path
 
 import streamlit as st
@@ -83,10 +84,38 @@ def dataset_strip(key_suffix, label="Veri seti"):
     return choice or st.session_state["dataset"]
 
 
+def kpi_cards(cards):
+    """En çok 3 KPI kartı: cards = [(etiket, değer metni, tek satırlık açıklama), ...].
+
+    İç içe sütun kullanılmaz: kartlar CSS ızgarasıyla dizilir (app/style.css, .kpi-grid); dar ekranda kendiliğinden
+    alt alta geçer, metin harf harf kırılmaz. Değerler çağıran sayfada kayıtlı dosyalardan hazırlanır.
+    """
+    if len(cards) > 3:
+        raise ValueError("Bir sayfada en çok 3 KPI kartı gösterilir.")
+    items = "".join(f"<div class='kpi-card'><div class='kpi-label'>{escape(label)}</div>"
+                    f"<div class='kpi-value'>{escape(value)}</div><div class='kpi-desc'>{escape(desc)}</div></div>"
+                    for label, value, desc in cards)
+    st.markdown(f"<div class='kpi-grid'>{items}</div>", unsafe_allow_html=True)
+
+
 def kpi_row(cards):
-    """KPI kartları tek satırda: cards = [(etiket, değer metni, yardım metni ya da None), ...]."""
-    for column, (label, value, hint) in zip(st.columns(len(cards)), cards):
-        column.metric(label, value, help=hint, border=True)
+    """Geriye uyumlu ad: kpi_cards ile aynı (etiket, değer, açıklama)."""
+    kpi_cards(cards)
+
+
+def compact_table(frame, columns, styler=None, key=None, selectable=False):
+    """Yatay kaydırma gerektirmeyen tablo: uzun sütun adları kısaltılır, tam ad sütun ipucunda (help) durur.
+
+    columns: {asıl ad: (kısa ad, ipucu)}; listede olmayan sütunlar adıyla kalır. styler: kısa adlı tabloya
+    uygulanacak biçimlendirme fonksiyonu (DataFrame → Styler). selectable: tek satır seçimi (olay tablosu).
+    Çıktı: st.dataframe dönüşü (seçim bilgisi için). Değerler değişmez; yalnız başlıklar değişir.
+    """
+    shown = frame.rename(columns={name: short for name, (short, _) in columns.items()})
+    config = {short: st.column_config.Column(short, help=hint) for short, hint in columns.values() if hint}
+    data = styler(shown) if styler else shown
+    options = {"on_select": "rerun", "selection_mode": "single-row", "key": key} if selectable else {}
+    height = 36 * (len(frame) + 1) + 4          # bütün satırlar görünsün: tablo içinde dikey kaydırma olmasın
+    return st.dataframe(data, hide_index=True, width="stretch", height=height, column_config=config, **options)
 
 
 def number(value, digits=3):

@@ -22,7 +22,23 @@ LEAD_MODELS = {
     ("L4", "-"): "Seq2Seq tahmin artığı (etiketsiz)",
 }
 FINAL_LEAD_MODEL = ("L1", "behavior")
-SUBTYPE_LABELS = {"gap_edge": "Boşluk kenarı", "frozen": "Donmuş okuma", "other": "Davranışsal (other)"}
+# Sonuçlar sayfasındaki val→test tablosu: iç kodlar yerine okunur adlar (sıra = tablo sırası).
+LEAD_LABELS = {
+    ("L1", "behavior"): "LightGBM, behavior (final)",
+    ("L1-FE", "full"): "LightGBM + öznitelik grupları, full",
+    ("L1-FE", "behavior"): "LightGBM + öznitelik grupları, behavior",
+    ("L2-FE", "full"): "GRU + öznitelik grupları, full",
+    ("L2-FE", "behavior"): "GRU + öznitelik grupları, behavior",
+    ("L5-FE", "full"): "LightGBM + GRU topluluğu, full",
+    ("L5-FE", "behavior"): "LightGBM + GRU topluluğu, behavior",
+    ("L4", "-"): "Seq2Seq tahmin artığı (etiketsiz)",
+    ("L4-semi", "-"): "Seq2Seq tahmin artığı (yarı denetimli)",
+    ("L0-A0", "-"): "Hareketli z-skoru",
+    ("L0-R3", "-"): "Kural: eksik saat veya sabit okuma",
+    ("IF", "behavior"): "Isolation Forest (literatür referansı)",
+    ("L1-OFF", "full"): "LightGBM, iki yönlü öznitelik (offline, yalnız kıyas)",
+}
+SUBTYPE_LABELS = {"gap_edge": "Boşluk kenarı", "frozen": "Donmuş okuma", "other": "Davranışsal"}
 SLICE_LABELS = {"other": "Davranışsal (other)", "genel": "Genel", "gap_edge": "Boşluk kenarı", "frozen": "Donmuş okuma",
                 "paylasilan": "Paylaşılan olay", "tekil": "Tekil olay"}
 SEEDS = (42, 7, 2026)
@@ -115,3 +131,39 @@ def building_subtype_table(frame, building, thresholds):
         row[f"Yakalanan: {name}"] = int((normal[f"{key[0]}|{key[1]}"].fillna(-np.inf) >= thresholds[key]).sum())
     rows.append(row)
     return pd.DataFrame(rows)
+
+
+@st.cache_data(show_spinner=False)
+def building_f1(seed):
+    """Final modelin test binalarındaki bina bazlı F1'i (kayıtlı test_building_f1.csv; anomalisi olan binalar).
+
+    Çıktı: Series [building_id → F1]. Yalnız görüntüleme için (varsayılan / kolay / zor bina seçimi); hiçbir model,
+    eşik ya da ayar seçimi buna göre yapılmaz.
+    """
+    _, _, tables, _ = lead_paths()
+    table = pd.read_csv(tables / "test_building_f1.csv")
+    part = table[(table["model"] == FINAL_LEAD_MODEL[0]) & (table["set"] == FINAL_LEAD_MODEL[1]) & (table["seed"] == seed)]
+    return part.set_index("building_id")["f1"].sort_index()
+
+
+def median_building(f1):
+    """F1'i medyana en yakın bina (Talep sayfasındaki "medyana en yakın gün" ile aynı mantık; eşitlikte küçük kimlik)."""
+    distance = (f1 - f1.median()).abs()
+    return int(distance.sort_values(kind="stable").index[0])
+
+
+def busiest_window(frame, building, days=14):
+    """Binanın en çok anomali saati içeren `days` günlük aralığı: (başlangıç, bitiş). Yalnız görünüm aralığı."""
+    part = frame[frame["building_id"] == building].set_index("timestamp")["anomaly"]
+    daily = part.resample("D").sum()
+    totals = daily.rolling(days, min_periods=1).sum()
+    end = totals.idxmax()
+    start = max(daily.index[0], end - pd.Timedelta(days=days - 1))
+    return start, end + pd.Timedelta(days=1)
+
+
+@st.cache_data(show_spinner=False)
+def val_test_summary():
+    """Kayıtlı val ve test özetleri (scripts/lead_results_report.py çıktısı; 3 seed ort. ± std, bina bölmesi)."""
+    _, _, tables, _ = lead_paths()
+    return pd.read_csv(tables / "test_summary_val_vs_test.csv")
