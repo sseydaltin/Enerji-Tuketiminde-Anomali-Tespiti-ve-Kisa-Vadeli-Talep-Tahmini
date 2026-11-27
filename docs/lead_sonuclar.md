@@ -295,7 +295,37 @@ Yorum (kanıt değil, olası nedenler):
 4. **Final model (L1 behavior) ile L1-FE full arasındaki fark testte büyüdü** (`other` PR-AUC 0,051'e karşı 0,120). Val'de bu fark gürültü düzeyindeydi ve seçim kuralı basitlik sırasıyla L1 behavior'ı seçti. Protokol gereği (§13) test sonucuna göre final model **değiştirilmez**; bu, raporda "val'de ayırt edilemeyen iki modelin testte ayrışması" olarak yazılır.
 5. Val skorlarında val erken durdurmasından gelen hafif iyimserlik (§8.2, val özeti) test yönündeki farkı açıklamaz (o, val'i yüksek gösterirdi); farkın yönü tersidir.
 
-## 7. Notlar
+## 7. Test sonrası gözlem
+
+> Bu bölüm test sonuçları görüldükten **sonra** yazıldı. Hiçbir seçimi, eşiği ya da ayarı değiştirmez.
+
+**Final model değişmeden kalır: L1 / behavior** (val'de §18.2 + §21 ile seçildi; protokol §13: test sonucuna göre hiçbir şey değiştirilmez).
+
+**L1-FE full testte daha iyi genelleşti:**
+
+| model | other PR-AUC val | other PR-AUC test | genel PR-AUC val | genel PR-AUC test |
+|---|---|---|---|---|
+| L1 / behavior (final) | 0.058 ± 0.011 | 0.051 ± 0.029 | 0.575 ± 0.017 | 0.646 ± 0.021 |
+| L1-FE / full | 0.053 ± 0.030 | 0.120 ± 0.009 | 0.667 ± 0.099 | 0.819 ± 0.023 |
+
+Testte L1-FE full `other` PR-AUC'de 0.120 ± 0.009, final model 0.051 ± 0.029; genel PR-AUC'de 0.819 ve 0.646. Val'de iki model gürültü düzeyindeydi (§21.2) ve seçim kuralı basitlik sırasıyla L1 behavior'ı seçti.
+
+**Ders:** tek bir val kümesi (seed başına 40 bina) bu büyüklükteki farkları ayırt edemedi. Seçim, aynı 40 bina üzerinde yapılan tek bir ölçüme dayandı; val parçasının bileşimi (aşağıda) sonucu modeller arasındaki farktan daha çok etkiledi. **Öneri (gelecek çalışma):** model seçimi train+val binalarında **bina bazlı (gruplu) çapraz doğrulama** ile yapılmalı (ör. 5 kat × birkaç tekrar; her katta farklı binalar tutulur); farklar kat başına eşleştirilmiş olarak ve daha fazla bağımsız ölçümle değerlendirilmeli. L-FE ablasyonu ve I-turu bu yapıyı (3 kat) zaten train içinde kullandı; final seçim de aynı yapıya taşınmalıydı.
+
+**Bulgu: `other` skorları bina bileşimine çok duyarlı.** Aynı modelin `other` PR-AUC'si parçadan parçaya büyük ölçüde değişiyor; kurallar ve etiketsiz modeller de aynı yönde etkileniyor. Val ve test parçalarının bileşimi (`test_split_composition.csv`):
+
+| seed | parça | bina | other tabanı | frozen payı | other payı | paylaşılan olay payı | paylaşılan other olay payı | other'ın ilk 3 binadaki payı |
+|---|---|---|---|---|---|---|---|---|
+| 42 | val | 40 | 0.0092 | 0.477 | 0.407 | 0.625 | 0.527 | 0.371 |
+| 42 | test | 40 | 0.0049 | 0.689 | 0.188 | 0.720 | 0.643 | 0.347 |
+| 7 | val | 40 | 0.0056 | 0.665 | 0.215 | 0.744 | 0.621 | 0.282 |
+| 7 | test | 40 | 0.0064 | 0.609 | 0.268 | 0.707 | 0.557 | 0.388 |
+| 2026 | val | 40 | 0.0072 | 0.569 | 0.334 | 0.668 | 0.536 | 0.386 |
+| 2026 | test | 40 | 0.0036 | 0.669 | 0.182 | 0.769 | 0.676 | 0.319 |
+
+`other` saatlerinin %28–39'u parçanın yalnız 3 binasında; bu yüzden 40 binalık bir parçada birkaç binanın davranışı `other` sonucunu belirliyor. Final modelin `other` PR-AUC'sinin seed'ler arası std'si testte 0.029, ortalamanın yarısından fazla.
+
+## 8. Notlar
 
 - **IF:** yalnız literatür referansı; seçime girmez
 - **L1-FE:** G7 içeren modellerin val değerleri hafif iyimser olabilir (L4-semi val etiketiyle erken durduruldu); test etkilenmez

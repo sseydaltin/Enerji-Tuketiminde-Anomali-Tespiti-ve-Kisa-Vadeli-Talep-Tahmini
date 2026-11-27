@@ -1,8 +1,8 @@
-"""Enerji talep tahmini ve anomali tespiti için dört sayfalı Streamlit demosu."""
+"""Enerji talep tahmini ve anomali tespiti için beş sayfalı Streamlit demosu (5.: gerçek etiketli LEAD verisi)."""
 
 import streamlit as st
 
-from app.pages import anomaly, forecast, model_info, results
+from app.pages import anomaly, forecast, lead, model_info, results
 from app.ui import DATASET_LABELS, apply_page_style
 
 PAGES = {
@@ -10,6 +10,7 @@ PAGES = {
     "Anomali Tespiti": anomaly.render,
     "Sonuçlar": results.render,
     "Model Bilgisi": model_info.render,
+    "Gerçek Etiketli Veri (LEAD)": lead.render,
 }
 
 
