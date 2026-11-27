@@ -1,0 +1,14 @@
+/* Demonun tek özel CSS dosyası (app/ui.py::apply_page_style yükler). Kısa tutulur; renkler app/theme.py ile aynı. */
+.block-container {max-width: 1280px; padding-top: 1.6rem; padding-bottom: 2.5rem;}
+html, body, [class*="css"] {font-size: 16px;}
+h1 {font-size: 1.9rem !important; font-weight: 650 !important; letter-spacing: -0.01em; padding-bottom: 0.2rem !important;}
+h2, h3 {font-weight: 600 !important; color: #2F3437;}
+.page-intro {background: #F0F0EA; border-radius: 12px; padding: 0.75rem 1rem; color: #4A4F55; margin-bottom: 1rem;}
+[data-testid="stMetric"] {background: #FFFFFF; border: 1px solid #E3E3DC; border-radius: 14px; padding: 0.8rem 1rem;}
+[data-testid="stMetricValue"] {font-size: 1.55rem; color: #2F3437;}
+[data-testid="stMetricLabel"] p {color: #6B7075; font-size: 0.9rem; white-space: normal;}
+[data-testid="stExpander"] details {border-radius: 12px; border-color: #E3E3DC; background: #FFFFFF;}
+[data-testid="stVerticalBlockBorderWrapper"] {border-radius: 14px;}
+[data-testid="stPlotlyChart"] {background: #FFFFFF; border: 1px solid #E3E3DC; border-radius: 14px; overflow: hidden;}
+[data-testid="stDataFrame"], [data-testid="stTable"] {overflow-x: auto;}
+section[data-testid="stSidebar"] {background: #F3F3EE;}

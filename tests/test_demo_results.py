@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from app.pages.results import _cross_dataset_table, _forecast_table, _horizon_figure
+from app.views.results import _cross_dataset_table, _forecast_table, _horizon_figure
 from app.results_services import (
     ANOMALY_METHODS,
     FORECAST_IDS,

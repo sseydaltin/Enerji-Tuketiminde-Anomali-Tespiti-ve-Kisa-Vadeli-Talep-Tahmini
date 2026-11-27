@@ -22,6 +22,7 @@ from app.anomaly_services import (
 )
 from app.services import load_f13_models, load_household_data
 from app.ui import (
+    page_intro,
     ACTUAL_COLOR,
     ANOMALY_COLOR,
     ANOMALY_LABELS,
@@ -336,9 +337,12 @@ def _details(result, method, inject, scenario, seed, severity):
     )
 
 
-def render(dataset="household"):
+def render(dataset=None):
     """Hane test döneminin anomali sayfasını çizer; canlı analiz yalnız hanede vardır."""
-    st.title("Anomali Tespiti")
+    page_intro("Anomali Tespiti", "Hane test döneminde seçilen yöntemin anomali skoru ve eşiği gösterilir. İsterseniz gerçek "
+               "ölçümün bir kopyasına sentetik anomali eklenir (orijinal veri değişmez); kartlar yakalanan olayları ve "
+               "yanlış alarmları sayar.")
+    dataset = dataset or st.session_state.get("dataset", "household")
     if dataset != "household":
         st.info(
             f"Canlı anomali analizi yalnız {DATASET_LABELS['household']} için hazırlanmıştır; aşağıda hane "

@@ -13,6 +13,8 @@ from app.results_services import (
     metric_text,
 )
 from app.ui import (
+    dataset_strip,
+    page_intro,
     ANOMALY_LABELS,
     DATASET_LABELS,
     FINAL_METHOD,
@@ -231,8 +233,8 @@ def _forecast_tab(bundle, label):
         "Değerler seed ortalaması ± standart sapmadır; tek koşulu modellerde std yoktur. "
         "MAPE yalnız gerçek tüketimi 0,1 kW üstündeki saatlerde hesaplanır. Final model vurguludur."
     )
-    st.subheader("Hane ve Şebeke: tüm modeller")
-    st.table(_cross_dataset_table(bundle["cross_dataset"]).style.hide(axis="index"))
+    with st.expander("Hane ve Şebeke: tüm modeller (uzun tablo)"):
+        st.table(_cross_dataset_table(bundle["cross_dataset"]).style.hide(axis="index"))
 
 
 def _anomaly_tab(bundle, label):
@@ -280,17 +282,20 @@ def _error_tab(bundle, label):
     if levels is None:
         st.info("Seviye tablosu bulunamadı; yalnız ufuk grafiği gösteriliyor.")
         return
-    st.subheader("Toplama seviyesine göre hata")
-    st.table(highlighted_table(levels, "Model", FORECAST_LABELS[FINAL_MODEL]))
-    st.caption(
-        "En iyi model metriğe ve seviyeye göre değişebilir. Her satır kayıtlı "
-        "test tablosundan alınmıştır."
-    )
+    with st.expander("Toplama seviyesine göre hata (1 saat, 24 saat, günlük toplam)"):
+        st.table(highlighted_table(levels, "Model", FORECAST_LABELS[FINAL_MODEL]))
+        st.caption(
+            "En iyi model metriğe ve seviyeye göre değişebilir. Her satır kayıtlı "
+            "test tablosundan alınmıştır."
+        )
 
 
-def render(dataset="household"):
+def render(dataset=None):
     """Kayıtlı final test sonuçlarını üstte karşılaştırır, altta sekmelerde ayrıntılandırır."""
-    st.title("Sonuçlar")
+    page_intro("Sonuçlar", "Hane ve şebeke için kayıtlı final test sonuçları: üstte iki veri setinin ana sayıları, altta "
+               "seçili veri setinde model karşılaştırması, anomali yöntemleri ve hata analizi. Burada hiçbir şey yeniden "
+               "hesaplanmaz.")
+    dataset = dataset or dataset_strip("results", "Sekmelerdeki veri seti")
     try:
         household = load_results_bundle("household")
         eld = load_results_bundle("eld")
@@ -308,7 +313,7 @@ def render(dataset="household"):
         "yaklaşık 1 kW, şebeke yaklaşık 106 MW ölçeğindedir ve dönemleri farklıdır."
     )
 
-    st.caption(f"Sekmelerde gösterilen veri seti: **{label}** (kenar çubuğundan değiştirilebilir).")
+    st.caption(f"Sekmelerde gösterilen veri seti: **{label}** (üstteki şeritten değiştirilebilir).")
     forecast_tab, anomaly_tab, error_tab = st.tabs(["Tahmin", "Anomali", "Hata analizi"])
     with forecast_tab:
         _forecast_tab(bundle, label)

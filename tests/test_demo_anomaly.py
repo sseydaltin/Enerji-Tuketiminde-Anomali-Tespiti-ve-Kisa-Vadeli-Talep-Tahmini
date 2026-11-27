@@ -19,7 +19,7 @@ from app.anomaly_services import (
     load_anomaly_calibration,
     scale_injection,
 )
-from app.pages.anomaly import _make_figure
+from app.views.anomaly import _make_figure
 from src.core.anomaly_metrics import event_metrics
 from app.services import load_f13_models, load_household_data, valid_test_days
 from app.ui import METHOD_LABELS

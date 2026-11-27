@@ -12,11 +12,13 @@ import streamlit as st
 
 from app.model_info_services import load_model_info
 from app.results_services import load_results_bundle
-from app.ui import ACTUAL_COLOR, DATASET_LABELS, METHOD_LABELS, MODEL_COLOR, SECOND_COLOR, number, show_chart
+from app import theme
+from app.ui import (ACTUAL_COLOR, DATASET_LABELS, METHOD_LABELS, MODEL_COLOR, SECOND_COLOR, THIRD_COLOR, dataset_strip,
+                    number, page_intro, show_chart)
 
 SPLIT_LABELS = {"train": "Eğitim", "val": "Doğrulama", "test": "Test"}
-# Kırmızı anomalilere ayrıldığı için test kümesi turuncudur.
-SPLIT_COLORS = {"train": MODEL_COLOR, "val": SECOND_COLOR, "test": "#E0872B"}
+# Vermilyon anomaliye, turuncu LEAD alt türüne ayrıldığı için test kümesi yumuşak mordur (app/theme.py).
+SPLIT_COLORS = {"train": MODEL_COLOR, "val": SECOND_COLOR, "test": THIRD_COLOR}
 LOSS_LABELS = {"huber": "Huber", "l1": "L1 (MAE)"}
 
 
@@ -48,7 +50,7 @@ def _seq2seq_figure(lookback, horizon, n_features, hidden, layers):
         figure.add_shape(
             type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
             line={"color": MODEL_COLOR if is_model else ACTUAL_COLOR, "width": 1.5},
-            fillcolor="#E3EBF7" if is_model else "#F4F6F9",
+            fillcolor="#E6ECF3" if is_model else "#F3F3EE",
         )
         figure.add_annotation(
             x=(x0 + x1) / 2, y=(y0 + y1) / 2, text=f"<b>{title}</b><br>{detail}",
@@ -125,7 +127,7 @@ def _split_timeline(household, eld):
                 hovertemplate=f"{label}<br>{name}: {settings['start']} – {settings['end']}<extra></extra>",
             ))
             shown.add(split)
-    figure.update_xaxes(title_text="Yıl", tickformat="%Y", dtick="M12", showgrid=True, gridcolor="#EEF0F3")
+    figure.update_xaxes(title_text="Yıl", tickformat="%Y", dtick="M12", showgrid=True, gridcolor=theme.GRID)
     figure.update_yaxes(showgrid=False, rangemode="normal")
     figure.update_layout(
         height=280, hovermode="closest", margin={"l": 150, "r": 20, "t": 80, "b": 45},
@@ -139,20 +141,20 @@ def _flow_figure():
     figure = go.Figure()
 
     lanes = (
-        (425, 705, "EĞİTİM: ölçekleme, model eğitimi ve OOF kalibrasyonu", "#f3f7fb"),
-        (225, 395, "DOĞRULAMA: ağırlık, model ve anomali ayarı seçimi", "#f6f8fc"),
-        (35, 185, "FİNAL TEST: dondurulmuş seçimlerle tek değerlendirme", "#f3f7fb"),
+        (425, 705, "EĞİTİM: ölçekleme, model eğitimi ve OOF kalibrasyonu", theme.BACKGROUND),
+        (225, 395, "DOĞRULAMA: ağırlık, model ve anomali ayarı seçimi", "#F3F3EE"),
+        (35, 185, "FİNAL TEST: dondurulmuş seçimlerle tek değerlendirme", theme.BACKGROUND),
     )
     for bottom, top, label, color in lanes:
         figure.add_shape(
             type="rect", x0=10, x1=990, y0=bottom, y1=top,
-            line={"color": "#d7e0ea", "width": 1},
+            line={"color": theme.BORDER, "width": 1},
             fillcolor=color, layer="below",
         )
         figure.add_annotation(
             x=28, y=top - 18, text=f"<b>{label}</b>",
             showarrow=False, xanchor="left",
-            font={"size": 13, "color": "#34445a"},
+            font={"size": 13, "color": theme.MUTED},
         )
 
     nodes = {
@@ -186,7 +188,7 @@ def _flow_figure():
             x=x2, y=y2, ax=x1, ay=y1,
             xref="x", yref="y", axref="x", ayref="y",
             text="", showarrow=True, arrowhead=2, arrowsize=1,
-            arrowwidth=1.7, arrowcolor="#536b86",
+            arrowwidth=1.7, arrowcolor=theme.MUTED,
             standoff=8, startstandoff=8,
         )
 
@@ -240,7 +242,7 @@ def _flow_figure():
         figure.add_shape(
             type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
             line={"color": MODEL_COLOR, "width": 1.5},
-            fillcolor="#ffffff",
+            fillcolor=theme.SURFACE,
             layer="above",
         )
         figure.add_annotation(
@@ -249,7 +251,7 @@ def _flow_figure():
             text=f"<b>{title}</b><br>{detail}",
             showarrow=False,
             align="center",
-            font={"size": 12, "color": "#172b4d"},
+            font={"size": 12, "color": theme.TEXT},
         )
 
     figure.update_layout(
@@ -565,9 +567,12 @@ def _protocol_section(info):
         st.caption("Kaynaklar: docs/final_sonuclar.md, docs/hane_vs_sebeke.md.")
 
 
-def render(dataset="household"):
+def render(dataset=None):
     """Kaynakları okur ve eğitim/tahmin başlatmadan model bilgi sayfasını gösterir."""
-    st.title("Model Bilgisi")
+    page_intro("Model Bilgisi", "Final modellerin mimarisi ve hiperparametreleri, veri bölmesi, anomali yöntemleri ve deney "
+               "protokolü. Değerler kod, config ve ağırlık dosyalarının kendisinden okunur; teknik ayrıntılar açılır "
+               "bölümlerdedir.")
+    dataset = dataset or dataset_strip("model_info")
     try:
         info = _cached_model_info()
     except (FileNotFoundError, ValueError, KeyError) as error:

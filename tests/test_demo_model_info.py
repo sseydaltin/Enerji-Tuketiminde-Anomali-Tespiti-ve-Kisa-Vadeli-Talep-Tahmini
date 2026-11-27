@@ -7,12 +7,12 @@ import pytest
 import torch
 
 from app.model_info_services import _checkpoint_metadata, load_model_info
-from app.pages.model_info import _flow_figure, _model_rows
+from app.views.model_info import _flow_figure, _model_rows
 
 
 def _render_model_info_page():
     """AppTest için yalnızca Model Info sayfasını çalıştırır."""
-    from app.pages.model_info import render
+    from app.views.model_info import render
 
     render()
 

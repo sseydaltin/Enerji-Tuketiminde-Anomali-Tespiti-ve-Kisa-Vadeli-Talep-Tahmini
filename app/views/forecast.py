@@ -20,6 +20,8 @@ from app.services import (
     worst_decile_days,
 )
 from app.ui import (
+    dataset_strip,
+    page_intro,
     ACTUAL_COLOR,
     BASELINE_COLOR,
     CARD_HEIGHT,
@@ -313,9 +315,12 @@ def _eld_source():
     return config, days, table, lambda day: predict_eld_day(frame, config, results, day)
 
 
-def render(dataset="household"):
-    """Seçili veri seti için tahmin sayfasını çizer."""
-    st.title("Talep Tahmini")
+def render(dataset=None):
+    """Seçili veri seti için tahmin sayfasını çizer (veri seti üstteki şeritten)."""
+    page_intro("Talep Tahmini", "Bir test gününde topluluk modelinin (Seq2Seq + LSTM) 24 saatlik tahmini, gerçek tüketim "
+               "ve mevsimsel naif referansla (SN168) karşılaştırılır. Kartlar seçili günün hatasını, kartların üstündeki "
+               "satır ise test geneli için kayıtlı final sonucu gösterir.")
+    dataset = dataset or dataset_strip("forecast")
     dataset_label = DATASET_LABELS[dataset]
     digits = DIGITS[dataset]
     try:
@@ -338,7 +343,7 @@ def render(dataset="household"):
     note = st.session_state.get(f"forecast_note_{dataset}") or ""
     try:
         overall = overall_result_text(load_results_bundle(dataset)["forecast"], digits)
-        st.markdown(f"{overall} &nbsp; <span style='color:#6B7280'>{note}</span>", unsafe_allow_html=True)
+        st.markdown(f"{overall} &nbsp; <span style='color:#6B7075'>{note}</span>", unsafe_allow_html=True)
     except (FileNotFoundError, OSError, ValueError, KeyError) as error:
         st.error(f"Kayıtlı test geneli sonucu okunamadı: {error}")
 
