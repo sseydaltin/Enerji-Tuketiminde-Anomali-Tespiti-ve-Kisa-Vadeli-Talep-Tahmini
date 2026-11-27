@@ -122,15 +122,16 @@ Projenin ilk planı 4 günlüktü; tamamlandı ve README'den çıkarıldı (eski
 
 | Aşama | Durum | Kaynak |
 |---|---|---|
-| Veri hattı, EDA, kronolojik bölme | Tamamlandı | §4.1–§4.5, `notebooks/01_eda.ipynb` |
+| Veri hattı, EDA, kronolojik bölme | Tamamlandı | §4.1–§4.5, `notebooks/01_eda.ipynb` (akış notebook'ları: `01_hane`, `02_sebeke`, `03_lead`) |
 | Tahmin deneyleri (Aşama 1–5, 3b), yalnız val | Tamamlandı | `docs/tahmin_deneyleri_ozet.md` |
 | Final test (hane tahmin + anomali), bir kez | Tamamlandı | `docs/final_test_protokolu.md`, `docs/final_sonuclar.md` |
 | Şebeke (ELD) deneyi, aynı ayarlarla | Tamamlandı | `docs/eld_protokol.md`, `docs/hane_vs_sebeke.md` |
 | Test sonrası anomali geliştirmesi (yalnız kış-dev + yaz-dev) | **Donduruldu** (2026-11-25): Aşama 3–8 yapılmadı | `docs/gelistirme_protokolu.md`, kod `experiments/archive/` |
 | Yeniden yapılandırma (`src/core`, `src/datasets`, `src/pipelines`, `experiments/archive`) | Tamamlandı (2026-11-25); final sayılar değişmedi, `scripts/verify_frozen_results.py` ile doğrulandı | `docs/deney_gunlugu.md` |
-| **LEAD1.0 eklenmesi** | **Sıradaki iş** | `docs/veri_seti_lead1_degerlendirme.md` |
+| LEAD1.0 (gerçek etiketli ek doğrulama): val ve tek seferlik test | Tamamlandı (2026-11-26); final model L1 behavior | `docs/lead_protokol.md`, `docs/lead_val_ozet.md`, `docs/lead_sonuclar.md` |
+| Demo yeniden tasarımı, notebook'lar, sunum hazırlığı | Tamamlandı (2026-11-27) | §4.13–§4.15, `docs/sunum/` |
 
-Öneri formu `docs/oneri_formu/`, rapor taslağı `docs/rapor/` altındadır. Rapor şablonu ve tarihler yayımlanınca içerik §7 iskeletinden aktarılır.
+Öneri formu `docs/oneri_formu/`, rapor rehberi `docs/rapor/DILARA_RAPOR_REHBERI.md` altındadır. Belgelerin okuma sırası: `docs/README.md`.
 
 ---
 
@@ -362,7 +363,7 @@ Hem doğrulama hem test kümesinin **kopyasına** (seed'ler aşağıda; ilk prot
 - Sonuçlar literatürle nasıl kıyaslanır? (Aynı veri setini kullanan çalışmalarda bölme, çözünürlük ve ufuk farklı olabilir → doğrudan sayı kıyası yapmadan önce koşulları belirtin.)
 
 ### 4.13 Demo uygulaması (Streamlit) – Yönerge §15.3, §16
-- **Arayüz:** Türkçe, sade açık tema (`.streamlit/config.toml`: kırık beyaz zemin, koyu gri metin, tek yumuşak vurgu rengi). Renkler ve tek Plotly şablonu `app/theme.py`'de (renk körlüğüne uygun Okabe–Ito tabanlı palet: gerçek değer koyu gri, final model yumuşak lacivert, karşılaştırma modeli mavi-yeşil, referans açık gri kesikli; doygun vermilyon yalnız anomali vurgusu; LEAD alt türleri her sayfada aynı renk), tek CSS dosyası `app/style.css`. Ana Sayfa üç veri setini üç kartta özetler; her sayfanın üstünde "Bu sayfada ne görüyorsunuz?" kutusu, ana sayılar KPI kartlarında, uzun tablolar açılır bölümlerdedir. Kenar çubuğunda yalnız ikonlu sayfa listesi; veri seti, seed, bina gibi seçimler sayfanın üstünde yatay şerittedir. Sayfa modülleri `app/views/` altındadır. İç deney kodları yalnız Model Bilgisi sayfasında parantez içinde görünür. Ekran görüntüleri: `docs/demo/`.
+- **Arayüz:** Türkçe, sade açık tema (`.streamlit/config.toml`: kırık beyaz zemin, koyu gri metin, tek yumuşak vurgu rengi). Renkler ve tek Plotly şablonu `app/theme.py`'de (renk körlüğüne uygun Okabe–Ito tabanlı palet: gerçek değer koyu gri, final model yumuşak lacivert, karşılaştırma modeli mavi-yeşil, referans açık gri kesikli; doygun vermilyon yalnız anomali vurgusu; LEAD alt türleri her sayfada aynı renk), tek CSS dosyası `app/style.css`. Ana Sayfa üç veri setini üç kartta özetler; her sayfanın üstünde "Bu sayfada ne görüyorsunuz?" kutusu, ana sayılar KPI kartlarında, uzun tablolar açılır bölümlerdedir. Kenar çubuğunda yalnız ikonlu sayfa listesi; veri seti, seed, bina gibi seçimler sayfanın üstünde yatay şerittedir. Sayfa modülleri `app/views/` altındadır. İç deney kodları yalnız Model Bilgisi sayfasında parantez içinde görünür. Güncel ekran görüntüleri: `docs/sunum/yedek/` (`python scripts/sunum_kontrol.py --ekran-goruntusu`); yeniden tasarım öncesi görüntüler `docs/archive/demo_v2.0/`.
 - **Sayfa 1 – Talep Tahmini:** Hane ve Şebeke test dönemlerinde 48 saatlik gerçek geçmişten Topluluk modeli (0,8 Seq2Seq + 0,2 LSTM) ve SN168 tahminini gerçek sonraki 24 saatle karşılaştırır. Şebeke tahmini `src/pipelines/eld_run.py` kadrosu ve `all_predictions` ile üretilir (`app/eld_services.py`). Üstte kayıtlı test geneli sonucu, altında seçili günün kartları (MAE, günlük toplam tüketim hatası, SN168 MAE, iyileşme) ve gün dağılımı bulunur; MAPE Detaylar'dadır. Varsayılan gün, iyileşmesi medyana en yakın gündür. “Kolay/zor örnek” en iyi/en kötü %10'luk dilimden seçilir (Şebeke'de zor örnek 25 Aralık 2014); model seçimine bağlanmaz. Gün bazlı değerler seed 42 içindir.
 - **Sayfa 2 – Anomali Tespiti:** Yalnız hane. Enjeksiyon protokoldeki gibi tüm test kopyasına yapılır, tarih aralığı görünümü seçer. Varsayılan: seviye kayması, ana senaryo, şiddet ×1. Ham ve yumuşatılmış skor ayrı gösterilir; kayıtlı doğrulama eşiği yumuşatılmış skora uygulanır. Kartlar ve olay tablosu `event_metrics` tanımlarını izler. Ölçekler final protokolle aynıdır (OOF std, val-dev referansı; `python -m app.build_calibration`). Tip bazlı yakalama oranları `python -m app.capture_table` ile `results/tables/demo_capture_by_type.csv` dosyasına yazılır; bu tablo final sonuç değildir. “Geliştirilmiş: kısa sıçramalar (deneysel)” (A6-dual) ve “Geliştirilmiş: sıçrama + taban yük (deneysel)” (A6-dual-floor) seçenekleri test sonrası A6 denemesidir (`python -m src.pipelines.anomaly_dual`); final sonuç değildir ve test kümesinde çalıştırılmadığı için val-hold dönemini gösterir.
 - **Sayfa 3 – Sonuçlar:** Üstte Hane ve Şebeke için MAPE, R² ve olay F1 kartları; altta Tahmin, Anomali ve Hata analizi sekmeleri. Tüm sayılar kayıtlı test CSV'lerinden gelir. Veri setleri arasında mutlak MAE kıyaslanmaz. Sayfa salt okunurdur; eksik veya uyumsuz CSV için açık hata verir.
@@ -417,11 +418,13 @@ Demo eğitim yapmaz ve çalışma anında dış servisten veri indirmez. Dosya e
 
 ```
 .
-├── README.md · CLAUDE.md · requirements.txt · pytest.ini · .gitignore
+├── README.md · CLAUDE.md · requirements.txt · requirements-dev.txt (Playwright) · pytest.ini · .gitignore
+├── .streamlit/config.toml        # demo teması
 ├── configs/
 │   ├── config.yaml               # TEK yapılandırma: yollar, bölme tarihleri, pencere, hiperparametreler, seed, protokol
 │   ├── eld.yaml                  # ELD'de config.yaml'dan farklı olanlar
-│   └── optuna_{lstm,seq2seq}_best.yaml   # Optuna'nın seçtiği F5-opt / F10-opt ayarları (otomatik üretildi)
+│   ├── optuna_{lstm,seq2seq}_best.yaml   # Optuna'nın seçtiği F5-opt / F10-opt ayarları (otomatik üretildi)
+│   └── lead.yaml                 # LEAD1.0 ayarları (bölme seed'leri, bütçe, model ayarları)
 ├── data/raw/ · data/processed/   # ham ve işlenmiş veri (git'e girmez; hourly.parquet, eld_hourly.parquet)
 ├── src/
 │   ├── core/                     # veri setinden bağımsız ortak parçalar
@@ -432,25 +435,27 @@ Demo eğitim yapmaz ve çalışma anında dış servisten veri indirmez. Dosya e
 │   ├── datasets/
 │   │   ├── household/            # load.py · preprocess.py · weather.py (UCI hane)
 │   │   ├── eld/                  # eld.py (UCI ELD, 160 müşteri toplamı)
-│   │   └── lead/                 # LEAD1.0 (boş; eklenecek)
+│   │   └── lead/                 # load (temizlik, site) · eda · splits (bina/site bölmesi) · features · evaluate
 │   ├── models/                   # baselines · forecast_baselines (Ridge) · mlp · lstm · gru · seq2seq · cnn_lstm · xgb_forecast
 │   │                             # anomaly_baselines (A0, A1) · autoencoder (A2; A7 keşif) · residual_detector (A3)
+│   │                             # lead_classifiers (LEAD GRU ve CNN+GRU sınıflandırıcıları)
 │   ├── pipelines/                # uçtan uca hatlar
 │   │   ├── train_forecast.py · tune_optuna.py · train_oof.py · ensemble.py · seed_stability.py
 │   │   ├── evaluate_forecast.py · forecast_levels.py · verify_forecast_eval.py
 │   │   ├── train_autoencoder.py · evaluate_anomaly.py · anomaly_protocol.py · anomaly_dual.py
-│   │   └── eld_run.py · final_tables.py · compare_hane_sebeke.py
+│   │   ├── eld_run.py · final_tables.py · compare_hane_sebeke.py
+│   │   └── lead_run.py (CLI) · lead_models.py · lead_fe.py · lead_improve.py · lead_test.py   # LEAD1.0
 │   ├── <eski_ad>.py · data/<eski_ad>.py   # GEÇİCİ: yalnız eski `python -m` komutları için yönlendirme
 ├── experiments/archive/          # final sonuç üretmeyen test sonrası deneyler (kod çalışır; sonuçlar results/ altında)
 │   ├── README.md · *.py · configs/ · tests/
 ├── app/                          # Streamlit demo: streamlit_app.py · views/ · *_services.py · ui.py · theme.py · style.css
-├── notebooks/01_eda.ipynb
-├── scripts/verify_frozen_results.py   # donmuş sonuçların yeniden üretim doğrulaması
+├── notebooks/                    # 01_eda · 01_hane · 02_sebeke · 03_lead (kayıtlı ağırlık/skorlarla, eğitimsiz)
+├── scripts/                      # verify_frozen_results.py · lead_results_report.py · sunum_kontrol.py
 ├── tests/                        # çekirdek testler (sızıntı, bölme, pencere, enjeksiyon, demo tutarlılığı ...)
 ├── models/                       # ağırlıklar (.pt, git'e girmez; yedek repo dışında); ölçek istatistikleri checkpoint içinde
-├── results/                      # experiments.csv · tables/ · figures/ · logs/ · eld/ · predictions/ (git'e girmez)
-└── docs/                         # deney_gunlugu · final_sonuclar · hane_vs_sebeke · protokoller · literatür ·
-                                  # veri_seti_lead1_degerlendirme · oneri_formu/ · rapor/ · sunum/ · demo/ · archive/
+├── results/                      # experiments.csv · tables/ · figures/ · logs/ · eld/ · lead/ · predictions/ (git'e girmez)
+└── docs/                         # README.md (okuma sırası) · deney_gunlugu · final_sonuclar · hane_vs_sebeke · protokoller ·
+                                  # lead_* · literatür · savunma_sorulari · oneri_formu/ · rapor/ · sunum/ · archive/
 ```
 
 **Kurulum** (Python 3.10+; proje kökünde):
@@ -505,11 +510,16 @@ pytest -q
 python -m app.build_calibration                # demo anomali kalibrasyonu (final protokol fonksiyonlarıyla)
 python -m app.capture_table                    # demo: tip bazlı yakalama tablosu (final sonuç değildir)
 python -m streamlit run app/streamlit_app.py --server.address localhost
+python scripts/sunum_kontrol.py [--ekran-goruntusu]       # sunum günü: üç sayfa hatasız mı; yedek görüntüler
+
+# LEAD1.0 (yalnız val; test yalnız --stage test --final-degerlendirme ile, yapıldı)
+python -m src.pipelines.lead_run --stage clean|eda|sites|splits|l0|l1|l4|deep|fe|l1fe|l2fe|l5fe|if|sitefe|l1off|improve|summary
+python scripts/lead_results_report.py          # docs/lead_sonuclar.md (yeni hesap yok)
 ```
 
 **Eski komutlar:** `python -m src.train_forecast`, `python -m src.data.preprocess` gibi 2026-11-25 öncesi komutlar geçici yönlendirmelerle hâlâ çalışır (uyarı yazar). Eski yol → yeni yol tablosu: `docs/deney_gunlugu.md` (2026-11-25).
 
-**Git düzeni:** `main` her zaman çalışır; iş dalları `seyda/...` (geçmişte `dilara/...`); commit mesajları Türkçe ve açıklayıcı. Önemli noktalar etiketlidir (`v1.5-temizlik-oncesi`, `v1.6-zincir-birlesti`, `v1.7-yapilandirma-oncesi`, `v2.0-yeni-yapi`).
+**Git düzeni:** `main` her zaman çalışır; iş dalları `seyda/...` (geçmişte `dilara/...`); commit mesajları Türkçe ve açıklayıcı. Önemli noktalar etiketlidir (`v1.5-temizlik-oncesi`, `v1.6-zincir-birlesti`, `v1.7-yapilandirma-oncesi`, `v2.0-yeni-yapi`, `v2.2-lead`, `v3.0-final`; birleştirilmeyen v2 dalı `arsiv/dilara-v2` etiketinde saklıdır).
 
 ---
 
@@ -645,7 +655,7 @@ Formdaki ve öneri formu yönergesindeki **tüm kurallar** (çakışan yerlerde 
 
 ### 8.4 Demo B planı
 - İnternet yok: tüm veri ve ağırlıklar yerelde; `streamlit run` önceden açılmış.
-- Uygulama çökerse: `docs/demo/` ekran görüntüleri ve `results/tables/` final tabloları (Sonuçlar sayfasının kaynağı) gösterilir.
+- Uygulama çökerse: `docs/sunum/yedek/` ekran görüntüleri ve `results/tables/` final tabloları (Sonuçlar sayfasının kaynağı) gösterilir.
 
 ---
 
