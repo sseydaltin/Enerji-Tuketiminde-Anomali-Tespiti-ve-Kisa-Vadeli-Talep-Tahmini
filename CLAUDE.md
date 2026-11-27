@@ -6,10 +6,11 @@ Bu dosya, bu repoda çalışan Claude Code (ve diğer yapay zekâ asistanları) 
 - **Ders:** YMÜ425 – Uygulamalı Sinir Ağları (Fırat Üniversitesi, 2026–2027 Güz)
 - **Konu:** Enerji tüketiminde anomali tespiti ve kısa vadeli (24 saat) talep tahmini
 - **Ekip:** Dilara YILDIRIM (veri hattı, tahmin, demo; katkısı 2026-11-24'te tamamlandı) · Şeyda ALTIN (EDA, literatür, anomali, şebeke deneyi, görselleştirme; 2026-11-25'ten itibaren projeyi yürütüyor)
-- **Veri setleri:** (1) UCI Individual Household Electric Power Consumption – hane, dakikalık → saatlik (ana); (2) UCI ElectricityLoadDiagrams20112014 – şebeke, 160 müşteri toplamı (aynı yöntemlerle ek deney); (3) **LEAD1.0** – gerçek etiketli bina anomalileri, **eklenecek** (`docs/veri_seti_lead1_degerlendirme.md`)
+- **Veri setleri:** (1) UCI Individual Household Electric Power Consumption – hane, dakikalık → saatlik (ana); (2) UCI ElectricityLoadDiagrams20112014 – şebeke, 160 müşteri toplamı (aynı yöntemlerle ek deney); (3) **LEAD1.0** – gerçek etiketli bina anomalileri, ek doğrulama (`docs/lead_protokol.md`, `docs/lead_sonuclar.md`)
 - **Final modeller (yalnız val ile seçildi, test bir kez kullanıldı):** tahmin **F13-ens** = 0,8 · F10-opt (Seq2Seq-LSTM) + 0,2 · F5-opt (LSTM), lookback 48, ufuk 24 · anomali **A3-s2s-norm** = F10-opt'un h=1 artığı / OOF std (saat × gün), w = 3
 - **Karşılaştırma modelleri:** Persistence, Seasonal Naive 24/168, Ridge, MLP, GRU, CNN-LSTM, XGBoost · Hareketli z-skoru (A0), Isolation Forest (A1), LSTM-Autoencoder (A2), A5-mean-z; test sonrası A6 (deneysel)
-- **Durum:** Final sonuçlar donmuş (`docs/final_sonuclar.md`, `docs/hane_vs_sebeke.md`). Hane anomali geliştirmesi 2026-11-25'te donduruldu. Sıradaki iş: LEAD1.0. Basit, okunabilir ve savunulabilir çözüm > karmaşık çözüm.
+- **LEAD final modeli (val'de §18.2 + §21 ile seçildi, test bir kez):** L1 behavior (LightGBM); sonuçlar `docs/lead_sonuclar.md`.
+- **Durum:** Final sonuçlar donmuş (`docs/final_sonuclar.md`, `docs/hane_vs_sebeke.md`, `docs/lead_sonuclar.md`). Hane anomali geliştirmesi 2026-11-25'te donduruldu; LEAD val ve tek seferlik test 2026-11-26'da tamamlandı. Sıradaki iş: final rapor (`docs/rapor/DILARA_RAPOR_REHBERI.md`; belge giriş noktası `docs/README.md`). Basit, okunabilir ve savunulabilir çözüm > karmaşık çözüm.
 
 ## En önemli kural: öğrenciler her satırı savunacak
 Ders yönergesine göre öğrenciler kodun her parçasını sözlü savunmada açıklamak zorunda; "kodu yapay zekâ yazdı" cevabı kabul edilmiyor. Bu yüzden:
@@ -38,21 +39,22 @@ src/core/                 # config (PROJECT_ROOT, load_config), split, windows, 
                           # metrics, anomaly_metrics, results_io, seed (set_seed, get_device), console
 src/datasets/household/   # load, preprocess, weather (UCI hane)
 src/datasets/eld/         # eld (UCI ELD, 160 müşteri toplamı)
-src/datasets/lead/        # LEAD1.0 (boş; eklenecek)
-src/models/               # tahmin modelleri ve referanslar; anomali skorları (A0/A1, AE, A3 artık)
+src/datasets/lead/        # LEAD1.0: load (temizlik, site), eda, splits, features, evaluate
+src/models/               # tahmin modelleri ve referanslar; anomali skorları (A0/A1, AE, A3 artık); lead_classifiers
 src/pipelines/            # train_forecast, tune_optuna, train_oof, ensemble, seed_stability, evaluate_forecast,
                           # forecast_levels, verify_forecast_eval, train_autoencoder, evaluate_anomaly,
-                          # anomaly_protocol, anomaly_dual, eld_run, final_tables, compare_hane_sebeke
+                          # anomaly_protocol, anomaly_dual, eld_run, final_tables, compare_hane_sebeke,
+                          # lead_run (CLI), lead_models, lead_fe, lead_improve, lead_test
 src/*.py, src/data/*.py   # GEÇİCİ: yalnız eski `python -m` komutları için yönlendirme (kod içermez)
 experiments/archive/      # final sonuç üretmeyen deneyler + testleri (çalışır; çekirdek buradan import ETMEZ)
 app/                      # Streamlit demo (streamlit_app.py, views/, *_services.py, ui.py, theme.py, style.css)
-notebooks/01_eda.ipynb
-scripts/verify_frozen_results.py
+notebooks/                # 01_eda, 01_hane, 02_sebeke, 03_lead (eğitimsiz, kayıtlı sonuçlarla birebir kontrol)
+scripts/                  # verify_frozen_results.py, lead_results_report.py, sunum_kontrol.py
 tests/                    # pytest (pytest.ini: tests + experiments/archive/tests)
 models/                   # ağırlıklar (.pt; git'e girmez, yedek repo dışında); ölçek istatistikleri checkpoint içinde
-results/                  # experiments.csv, tables/, figures/, logs/, eld/
-docs/                     # deney_gunlugu, final sonuçlar, protokoller, literatür, LEAD değerlendirmesi,
-                          # oneri_formu/, rapor/, sunum/, demo/, archive/
+results/                  # experiments.csv, tables/, figures/, logs/, eld/, lead/
+docs/                     # README.md (okuma sırası), deney_gunlugu, final sonuçlar, protokoller, literatür, LEAD,
+                          # savunma_sorulari, oneri_formu/, rapor/, sunum/, archive/
 ```
 - Yeni veri seti kodu `src/datasets/<ad>/` altına; veri setinden bağımsız adımlar `src/core/` altına.
 - Yeni deneyler önce `experiments/` altında yazılır; final sonuç üretmeyen kod `src/`'ye girmez.
@@ -71,11 +73,13 @@ python -m src.pipelines.eld_run --stage val|test               # test: yalnız f
 python scripts/verify_frozen_results.py snapshot --out <repo dışı> | compare <ref> <yeni>
 pytest -q                                                       # çekirdek + arşiv; yalnız çekirdek: pytest tests/ -q
 python -m streamlit run app/streamlit_app.py --server.address localhost
+python -m src.pipelines.lead_run --stage <aşama>            # LEAD; --stage test yalnız --final-degerlendirme ile (yapıldı)
+python scripts/sunum_kontrol.py [--ekran-goruntusu]        # sunum günü kontrolü (requirements-dev.txt)
 ```
 Tam liste README §5'tedir.
 
 ## Kodlama kuralları
-- Python 3.10+, PyTorch, scikit-learn, pandas, numpy, matplotlib, streamlit, pyyaml, holidays, xgboost, optuna.
+- Python 3.10+, PyTorch, scikit-learn, pandas, numpy, matplotlib, streamlit, pyyaml, holidays, xgboost, optuna, lightgbm (LEAD); geliştirme: playwright.
 - Hiperparametreler ve yollar **koda gömülmez**, `config.yaml`'dan okunur; CLI argümanları config'i ezer.
 - Her betik başında `set_seed(seed)` (random, numpy, torch, cudnn deterministic).
 - Cihaz: `src.core.seed.get_device(args.device)` (CUDA varsa istenen cihaz, yoksa `cpu`). Kod CPU'da da makul sürede çalışmalı.

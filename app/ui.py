@@ -98,11 +98,6 @@ def kpi_cards(cards):
     st.markdown(f"<div class='kpi-grid'>{items}</div>", unsafe_allow_html=True)
 
 
-def kpi_row(cards):
-    """Geriye uyumlu ad: kpi_cards ile aynı (etiket, değer, açıklama)."""
-    kpi_cards(cards)
-
-
 def compact_table(frame, columns, styler=None, key=None, selectable=False):
     """Yatay kaydırma gerektirmeyen tablo: uzun sütun adları kısaltılır, tam ad sütun ipucunda (help) durur.
 
